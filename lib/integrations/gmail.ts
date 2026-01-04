@@ -66,6 +66,8 @@ export async function exchangeGmailCode(params: {
 
   if (!response.ok) {
     const error = await response.json();
+    console.error('Google OAuth error response:', JSON.stringify(error));
+    console.error('Request params - clientId:', clientId?.substring(0, 20) + '...', 'redirectUri:', redirectUri);
     throw new Error(`OAuth error: ${error.error_description || error.error}`);
   }
 

@@ -224,6 +224,17 @@ CREATE TABLE integrations (
     UNIQUE(tenant_id, type)
 );
 
+-- OAuth state tokens for integration flows
+CREATE TABLE IF NOT EXISTS integration_states (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id VARCHAR(255) NOT NULL,
+    provider VARCHAR(50) NOT NULL, -- o365, gmail
+    state VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(tenant_id, provider)
+);
+
 -- ============================================================================
 -- AUDIT & LOGGING
 -- ============================================================================

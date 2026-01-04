@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,13 @@ interface Integration {
   lastSyncAt?: string;
   errorMessage?: string;
   createdAt: string;
+}
+
+interface SyncResult {
+  totalIntegrations: number;
+  totalEmailsProcessed: number;
+  totalThreatsFound: number;
+  totalErrors: number;
 }
 
 const integrationInfo = {
@@ -43,6 +50,8 @@ export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const searchParams = useSearchParams();
 
   const successMessage = searchParams.get('success');
@@ -92,6 +101,50 @@ export default function IntegrationsPage() {
       await fetchIntegrations();
     } catch (error) {
       console.error(`Failed to disconnect ${type}:`, error);
+    }
+  }
+
+  async function triggerSync() {
+    setSyncing(true);
+    setSyncMessage(null);
+
+    try {
+      const response = await fetch('/api/sync', { method: 'POST' });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Sync failed');
+      }
+
+      const result = data as SyncResult;
+
+      if (result.totalEmailsProcessed > 0 || result.totalThreatsFound > 0) {
+        setSyncMessage({
+          type: 'success',
+          message: `Sync complete: ${result.totalEmailsProcessed} emails processed, ${result.totalThreatsFound} threats found`,
+        });
+      } else if (result.totalErrors > 0) {
+        setSyncMessage({
+          type: 'error',
+          message: `Sync completed with ${result.totalErrors} errors`,
+        });
+      } else {
+        setSyncMessage({
+          type: 'success',
+          message: 'Sync complete: No new emails to process',
+        });
+      }
+
+      // Refresh integrations to update last sync time
+      await fetchIntegrations();
+    } catch (error) {
+      console.error('Sync failed:', error);
+      setSyncMessage({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Sync failed',
+      });
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -147,6 +200,15 @@ export default function IntegrationsPage() {
           ✕ {errorMessage}
         </div>
       )}
+      {syncMessage && (
+        <div className={`px-4 py-3 rounded-lg ${
+          syncMessage.type === 'success'
+            ? 'bg-green-50 border border-green-200 text-green-800'
+            : 'bg-red-50 border border-red-200 text-red-800'
+        }`}>
+          {syncMessage.type === 'success' ? '✓' : '✕'} {syncMessage.message}
+        </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Microsoft 365 Card */}
@@ -155,8 +217,10 @@ export default function IntegrationsPage() {
           info={integrationInfo.o365}
           integration={getIntegration('o365')}
           connecting={connecting === 'o365'}
+          syncing={syncing}
           onConnect={() => connectIntegration('o365')}
           onDisconnect={() => disconnectIntegration('o365')}
+          onSync={triggerSync}
           getStatusBadge={getStatusBadge}
           formatDate={formatDate}
         />
@@ -167,8 +231,10 @@ export default function IntegrationsPage() {
           info={integrationInfo.gmail}
           integration={getIntegration('gmail')}
           connecting={connecting === 'gmail'}
+          syncing={syncing}
           onConnect={() => connectIntegration('gmail')}
           onDisconnect={() => disconnectIntegration('gmail')}
+          onSync={triggerSync}
           getStatusBadge={getStatusBadge}
           formatDate={formatDate}
         />
@@ -261,8 +327,10 @@ interface IntegrationCardProps {
   info: { name: string; description: string; icon: string; color: string };
   integration?: Integration;
   connecting: boolean;
+  syncing: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onSync: () => void;
   getStatusBadge: (status: Integration['status']) => React.ReactNode;
   formatDate: (date?: string) => string;
 }
@@ -272,8 +340,10 @@ function IntegrationCard({
   info,
   integration,
   connecting,
+  syncing,
   onConnect,
   onDisconnect,
+  onSync,
   getStatusBadge,
   formatDate,
 }: IntegrationCardProps) {
@@ -317,13 +387,27 @@ function IntegrationCard({
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1">
-                  Sync Now
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={onSync}
+                  disabled={syncing}
+                >
+                  {syncing ? (
+                    <>
+                      <span className="animate-spin mr-2">⏳</span>
+                      Syncing...
+                    </>
+                  ) : (
+                    'Sync Now'
+                  )}
                 </Button>
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={onDisconnect}
+                  disabled={syncing}
                 >
                   Disconnect
                 </Button>
