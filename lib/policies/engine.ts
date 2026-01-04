@@ -11,8 +11,24 @@ import type {
   PolicyEvaluationResult,
   ListEntry,
   ConditionField,
+  PolicyPriority,
 } from './types';
 import { sql } from '@/lib/db';
+
+// Priority mapping: string <-> integer for database storage
+const PRIORITY_TO_INT: Record<PolicyPriority, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+const INT_TO_PRIORITY: Record<number, PolicyPriority> = {
+  0: 'critical',
+  1: 'high',
+  2: 'medium',
+  3: 'low',
+};
 
 /**
  * Evaluate an email against all tenant policies
@@ -128,20 +144,13 @@ async function checkBlocklist(
  * Get active policies for a tenant, ordered by priority
  */
 async function getActivePolicies(tenantId: string): Promise<Policy[]> {
-  const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-
+  // Priority is stored as INTEGER in DB (0=critical, 1=high, 2=medium, 3=low)
+  // Lower number = higher priority, so ORDER BY priority ASC
   const results = await sql`
     SELECT * FROM policies
     WHERE tenant_id = ${tenantId}
     AND status = 'active'
-    ORDER BY
-      CASE priority
-        WHEN 'critical' THEN 0
-        WHEN 'high' THEN 1
-        WHEN 'medium' THEN 2
-        WHEN 'low' THEN 3
-      END,
-      created_at ASC
+    ORDER BY priority ASC, created_at ASC
   `;
 
   return results.map((r: Record<string, unknown>) => ({
@@ -151,7 +160,8 @@ async function getActivePolicies(tenantId: string): Promise<Policy[]> {
     description: r.description as string,
     type: r.type as Policy['type'],
     status: r.status as Policy['status'],
-    priority: r.priority as Policy['priority'],
+    // Convert integer back to string priority
+    priority: INT_TO_PRIORITY[r.priority as number] || 'medium',
     rules: (r.rules as PolicyRule[]) || [],
     scope: r.scope as Policy['scope'],
     createdAt: r.created_at as Date,
@@ -392,6 +402,9 @@ export async function createDefaultPolicies(
   const { DEFAULT_POLICIES } = await import('./types');
 
   for (const policyTemplate of DEFAULT_POLICIES) {
+    // Convert string priority to integer for database storage
+    const priorityInt = PRIORITY_TO_INT[policyTemplate.priority] ?? 2; // default to medium (2)
+
     await sql`
       INSERT INTO policies (
         tenant_id, name, description, type, status, priority, rules, created_by
@@ -401,7 +414,7 @@ export async function createDefaultPolicies(
         ${policyTemplate.description || null},
         ${policyTemplate.type},
         ${policyTemplate.status},
-        ${policyTemplate.priority},
+        ${priorityInt},
         ${JSON.stringify(policyTemplate.rules)}::jsonb,
         ${createdBy}
       )

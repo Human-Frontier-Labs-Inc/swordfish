@@ -8,7 +8,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
-import type { Policy, PolicyRule } from '@/lib/policies/types';
+import type { Policy, PolicyRule, PolicyPriority } from '@/lib/policies/types';
+
+// Priority mapping: string <-> integer for database storage
+const PRIORITY_TO_INT: Record<PolicyPriority, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+const INT_TO_PRIORITY: Record<number, PolicyPriority> = {
+  0: 'critical',
+  1: 'high',
+  2: 'medium',
+  3: 'low',
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,33 +40,35 @@ export async function GET(request: NextRequest) {
 
     let policies;
 
+    // Priority is stored as INTEGER: 0=critical, 1=high, 2=medium, 3=low
+    // Lower number = higher priority, so ORDER BY priority ASC
     if (type && status) {
       policies = await sql`
         SELECT * FROM policies
         WHERE tenant_id = ${tenantId}
         AND type = ${type}
         AND status = ${status}
-        ORDER BY priority DESC, created_at DESC
+        ORDER BY priority ASC, created_at DESC
       `;
     } else if (type) {
       policies = await sql`
         SELECT * FROM policies
         WHERE tenant_id = ${tenantId}
         AND type = ${type}
-        ORDER BY priority DESC, created_at DESC
+        ORDER BY priority ASC, created_at DESC
       `;
     } else if (status) {
       policies = await sql`
         SELECT * FROM policies
         WHERE tenant_id = ${tenantId}
         AND status = ${status}
-        ORDER BY priority DESC, created_at DESC
+        ORDER BY priority ASC, created_at DESC
       `;
     } else {
       policies = await sql`
         SELECT * FROM policies
         WHERE tenant_id = ${tenantId}
-        ORDER BY priority DESC, created_at DESC
+        ORDER BY priority ASC, created_at DESC
       `;
     }
 
@@ -61,7 +78,8 @@ export async function GET(request: NextRequest) {
       description: p.description,
       type: p.type,
       status: p.status || (p.is_active ? 'active' : 'inactive'),
-      priority: p.priority || 'medium',
+      // Convert integer priority back to string
+      priority: INT_TO_PRIORITY[p.priority as number] || 'medium',
       rules: p.rules || [],
       scope: p.scope,
       createdAt: p.created_at,
@@ -103,6 +121,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Convert string priority to integer for database storage
+    const priorityInt = PRIORITY_TO_INT[priority as PolicyPriority] ?? 2; // default to medium (2)
+
     const result = await sql`
       INSERT INTO policies (
         tenant_id, name, description, type, status, priority, rules, scope, created_by
@@ -112,7 +133,7 @@ export async function POST(request: NextRequest) {
         ${description || null},
         ${type},
         ${status},
-        ${priority},
+        ${priorityInt},
         ${JSON.stringify(rules)}::jsonb,
         ${scope ? JSON.stringify(scope) : null}::jsonb,
         ${userId}
