@@ -1,0 +1,577 @@
+/**
+ * Main Detection Pipeline
+ * Orchestrates all detection layers and produces final verdicts
+ */
+
+import type {
+  ParsedEmail,
+  EmailVerdict,
+  LayerResult,
+  Signal,
+  DetectionConfig,
+} from './types';
+import { DEFAULT_DETECTION_CONFIG } from './types';
+import { runDeterministicAnalysis } from './deterministic';
+import { runLLMAnalysis, shouldInvokeLLM } from './llm';
+import { evaluatePolicies } from '@/lib/policies/engine';
+import { classifyEmail } from './ml/classifier';
+import { checkReputation } from './reputation/service';
+
+/**
+ * Main detection pipeline - analyzes an email through all layers
+ */
+export async function analyzeEmail(
+  email: ParsedEmail,
+  tenantId: string,
+  config: DetectionConfig = DEFAULT_DETECTION_CONFIG
+): Promise<EmailVerdict> {
+  const startTime = performance.now();
+  const layerResults: LayerResult[] = [];
+  let allSignals: Signal[] = [];
+  let llmTokensUsed = 0;
+
+  // Layer 0: Policy Evaluation (allowlists/blocklists)
+  try {
+    const policyResult = await evaluatePolicies(email, tenantId);
+
+    if (policyResult.matched) {
+      // Short-circuit based on policy
+      if (policyResult.action === 'allow') {
+        // Allowlisted sender - skip all detection
+        return {
+          messageId: email.messageId,
+          tenantId,
+          verdict: 'pass',
+          overallScore: 0,
+          confidence: 1.0,
+          signals: [{
+            type: 'policy',
+            severity: 'info',
+            score: 0,
+            detail: policyResult.reason || 'Sender is in allowlist',
+          }],
+          layerResults: [],
+          explanation: 'This email was allowed by policy.',
+          recommendation: 'Sender is on your allowlist.',
+          processingTimeMs: performance.now() - startTime,
+          analyzedAt: new Date(),
+          policyApplied: {
+            policyId: policyResult.policyId,
+            policyName: policyResult.policyName,
+            action: policyResult.action,
+          },
+        };
+      } else if (policyResult.action === 'block') {
+        // Blocklisted sender - block immediately
+        return {
+          messageId: email.messageId,
+          tenantId,
+          verdict: 'block',
+          overallScore: 100,
+          confidence: 1.0,
+          signals: [{
+            type: 'policy',
+            severity: 'critical',
+            score: 100,
+            detail: policyResult.reason || 'Sender is in blocklist',
+          }],
+          layerResults: [],
+          explanation: 'This email was blocked by policy.',
+          recommendation: 'Sender is on your blocklist.',
+          processingTimeMs: performance.now() - startTime,
+          analyzedAt: new Date(),
+          policyApplied: {
+            policyId: policyResult.policyId,
+            policyName: policyResult.policyName,
+            action: policyResult.action,
+          },
+        };
+      }
+      // Other actions (quarantine, tag) - continue with detection but note the policy
+      allSignals.push({
+        type: 'policy',
+        severity: 'info',
+        score: 0,
+        detail: `Policy "${policyResult.policyName}" matched: ${policyResult.reason}`,
+      });
+    }
+  } catch (error) {
+    // Log but don't fail if policy evaluation fails
+    console.error('Policy evaluation error:', error);
+  }
+
+  // Layer 1: Deterministic Analysis (always runs)
+  const deterministicResult = await runDeterministicAnalysis(email);
+  layerResults.push(deterministicResult);
+  allSignals.push(...deterministicResult.signals);
+
+  // Layer 2: Reputation Lookup (TODO - placeholder for now)
+  const reputationResult = await runReputationLookup(email);
+  layerResults.push(reputationResult);
+  allSignals.push(...reputationResult.signals);
+
+  // Layer 3: ML Analysis (TODO - placeholder for now)
+  const mlResult = await runMLAnalysis(email, allSignals);
+  layerResults.push(mlResult);
+  allSignals.push(...mlResult.signals);
+
+  // Layer 4: LLM Analysis (conditional - only for uncertain cases)
+  const shouldUseLLM = shouldInvokeLLM(
+    deterministicResult.score,
+    mlResult.confidence,
+    config
+  );
+
+  if (shouldUseLLM) {
+    const llmResult = await runLLMAnalysis(email, allSignals);
+    layerResults.push(llmResult);
+    allSignals.push(...llmResult.signals);
+    // Estimate tokens used (rough approximation)
+    llmTokensUsed = estimateTokensUsed(email);
+  } else {
+    layerResults.push({
+      layer: 'llm',
+      score: 0,
+      confidence: 0,
+      signals: [],
+      processingTimeMs: 0,
+      skipped: true,
+      skipReason: 'Not needed - sufficient confidence from prior layers',
+    });
+  }
+
+  // Layer 5: Sandbox (TODO - for attachments, placeholder for now)
+  const sandboxResult = await runSandboxAnalysis(email);
+  layerResults.push(sandboxResult);
+  allSignals.push(...sandboxResult.signals);
+
+  // Calculate final score and verdict
+  const { overallScore, confidence } = calculateFinalScore(layerResults, config);
+  const verdict = determineVerdict(overallScore, config);
+
+  // Generate explanation from signals
+  const { explanation, recommendation } = generateExplanation(allSignals, verdict);
+
+  return {
+    messageId: email.messageId,
+    tenantId,
+    verdict,
+    overallScore,
+    confidence,
+    signals: allSignals,
+    layerResults,
+    explanation,
+    recommendation,
+    processingTimeMs: performance.now() - startTime,
+    llmTokensUsed: llmTokensUsed > 0 ? llmTokensUsed : undefined,
+    analyzedAt: new Date(),
+  };
+}
+
+/**
+ * Reputation lookup using threat intelligence
+ */
+async function runReputationLookup(email: ParsedEmail): Promise<LayerResult> {
+  const startTime = performance.now();
+  const signals: Signal[] = [];
+
+  try {
+    // Extract entities to check
+    const senderDomain = email.from.domain || email.from.address.split('@')[1]?.toLowerCase();
+    const urls = extractURLs((email.body.text || '') + (email.body.html || ''));
+    const domains = urls.map(url => {
+      try {
+        return new URL(url.startsWith('http') ? url : `https://${url}`).hostname;
+      } catch {
+        return null;
+      }
+    }).filter(Boolean) as string[];
+
+    // Add sender domain
+    if (senderDomain) {
+      domains.unshift(senderDomain);
+    }
+
+    // Deduplicate
+    const uniqueDomains = [...new Set(domains)];
+    const uniqueUrls = [...new Set(urls)];
+
+    // Check reputation
+    const reputationResult = await checkReputation({
+      domains: uniqueDomains.slice(0, 10), // Limit to 10
+      urls: uniqueUrls.slice(0, 10),
+      emails: [email.from.address],
+    });
+
+    // Convert reputation results to signals
+    for (const domainRep of reputationResult.domains) {
+      if (domainRep.category === 'malicious') {
+        signals.push({
+          type: 'malicious_domain',
+          severity: 'critical',
+          score: 40,
+          detail: `Malicious domain detected: ${domainRep.entity}`,
+        });
+      } else if (domainRep.category === 'suspicious') {
+        signals.push({
+          type: 'suspicious_domain',
+          severity: 'warning',
+          score: 20,
+          detail: `Suspicious domain: ${domainRep.entity}`,
+        });
+      }
+    }
+
+    for (const urlRep of reputationResult.urls) {
+      if (urlRep.category === 'malicious') {
+        signals.push({
+          type: 'malicious_url',
+          severity: 'critical',
+          score: 35,
+          detail: `Malicious URL detected: ${urlRep.entity.substring(0, 50)}...`,
+        });
+      } else if (urlRep.category === 'suspicious') {
+        signals.push({
+          type: 'suspicious_url',
+          severity: 'warning',
+          score: 15,
+          detail: `Suspicious URL: ${urlRep.entity.substring(0, 50)}...`,
+        });
+      }
+    }
+
+    for (const emailRep of reputationResult.emails) {
+      if (emailRep.category === 'malicious') {
+        signals.push({
+          type: 'malicious_sender',
+          severity: 'critical',
+          score: 50,
+          detail: `Known malicious sender: ${emailRep.entity}`,
+        });
+      } else if (emailRep.category === 'suspicious') {
+        signals.push({
+          type: 'suspicious_sender',
+          severity: 'warning',
+          score: 25,
+          detail: `Suspicious sender: ${emailRep.entity}`,
+        });
+      }
+    }
+
+    const score = Math.min(100, signals.reduce((sum, s) => sum + s.score, 0));
+    const confidence = reputationResult.domains.length > 0 || reputationResult.urls.length > 0
+      ? 0.8
+      : 0.5;
+
+    return {
+      layer: 'reputation',
+      score,
+      confidence,
+      signals,
+      processingTimeMs: performance.now() - startTime,
+    };
+  } catch (error) {
+    console.error('Reputation lookup error:', error);
+    return {
+      layer: 'reputation',
+      score: 0,
+      confidence: 0.3,
+      signals,
+      processingTimeMs: performance.now() - startTime,
+      skipped: true,
+      skipReason: 'Reputation service error',
+    };
+  }
+}
+
+/**
+ * ML Analysis using trained classifier
+ */
+async function runMLAnalysis(email: ParsedEmail, _priorSignals: Signal[]): Promise<LayerResult> {
+  const startTime = performance.now();
+  const signals: Signal[] = [];
+
+  try {
+    const prediction = await classifyEmail(email);
+
+    // Convert ML signals to layer signals
+    for (const signal of prediction.signals) {
+      signals.push({
+        type: signal.type,
+        severity: signal.severity,
+        score: signal.score,
+        detail: signal.detail,
+      });
+    }
+
+    // Add category-specific signals
+    if (prediction.category === 'phishing' && prediction.confidence > 0.6) {
+      signals.push({
+        type: 'ml_phishing_detected',
+        severity: 'critical',
+        score: 30,
+        detail: `ML classifier detected phishing (${(prediction.confidence * 100).toFixed(0)}% confidence)`,
+      });
+    } else if (prediction.category === 'bec' && prediction.confidence > 0.6) {
+      signals.push({
+        type: 'ml_bec_detected',
+        severity: 'critical',
+        score: 35,
+        detail: `ML classifier detected business email compromise (${(prediction.confidence * 100).toFixed(0)}% confidence)`,
+      });
+    } else if (prediction.category === 'malware' && prediction.confidence > 0.6) {
+      signals.push({
+        type: 'ml_malware_detected',
+        severity: 'critical',
+        score: 40,
+        detail: `ML classifier detected potential malware delivery (${(prediction.confidence * 100).toFixed(0)}% confidence)`,
+      });
+    } else if (prediction.category === 'spam' && prediction.confidence > 0.6) {
+      signals.push({
+        type: 'ml_spam_detected',
+        severity: 'warning',
+        score: 15,
+        detail: `ML classifier detected spam (${(prediction.confidence * 100).toFixed(0)}% confidence)`,
+      });
+    }
+
+    // Calculate layer score (weighted by confidence)
+    const baseScore = prediction.score * 100;
+    const weightedScore = baseScore * prediction.confidence;
+
+    return {
+      layer: 'ml',
+      score: Math.min(100, Math.round(weightedScore)),
+      confidence: prediction.confidence,
+      signals,
+      processingTimeMs: performance.now() - startTime,
+      metadata: {
+        category: prediction.category,
+        features: prediction.features,
+      },
+    };
+  } catch (error) {
+    console.error('ML analysis error:', error);
+    return {
+      layer: 'ml',
+      score: 0,
+      confidence: 0.3,
+      signals,
+      processingTimeMs: performance.now() - startTime,
+      skipped: true,
+      skipReason: 'ML classifier error',
+    };
+  }
+}
+
+/**
+ * Placeholder: Sandbox analysis for attachments
+ */
+async function runSandboxAnalysis(email: ParsedEmail): Promise<LayerResult> {
+  const startTime = performance.now();
+  const signals: Signal[] = [];
+
+  // Only run if there are attachments
+  if (email.attachments.length === 0) {
+    return {
+      layer: 'sandbox',
+      score: 0,
+      confidence: 1,
+      signals: [],
+      processingTimeMs: performance.now() - startTime,
+      skipped: true,
+      skipReason: 'No attachments to analyze',
+    };
+  }
+
+  // TODO: Implement sandbox analysis:
+  // - Static file analysis
+  // - Dynamic execution in sandbox
+  // - Behavior monitoring
+  // - Network activity tracking
+
+  // Check for dangerous file types
+  const dangerousExtensions = ['.exe', '.scr', '.bat', '.cmd', '.ps1', '.js', '.vbs', '.hta'];
+  const macroExtensions = ['.docm', '.xlsm', '.pptm'];
+  const archiveExtensions = ['.zip', '.rar', '.7z', '.tar', '.gz'];
+
+  for (const attachment of email.attachments) {
+    const ext = attachment.filename.toLowerCase().split('.').pop() || '';
+
+    if (dangerousExtensions.some((d) => attachment.filename.toLowerCase().endsWith(d))) {
+      signals.push({
+        type: 'executable',
+        severity: 'critical',
+        score: 40,
+        detail: `Dangerous executable attachment: ${attachment.filename}`,
+      });
+    }
+
+    if (macroExtensions.some((m) => attachment.filename.toLowerCase().endsWith(m))) {
+      signals.push({
+        type: 'macro_enabled',
+        severity: 'warning',
+        score: 25,
+        detail: `Macro-enabled document: ${attachment.filename}`,
+      });
+    }
+
+    if (archiveExtensions.some((a) => attachment.filename.toLowerCase().endsWith(a))) {
+      signals.push({
+        type: 'dangerous_attachment',
+        severity: 'info',
+        score: 10,
+        detail: `Archive file that may contain hidden threats: ${attachment.filename}`,
+      });
+    }
+  }
+
+  const score = signals.reduce((sum, s) => sum + s.score, 0);
+
+  return {
+    layer: 'sandbox',
+    score: Math.min(100, score),
+    confidence: 0.7,
+    signals,
+    processingTimeMs: performance.now() - startTime,
+  };
+}
+
+/**
+ * Calculate final weighted score from all layers
+ */
+function calculateFinalScore(
+  results: LayerResult[],
+  config: DetectionConfig
+): { overallScore: number; confidence: number } {
+  // Layer weights (sum to 1.0)
+  const weights = {
+    deterministic: 0.35,
+    reputation: 0.20,
+    ml: 0.20,
+    llm: 0.15,
+    sandbox: 0.10,
+  };
+
+  let weightedScore = 0;
+  let totalWeight = 0;
+  let weightedConfidence = 0;
+
+  for (const result of results) {
+    if (result.skipped) continue;
+
+    const weight = weights[result.layer] || 0.1;
+    weightedScore += result.score * weight;
+    weightedConfidence += result.confidence * weight;
+    totalWeight += weight;
+  }
+
+  // Normalize if some layers were skipped
+  const normalizedScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
+  const normalizedConfidence = totalWeight > 0 ? weightedConfidence / totalWeight : 0;
+
+  // Boost score if multiple critical signals
+  const criticalSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'critical'));
+  const criticalBoost = Math.min(20, criticalSignals.length * 5);
+
+  return {
+    overallScore: Math.min(100, Math.round(normalizedScore * (totalWeight / 0.8) + criticalBoost)),
+    confidence: normalizedConfidence,
+  };
+}
+
+/**
+ * Determine verdict based on score thresholds
+ */
+function determineVerdict(
+  score: number,
+  config: DetectionConfig
+): EmailVerdict['verdict'] {
+  if (score >= config.blockThreshold) return 'block';
+  if (score >= config.quarantineThreshold) return 'quarantine';
+  if (score >= config.suspiciousThreshold) return 'suspicious';
+  return 'pass';
+}
+
+/**
+ * Generate human-readable explanation
+ */
+function generateExplanation(
+  signals: Signal[],
+  verdict: EmailVerdict['verdict']
+): { explanation: string; recommendation: string } {
+  const criticalSignals = signals.filter((s) => s.severity === 'critical');
+  const warningSignals = signals.filter((s) => s.severity === 'warning');
+
+  let explanation: string;
+  let recommendation: string;
+
+  if (verdict === 'block' || verdict === 'quarantine') {
+    const topIssues = criticalSignals.slice(0, 3).map((s) => s.detail);
+    explanation = `This email has been flagged due to: ${topIssues.join('; ')}`;
+
+    if (verdict === 'block') {
+      recommendation = 'This email has been blocked and will not be delivered. If you believe this is an error, contact your administrator.';
+    } else {
+      recommendation = 'This email has been quarantined for review. An administrator can release it if deemed safe.';
+    }
+  } else if (verdict === 'suspicious') {
+    const issues = [...criticalSignals, ...warningSignals].slice(0, 2).map((s) => s.detail);
+    explanation = `This email shows some suspicious characteristics: ${issues.join('; ')}`;
+    recommendation = 'Exercise caution with this email. Do not click links or download attachments unless you verify the sender.';
+  } else {
+    explanation = 'This email passed security checks.';
+    recommendation = 'This email appears to be safe, but always exercise caution with unexpected requests.';
+  }
+
+  return { explanation, recommendation };
+}
+
+/**
+ * Estimate tokens used for billing tracking
+ */
+function estimateTokensUsed(email: ParsedEmail): number {
+  const textLength = (email.body.text?.length || 0) + (email.body.html?.length || 0);
+  // Rough approximation: 1 token ≈ 4 characters
+  const inputTokens = Math.ceil(textLength / 4) + 500; // +500 for prompt
+  const outputTokens = 300; // Typical response size
+  return inputTokens + outputTokens;
+}
+
+/**
+ * Quick check for obviously safe/malicious emails
+ * Returns early verdict if high confidence, null if needs full analysis
+ */
+export async function quickCheck(email: ParsedEmail): Promise<EmailVerdict['verdict'] | null> {
+  // Run just deterministic analysis
+  const result = await runDeterministicAnalysis(email);
+
+  // If score is very low, it's likely safe
+  if (result.score < 15 && result.confidence > 0.8) {
+    return 'pass';
+  }
+
+  // If score is very high with critical signals, block immediately
+  if (result.score >= 80) {
+    const hasCritical = result.signals.some((s) => s.severity === 'critical');
+    if (hasCritical) {
+      return 'block';
+    }
+  }
+
+  // Needs full analysis
+  return null;
+}
+
+/**
+ * Extract URLs from text content
+ */
+function extractURLs(text: string): string[] {
+  const urlPattern = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
+  const matches = text.match(urlPattern) || [];
+
+  // Clean up URLs (remove trailing punctuation)
+  return matches.map(url => {
+    return url.replace(/[.,;:!?)]+$/, '');
+  });
+}

@@ -1,0 +1,1087 @@
+openapi: 3.1.0
+info:
+  title: Swordfish Email Security API
+  description: |
+    API for Swordfish - Enterprise email security platform with ML-powered threat detection.
+
+    ## Authentication
+    All endpoints require authentication via Clerk. Include the session token in the Authorization header.
+
+    ## Multi-tenancy
+    Requests are automatically scoped to the authenticated user's organization (tenant).
+
+    ## Rate Limits
+    - Standard tier: 100 requests/minute
+    - Enterprise tier: 1000 requests/minute
+  version: 1.0.0
+  contact:
+    name: Swordfish Support
+    email: support@swordfish.security
+  license:
+    name: Proprietary
+    url: https://swordfish.security/license
+
+servers:
+  - url: https://api.swordfish.security/v1
+    description: Production server
+  - url: https://staging-api.swordfish.security/v1
+    description: Staging server
+  - url: http://localhost:3000/api
+    description: Local development
+
+tags:
+  - name: Threats
+    description: Threat detection and management
+  - name: Analytics
+    description: Security analytics and metrics
+  - name: Reports
+    description: Report generation and scheduling
+  - name: Notifications
+    description: Notification configuration and delivery
+  - name: Policies
+    description: Security policies and rules
+  - name: Webhooks
+    description: Email processing webhooks
+
+paths:
+  /threats:
+    get:
+      tags: [Threats]
+      summary: List detected threats
+      description: Returns a paginated list of detected threats (quarantined/blocked emails)
+      operationId: listThreats
+      parameters:
+        - name: status
+          in: query
+          description: Filter by threat status
+          schema:
+            type: string
+            enum: [quarantine, block, suspicious, pass]
+        - name: severity
+          in: query
+          description: Minimum severity level
+          schema:
+            type: string
+            enum: [low, medium, high, critical]
+        - name: startDate
+          in: query
+          description: Filter from date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          description: Filter to date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Number of results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          description: Pagination offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of threats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreatListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /threats/{id}:
+    get:
+      tags: [Threats]
+      summary: Get threat details
+      description: Returns detailed information about a specific threat
+      operationId: getThreat
+      parameters:
+        - $ref: '#/components/parameters/ThreatId'
+      responses:
+        '200':
+          description: Threat details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Threat'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags: [Threats]
+      summary: Delete a threat
+      description: Permanently deletes a threat record
+      operationId: deleteThreat
+      parameters:
+        - $ref: '#/components/parameters/ThreatId'
+      responses:
+        '200':
+          description: Threat deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /threats/{id}/release:
+    post:
+      tags: [Threats]
+      summary: Release quarantined email
+      description: Releases a quarantined email back to the user's inbox
+      operationId: releaseThreat
+      parameters:
+        - $ref: '#/components/parameters/ThreatId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                addToAllowlist:
+                  type: boolean
+                  description: Add sender to allowlist after release
+                  default: false
+      responses:
+        '200':
+          description: Email released
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /threats/bulk:
+    post:
+      tags: [Threats]
+      summary: Bulk threat operations
+      description: Perform actions on multiple threats at once
+      operationId: bulkThreatAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, action]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 100
+                action:
+                  type: string
+                  enum: [release, delete, block_sender]
+      responses:
+        '200':
+          description: Bulk operation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processed:
+                    type: integer
+                  failed:
+                    type: integer
+                  errors:
+                    type: array
+                    items:
+                      type: string
+
+  /analytics:
+    get:
+      tags: [Analytics]
+      summary: Get dashboard statistics
+      description: Returns aggregated security statistics for the dashboard
+      operationId: getDashboardStats
+      parameters:
+        - name: period
+          in: query
+          description: Time period for statistics
+          schema:
+            type: string
+            enum: [24h, 7d, 30d, 90d]
+            default: 7d
+      responses:
+        '200':
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+
+  /analytics/timeseries:
+    get:
+      tags: [Analytics]
+      summary: Get time series data
+      description: Returns threat detection data over time
+      operationId: getTimeSeries
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [24h, 7d, 30d, 90d]
+        - name: metric
+          in: query
+          description: Metric to retrieve
+          schema:
+            type: string
+            enum: [threats, scanned, blocked, quarantined]
+            default: threats
+      responses:
+        '200':
+          description: Time series data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesResponse'
+
+  /analytics/performance:
+    get:
+      tags: [Analytics]
+      summary: Get detection performance metrics
+      description: Returns detection pipeline performance statistics
+      operationId: getPerformanceMetrics
+      responses:
+        '200':
+          description: Performance metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceMetrics'
+
+  /reports/export:
+    post:
+      tags: [Reports]
+      summary: Export report data
+      description: Export threats, analytics, or audit logs
+      operationId: exportReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, format]
+              properties:
+                type:
+                  type: string
+                  enum: [verdicts, threats, audit_log, executive_summary]
+                format:
+                  type: string
+                  enum: [csv, json]
+                dateRange:
+                  type: object
+                  properties:
+                    start:
+                      type: string
+                      format: date
+                    end:
+                      type: string
+                      format: date
+                filters:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Exported data
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                  metadata:
+                    type: object
+
+  /reports/scheduled:
+    get:
+      tags: [Reports]
+      summary: List scheduled reports
+      operationId: listScheduledReports
+      responses:
+        '200':
+          description: List of scheduled reports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reports:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScheduledReport'
+
+    post:
+      tags: [Reports]
+      summary: Create scheduled report
+      operationId: createScheduledReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateScheduledReport'
+      responses:
+        '200':
+          description: Created report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledReport'
+
+  /reports/scheduled/{id}:
+    patch:
+      tags: [Reports]
+      summary: Update scheduled report
+      operationId: updateScheduledReport
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScheduledReport'
+      responses:
+        '200':
+          description: Updated report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+    delete:
+      tags: [Reports]
+      summary: Delete scheduled report
+      operationId: deleteScheduledReport
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Report deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications
+      operationId: listNotifications
+      parameters:
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  unreadCount:
+                    type: integer
+
+  /notifications/config:
+    get:
+      tags: [Notifications]
+      summary: Get notification configuration
+      operationId: getNotificationConfig
+      responses:
+        '200':
+          description: Notification config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationConfig'
+
+    put:
+      tags: [Notifications]
+      summary: Update notification configuration
+      operationId: updateNotificationConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationConfig'
+      responses:
+        '200':
+          description: Config updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /policies:
+    get:
+      tags: [Policies]
+      summary: List security policies
+      operationId: listPolicies
+      responses:
+        '200':
+          description: Policy list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policies:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Policy'
+
+    post:
+      tags: [Policies]
+      summary: Create policy
+      operationId: createPolicy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePolicy'
+      responses:
+        '200':
+          description: Created policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+
+  /policies/allowlist:
+    get:
+      tags: [Policies]
+      summary: List allowlist entries
+      operationId: listAllowlist
+      responses:
+        '200':
+          description: Allowlist entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AllowlistEntry'
+
+    post:
+      tags: [Policies]
+      summary: Add to allowlist
+      operationId: addToAllowlist
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAllowlistEntry'
+      responses:
+        '200':
+          description: Entry added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllowlistEntry'
+
+  /policies/blocklist:
+    get:
+      tags: [Policies]
+      summary: List blocklist entries
+      operationId: listBlocklist
+      responses:
+        '200':
+          description: Blocklist entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BlocklistEntry'
+
+    post:
+      tags: [Policies]
+      summary: Add to blocklist
+      operationId: addToBlocklist
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBlocklistEntry'
+      responses:
+        '200':
+          description: Entry added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlocklistEntry'
+
+  /webhooks/email:
+    post:
+      tags: [Webhooks]
+      summary: Process incoming email
+      description: Webhook endpoint for email providers to submit emails for analysis
+      operationId: processEmail
+      security:
+        - webhookToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailWebhookPayload'
+      responses:
+        '200':
+          description: Email processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailVerdict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    clerkAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Clerk session token
+    webhookToken:
+      type: apiKey
+      in: header
+      name: X-Webhook-Token
+      description: Webhook authentication token
+
+  parameters:
+    ThreatId:
+      name: id
+      in: path
+      required: true
+      description: Unique threat identifier
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        details:
+          type: object
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    Threat:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        messageId:
+          type: string
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        verdict:
+          type: string
+          enum: [pass, suspicious, quarantine, block]
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Signal'
+        explanation:
+          type: string
+        recommendation:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Signal:
+      type: object
+      properties:
+        type:
+          type: string
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        score:
+          type: number
+        category:
+          type: string
+        detail:
+          type: string
+
+    ThreatListResponse:
+      type: object
+      properties:
+        threats:
+          type: array
+          items:
+            $ref: '#/components/schemas/Threat'
+        stats:
+          type: object
+          properties:
+            total:
+              type: integer
+            quarantined:
+              type: integer
+            blocked:
+              type: integer
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        hasMore:
+          type: boolean
+
+    DashboardStats:
+      type: object
+      properties:
+        stats:
+          type: object
+          properties:
+            totalScanned:
+              type: integer
+            threatsBlocked:
+              type: integer
+            threatsQuarantined:
+              type: integer
+            passedEmails:
+              type: integer
+            avgProcessingTime:
+              type: number
+            detectionRate:
+              type: number
+
+    TimeSeriesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              value:
+                type: number
+        period:
+          type: string
+        metric:
+          type: string
+
+    PerformanceMetrics:
+      type: object
+      properties:
+        avgProcessingTime:
+          type: number
+        p50ProcessingTime:
+          type: number
+        p95ProcessingTime:
+          type: number
+        p99ProcessingTime:
+          type: number
+        llmUsageRate:
+          type: number
+        detectionAccuracy:
+          type: number
+
+    ScheduledReport:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        recipients:
+          type: array
+          items:
+            type: string
+            format: email
+        enabled:
+          type: boolean
+        lastRun:
+          type: string
+          format: date-time
+        nextRun:
+          type: string
+          format: date-time
+        config:
+          type: object
+
+    CreateScheduledReport:
+      type: object
+      required: [name, frequency, recipients]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        recipients:
+          type: array
+          items:
+            type: string
+            format: email
+          minItems: 1
+        config:
+          type: object
+
+    UpdateScheduledReport:
+      type: object
+      properties:
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        recipients:
+          type: array
+          items:
+            type: string
+            format: email
+        enabled:
+          type: boolean
+        config:
+          type: object
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        title:
+          type: string
+        message:
+          type: string
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationConfig:
+      type: object
+      properties:
+        emailEnabled:
+          type: boolean
+        emailRecipients:
+          type: array
+          items:
+            type: string
+            format: email
+        slackEnabled:
+          type: boolean
+        slackWebhookUrl:
+          type: string
+          format: uri
+        webhookEnabled:
+          type: boolean
+        webhookUrl:
+          type: string
+          format: uri
+        severityThreshold:
+          type: string
+          enum: [info, warning, critical]
+
+    Policy:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [allowlist, blocklist, custom]
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyRule'
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    PolicyRule:
+      type: object
+      properties:
+        id:
+          type: string
+        condition:
+          type: object
+        action:
+          type: string
+          enum: [allow, block, quarantine, tag]
+
+    CreatePolicy:
+      type: object
+      required: [name, type, rules]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [allowlist, blocklist, custom]
+        rules:
+          type: array
+          items:
+            type: object
+        priority:
+          type: integer
+
+    AllowlistEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        pattern:
+          type: string
+        patternType:
+          type: string
+          enum: [email, domain, ip]
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+
+    CreateAllowlistEntry:
+      type: object
+      required: [pattern, patternType]
+      properties:
+        pattern:
+          type: string
+        patternType:
+          type: string
+          enum: [email, domain, ip]
+        name:
+          type: string
+
+    BlocklistEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        pattern:
+          type: string
+        patternType:
+          type: string
+          enum: [email, domain, ip]
+        reason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateBlocklistEntry:
+      type: object
+      required: [pattern, patternType]
+      properties:
+        pattern:
+          type: string
+        patternType:
+          type: string
+          enum: [email, domain, ip]
+        reason:
+          type: string
+
+    EmailWebhookPayload:
+      type: object
+      required: [from, to, subject]
+      properties:
+        messageId:
+          type: string
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        body:
+          type: object
+          properties:
+            text:
+              type: string
+            html:
+              type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              filename:
+                type: string
+              contentType:
+                type: string
+              size:
+                type: integer
+
+    EmailVerdict:
+      type: object
+      properties:
+        messageId:
+          type: string
+        verdict:
+          type: string
+          enum: [pass, suspicious, quarantine, block]
+        score:
+          type: integer
+        confidence:
+          type: number
+        explanation:
+          type: string
+        recommendation:
+          type: string
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Signal'
+        processingTimeMs:
+          type: number
+
+security:
+  - clerkAuth: []
