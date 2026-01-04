@@ -116,7 +116,8 @@ export async function analyzeEmail(
   allSignals.push(...mlResult.signals);
 
   // Layer 4: LLM Analysis (conditional - only for uncertain cases)
-  const shouldUseLLM = shouldInvokeLLM(
+  // Skip LLM if explicitly disabled (e.g., for background sync to avoid timeout)
+  const shouldUseLLM = !config.skipLLM && shouldInvokeLLM(
     deterministicResult.score,
     mlResult.confidence,
     config
@@ -136,7 +137,9 @@ export async function analyzeEmail(
       signals: [],
       processingTimeMs: 0,
       skipped: true,
-      skipReason: 'Not needed - sufficient confidence from prior layers',
+      skipReason: config.skipLLM
+        ? 'Skipped for background sync (timeout optimization)'
+        : 'Not needed - sufficient confidence from prior layers',
     });
   }
 

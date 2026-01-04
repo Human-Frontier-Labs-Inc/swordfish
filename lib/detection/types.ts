@@ -193,6 +193,7 @@ export interface DetectionConfig {
   skipMlIfDeterministicBelow: number; // Skip ML if deterministic score below this
   skipMlIfDeterministicAbove: number; // Skip ML if deterministic score above this
   invokeLlmConfidenceRange: [number, number]; // Invoke LLM if ML confidence in this range
+  skipLLM?: boolean; // Skip LLM layer entirely (for background sync)
 
   // LLM settings
   llmModel: string;

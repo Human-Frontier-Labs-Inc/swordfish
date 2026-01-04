@@ -25,9 +25,10 @@ const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
-// Sync configuration
-const BATCH_SIZE = 50;
-const MAX_EMAILS_PER_SYNC = 100;
+// Sync configuration - optimized for Vercel's 30s timeout
+const BATCH_SIZE = 5;
+const MAX_EMAILS_PER_SYNC = 10; // Keep low to avoid timeout
+const SYNC_TIMEOUT_MS = 25000; // Exit before Vercel's 30s limit
 
 interface SyncResult {
   integrationId: string;
@@ -234,6 +235,7 @@ async function syncGmailIntegration(
   const errors: string[] = [];
   let emailsProcessed = 0;
   let threatsFound = 0;
+  let timedOut = false;
 
   const config = integration.config as {
     accessToken: string;
@@ -285,6 +287,13 @@ async function syncGmailIntegration(
     });
 
     for (const messageMeta of messages) {
+      // Check timeout before processing each email
+      if (Date.now() - startTime > SYNC_TIMEOUT_MS) {
+        console.log('Sync timeout reached, stopping early to avoid Vercel timeout');
+        timedOut = true;
+        break;
+      }
+
       try {
         // Check if already processed
         const existing = await sql`
@@ -304,9 +313,11 @@ async function syncGmailIntegration(
           format: 'full',
         });
 
-        // Parse and analyze
+        // Parse and analyze (skip LLM for background sync - too slow)
         const parsedEmail = parseGmailEmail(fullMessage);
-        const verdict = await analyzeEmail(parsedEmail, integration.tenant_id);
+        const verdict = await analyzeEmail(parsedEmail, integration.tenant_id, {
+          skipLLM: true, // Skip LLM to stay within timeout
+        });
 
         // Store results
         await storeVerdict(integration.tenant_id, parsedEmail.messageId, verdict);
@@ -321,10 +332,10 @@ async function syncGmailIntegration(
       }
     }
 
-    // Update last sync time
+    // Update last sync time (even if partial sync due to timeout)
     await sql`
       UPDATE integrations
-      SET last_sync_at = NOW(), error_message = NULL, updated_at = NOW()
+      SET last_sync_at = NOW(), error_message = ${timedOut ? 'Partial sync - timeout' : null}, updated_at = NOW()
       WHERE id = ${integration.id}
     `;
   } catch (error) {
@@ -344,6 +355,7 @@ async function syncGmailIntegration(
       emailsProcessed,
       threatsFound,
       errors: errors.length,
+      timedOut,
     },
   });
 
