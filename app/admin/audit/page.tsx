@@ -209,11 +209,11 @@ export default function AuditLogPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm text-gray-900">
-                        {log.actorEmail || log.actorId.substring(0, 12) + '...'}
+                        {log.actorEmail || (log.actorId ? log.actorId.substring(0, 12) + '...' : 'System')}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {log.tenantName || log.tenantId.substring(0, 12) + '...'}
+                      {log.tenantName || (log.tenantId ? log.tenantId.substring(0, 12) + '...' : 'Global')}
                     </td>
                     <td className="px-6 py-4">
                       <ActionBadge action={log.action} />

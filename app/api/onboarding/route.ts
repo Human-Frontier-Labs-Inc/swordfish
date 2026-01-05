@@ -84,8 +84,16 @@ export async function PUT(request: NextRequest) {
     `;
 
     const existingData = current.length > 0 ? current[0] : null;
-    const completedSteps = existingData?.completed_steps || [];
-    const skippedSteps = existingData?.skipped_steps || [];
+    // Ensure arrays - handle both string and array from database
+    const parseJsonArray = (val: unknown): number[] => {
+      if (Array.isArray(val)) return val;
+      if (typeof val === 'string') {
+        try { return JSON.parse(val); } catch { return []; }
+      }
+      return [];
+    };
+    const completedSteps = parseJsonArray(existingData?.completed_steps);
+    const skippedSteps = parseJsonArray(existingData?.skipped_steps);
     const existingMetadata = existingData?.metadata || {};
 
     // Add completed step if provided
@@ -111,8 +119,8 @@ export async function PUT(request: NextRequest) {
         UPDATE onboarding_progress
         SET
           current_step = ${currentStep || existingData.current_step},
-          completed_steps = ${completedSteps},
-          skipped_steps = ${skippedSteps},
+          completed_steps = ${JSON.stringify(completedSteps)},
+          skipped_steps = ${JSON.stringify(skippedSteps)},
           completed_at = ${completed ? new Date().toISOString() : null},
           metadata = ${JSON.stringify(mergedMetadata)},
           updated_at = NOW()
@@ -133,8 +141,8 @@ export async function PUT(request: NextRequest) {
           ${tenantId},
           ${userId},
           ${currentStep || 1},
-          ${completedSteps},
-          ${skippedSteps},
+          ${JSON.stringify(completedSteps)},
+          ${JSON.stringify(skippedSteps)},
           ${completed ? new Date().toISOString() : null},
           ${JSON.stringify(mergedMetadata)}
         )

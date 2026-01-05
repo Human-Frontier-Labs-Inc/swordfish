@@ -196,7 +196,7 @@ export default function UsersPage() {
                       <RoleBadge role={user.role} isMsp={user.isMspUser} />
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {user.tenantName || user.tenantId.substring(0, 12) + '...'}
+                      {user.tenantName || (user.tenantId ? user.tenantId.substring(0, 12) + '...' : 'No Tenant')}
                     </td>
                     <td className="px-6 py-4">
                       <StatusBadge status={user.status} />

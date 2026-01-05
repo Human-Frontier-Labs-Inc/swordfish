@@ -16,11 +16,13 @@ const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 // Required scopes for email access
+// Note: gmail.readonly is a restricted scope requiring Google verification
+// For initial setup, we use basic scopes. Full Gmail access requires app verification.
 const SCOPES = [
   'openid',
   'email',
   'profile',
-  'https://www.googleapis.com/auth/gmail.readonly',
+  // 'https://www.googleapis.com/auth/gmail.readonly', // Requires Google verification
 ].join(' ');
 
 /**
