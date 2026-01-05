@@ -81,7 +81,7 @@ export async function createO365Subscription(params: {
   // Audit log
   await logAuditEvent({
     tenantId,
-    actorId: 'system',
+    actorId: null, // System action
     actorEmail: null,
     action: 'subscription.create',
     resourceType: 'integration',
@@ -186,7 +186,7 @@ export async function createGmailSubscription(params: {
   // Audit log
   await logAuditEvent({
     tenantId,
-    actorId: 'system',
+    actorId: null, // System action
     actorEmail: null,
     action: 'subscription.create',
     resourceType: 'integration',

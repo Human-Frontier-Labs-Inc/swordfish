@@ -220,7 +220,7 @@ async function syncO365Integration(
   // Audit log
   await logAuditEvent({
     tenantId: integration.tenant_id,
-    actorId: 'system',
+    actorId: null, // System action
     actorEmail: null,
     action: 'email.sync',
     resourceType: 'integration',
@@ -357,7 +357,7 @@ async function syncGmailIntegration(
   // Audit log
   await logAuditEvent({
     tenantId: integration.tenant_id,
-    actorId: 'system',
+    actorId: null, // System action
     actorEmail: null,
     action: 'email.sync',
     resourceType: 'integration',

@@ -197,7 +197,7 @@ export async function processGmailWebhook(
     // Audit log
     await logAuditEvent({
       tenantId,
-      actorId: 'system',
+      actorId: null, // System action - no user actor
       actorEmail: null,
       action: 'webhook.gmail',
       resourceType: 'integration',

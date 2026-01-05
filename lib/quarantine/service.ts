@@ -87,7 +87,7 @@ export async function quarantineEmail(
 
     await logAuditEvent({
       tenantId,
-      actorId: 'system',
+      actorId: null, // System action - no user actor
       actorEmail: null,
       action: 'threat.quarantine',
       resourceType: 'threat',

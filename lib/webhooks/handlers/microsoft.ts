@@ -233,7 +233,7 @@ async function processNotification(notification: GraphNotification): Promise<{
   // Audit log
   await logAuditEvent({
     tenantId,
-    actorId: 'system',
+    actorId: null, // System action - no user actor
     actorEmail: null,
     action: 'webhook.microsoft',
     resourceType: 'email',
