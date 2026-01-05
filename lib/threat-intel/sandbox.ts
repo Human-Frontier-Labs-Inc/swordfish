@@ -350,7 +350,9 @@ export class SandboxService {
 
   private createFormData(file: FileSubmission): FormData {
     const formData = new FormData();
-    const blob = new Blob([file.content], { type: file.contentType });
+    // Convert Buffer to Uint8Array for Blob compatibility
+    const uint8Array = new Uint8Array(file.content.buffer, file.content.byteOffset, file.content.byteLength);
+    const blob = new Blob([uint8Array], { type: file.contentType });
     formData.append('file', blob, file.filename);
     return formData;
   }
