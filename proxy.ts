@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import { neon } from '@neondatabase/serverless';
 
 // Define public routes that don't require authentication
 const isPublicRoute = createRouteMatcher([
@@ -19,6 +20,32 @@ const isOnboardingRoute = createRouteMatcher(['/onboarding(.*)']);
 const isDashboardRoute = createRouteMatcher(['/dashboard(.*)']);
 const isAdminRoute = createRouteMatcher(['/admin(.*)']);
 const isApiRoute = createRouteMatcher(['/api(.*)']);
+
+// Check database for onboarding completion status (fallback when session is stale)
+async function checkOnboardingInDatabase(tenantId: string): Promise<{ completed: boolean; isMsp: boolean }> {
+  try {
+    const sql = neon(process.env.DATABASE_URL!);
+    const result = await sql`
+      SELECT completed_at, metadata FROM onboarding_progress
+      WHERE tenant_id = ${tenantId}
+      LIMIT 1
+    `;
+
+    if (result.length === 0) {
+      return { completed: false, isMsp: false };
+    }
+
+    const row = result[0];
+    const metadata = (row.metadata || {}) as { accountType?: string };
+    return {
+      completed: row.completed_at !== null,
+      isMsp: metadata.accountType === 'msp',
+    };
+  } catch {
+    // On error, return false to allow normal flow
+    return { completed: false, isMsp: false };
+  }
+}
 
 export default clerkMiddleware(async (auth, request) => {
   const { userId, orgId, orgRole, sessionClaims } = await auth();
@@ -45,10 +72,21 @@ export default clerkMiddleware(async (auth, request) => {
   if (request.nextUrl.pathname.startsWith('/api/auth')) {
     return NextResponse.next();
   }
+  // Allow admin verify API (needed for dashboard access check)
+  if (request.nextUrl.pathname.startsWith('/api/admin')) {
+    return NextResponse.next();
+  }
 
   // Check if user has completed onboarding via public metadata
   const publicMetadata = sessionClaims?.publicMetadata as { onboardingCompleted?: boolean } | undefined;
-  const hasCompletedOnboarding = publicMetadata?.onboardingCompleted === true;
+  let hasCompletedOnboarding = publicMetadata?.onboardingCompleted === true;
+
+  // If session says not completed, check database as fallback (session JWT might be stale)
+  if (!hasCompletedOnboarding && !isOnboardingRoute(request)) {
+    const tenantId = orgId || `personal_${userId}`;
+    const dbStatus = await checkOnboardingInDatabase(tenantId);
+    hasCompletedOnboarding = dbStatus.completed;
+  }
 
   // If user hasn't completed onboarding and isn't on onboarding page, redirect there
   if (!hasCompletedOnboarding && !isOnboardingRoute(request)) {
