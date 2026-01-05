@@ -61,10 +61,29 @@ const THREAT_KEYWORDS = [
 ];
 
 const BEC_KEYWORDS = [
-  'wire transfer', 'bank transfer', 'urgent payment', 'invoice attached',
-  'please pay', 'payment required', 'gift cards', 'bitcoin',
-  'keep this confidential', 'between us', 'do not discuss',
-  'ceo', 'cfo', 'executive', 'board meeting',
+  // Wire fraud
+  'wire transfer', 'bank transfer', 'urgent payment', 'wire funds',
+  'transfer funds', 'send payment', 'payment instruction', 'banking information',
+  'routing number', 'swift code', 'iban', 'account number', 'beneficiary',
+  // Gift card scams
+  'gift cards', 'itunes card', 'google play card', 'amazon card',
+  'steam card', 'prepaid card', 'scratch off', 'redemption code',
+  // Invoice fraud
+  'updated invoice', 'revised invoice', 'banking changed', 'payment redirect',
+  'new bank details', 'vendor change',
+  // Payroll diversion
+  'direct deposit', 'update payroll', 'w-2', 'w2 form', 'payroll change',
+  // Pressure tactics
+  'keep this confidential', 'between us', 'do not discuss', 'private matter',
+  'just between us', 'bypass', 'skip the usual',
+  // Authority manipulation
+  'i need you to', 'personal favor', 'trust you', 'count on you',
+  'im in a meeting', 'traveling', 'out of office', 'cant call',
+  // Executive impersonation
+  'ceo', 'cfo', 'coo', 'cto', 'president', 'director', 'executive',
+  'board meeting', 'confidential deal', 'acquisition',
+  // Bitcoin/crypto
+  'bitcoin', 'cryptocurrency', 'crypto wallet', 'btc address',
 ];
 
 const PERSONAL_INFO_REQUESTS = [

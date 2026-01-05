@@ -8,20 +8,58 @@ import type { ParsedEmail, Signal, LayerResult } from './types';
 
 const anthropic = new Anthropic();
 
-// System prompt for phishing analysis
-const SYSTEM_PROMPT = `You are an expert email security analyst specializing in phishing detection. Your task is to analyze emails and identify potential phishing attempts, social engineering tactics, and malicious content.
+// System prompt for phishing and BEC analysis
+const SYSTEM_PROMPT = `You are an expert email security analyst specializing in phishing and Business Email Compromise (BEC) detection. Your task is to analyze emails and identify potential threats including phishing attempts, BEC attacks, social engineering tactics, and malicious content.
 
 Analyze the provided email and return a JSON response with:
-1. verdict: "safe" | "suspicious" | "likely_phishing" | "phishing"
+1. verdict: "safe" | "suspicious" | "likely_phishing" | "phishing" | "likely_bec" | "bec"
 2. confidence: 0.0-1.0 (your confidence in the verdict)
-3. signals: array of detected issues, each with:
+3. threatType: "none" | "phishing" | "bec" | "malware" | "spam" (primary threat classification)
+4. signals: array of detected issues, each with:
    - type: category of issue
    - severity: "info" | "warning" | "critical"
    - detail: explanation
-4. explanation: 2-3 sentence summary for the end user
-5. recommendation: what the recipient should do
+5. explanation: 2-3 sentence summary for the end user
+6. recommendation: what the recipient should do
 
-Consider:
+## BEC Attack Patterns to Detect:
+
+**Wire Transfer Fraud:**
+- Requests to wire money, transfer funds, change bank details
+- Urgency around payment deadlines
+- New banking/routing information
+
+**Gift Card Scams:**
+- Requests to purchase gift cards (iTunes, Amazon, Google Play)
+- Instructions to send card numbers/PINs
+- Unusual purchase requests from leadership
+
+**Invoice Fraud:**
+- Updated invoice with new payment details
+- Vendor account change requests
+- Payment redirect instructions
+
+**Payroll Diversion:**
+- Direct deposit change requests
+- W-2/tax form requests
+- Salary/payroll modifications
+
+**Executive Impersonation:**
+- Display name matches executive but email doesn't
+- CEO/CFO making unusual requests
+- Authority pressure combined with secrecy
+- "Don't tell anyone" or "Keep this between us"
+
+## Key BEC Indicators:
+- Display name spoofing (executive name, wrong domain)
+- Free email domains with executive names
+- Reply-to address mismatch
+- Urgency + financial request combination
+- Secrecy requests
+- Authority/trust manipulation
+- Unusual requests from leadership
+
+## Also Consider:
 - Sender legitimacy (domain, display name)
 - Urgency tactics and pressure language
 - Requests for sensitive information
@@ -30,11 +68,12 @@ Consider:
 - Grammar and formatting anomalies
 - Context incongruencies
 
-Be thorough but avoid false positives. Legitimate business emails may have some urgency.`;
+Be thorough but avoid false positives. BEC attacks often have good grammar and appear legitimate.`;
 
 interface LLMAnalysisResult {
-  verdict: 'safe' | 'suspicious' | 'likely_phishing' | 'phishing';
+  verdict: 'safe' | 'suspicious' | 'likely_phishing' | 'phishing' | 'likely_bec' | 'bec';
   confidence: number;
+  threatType?: 'none' | 'phishing' | 'bec' | 'malware' | 'spam';
   signals: Array<{
     type: string;
     severity: 'info' | 'warning' | 'critical';
@@ -148,7 +187,7 @@ function formatEmailForAnalysis(email: ParsedEmail, priorSignals: Signal[]): str
   }
 
   parts.push('\n=== END EMAIL ===');
-  parts.push('\nAnalyze this email for phishing indicators. Return your analysis as JSON.');
+  parts.push('\nAnalyze this email for phishing AND Business Email Compromise (BEC) indicators. Return your analysis as JSON.');
 
   return parts.join('\n');
 }
@@ -167,7 +206,7 @@ function parseAnalysisResponse(text: string): LLMAnalysisResult {
     const parsed = JSON.parse(jsonMatch[0]);
 
     // Validate required fields
-    if (!parsed.verdict || !['safe', 'suspicious', 'likely_phishing', 'phishing'].includes(parsed.verdict)) {
+    if (!parsed.verdict || !['safe', 'suspicious', 'likely_phishing', 'phishing', 'likely_bec', 'bec'].includes(parsed.verdict)) {
       parsed.verdict = 'suspicious';
     }
 
@@ -182,6 +221,7 @@ function parseAnalysisResponse(text: string): LLMAnalysisResult {
     return {
       verdict: parsed.verdict,
       confidence: parsed.confidence,
+      threatType: parsed.threatType,
       signals: parsed.signals,
       explanation: parsed.explanation || 'Analysis complete.',
       recommendation: parsed.recommendation || 'Review this email carefully.',
@@ -197,23 +237,38 @@ function parseAnalysisResponse(text: string): LLMAnalysisResult {
 function convertToSignals(analysis: LLMAnalysisResult): Signal[] {
   const signals: Signal[] = [];
 
+  // Determine signal type based on verdict
+  const isBEC = analysis.verdict === 'bec' || analysis.verdict === 'likely_bec' || analysis.threatType === 'bec';
+  const isPhishing = analysis.verdict === 'phishing' || analysis.verdict === 'likely_phishing' || analysis.threatType === 'phishing';
+  const isCritical = analysis.verdict === 'phishing' || analysis.verdict === 'bec' || analysis.verdict === 'likely_phishing' || analysis.verdict === 'likely_bec';
+
   // Add overall LLM verdict as a signal
   signals.push({
-    type: 'llm_suspicious',
-    severity: analysis.verdict === 'phishing' || analysis.verdict === 'likely_phishing' ? 'critical' : analysis.verdict === 'suspicious' ? 'warning' : 'info',
+    type: isBEC ? 'llm_bec_detected' : isPhishing ? 'llm_phishing_detected' : 'llm_analysis',
+    severity: isCritical ? 'critical' : analysis.verdict === 'suspicious' ? 'warning' : 'info',
     score: verdictToScore(analysis.verdict),
     detail: analysis.explanation,
     metadata: {
       recommendation: analysis.recommendation,
       llmConfidence: analysis.confidence,
+      threatType: analysis.threatType,
     },
   });
 
   // Add individual signals from LLM
   for (const sig of analysis.signals) {
     const severity = sig.severity || 'warning';
+    // Determine signal type from content
+    const sigType = sig.type.toLowerCase();
+    let signalType: 'llm_suspicious' | 'llm_bec_indicator' | 'llm_phishing_indicator' = 'llm_suspicious';
+    if (sigType.includes('bec') || sigType.includes('wire') || sigType.includes('gift_card') || sigType.includes('impersonation')) {
+      signalType = 'llm_bec_indicator';
+    } else if (sigType.includes('phishing') || sigType.includes('credential')) {
+      signalType = 'llm_phishing_indicator';
+    }
+
     signals.push({
-      type: 'llm_suspicious',
+      type: signalType,
       severity,
       score: severity === 'critical' ? 15 : severity === 'warning' ? 10 : 5,
       detail: `${sig.type}: ${sig.detail}`,
@@ -230,8 +285,12 @@ function verdictToScore(verdict: LLMAnalysisResult['verdict']): number {
   switch (verdict) {
     case 'phishing':
       return 50;
+    case 'bec':
+      return 55; // BEC often more targeted/dangerous
     case 'likely_phishing':
       return 35;
+    case 'likely_bec':
+      return 40;
     case 'suspicious':
       return 20;
     case 'safe':

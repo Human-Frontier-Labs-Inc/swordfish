@@ -16,6 +16,7 @@ import { runLLMAnalysis, shouldInvokeLLM } from './llm';
 import { evaluatePolicies } from '@/lib/policies/engine';
 import { classifyEmail } from './ml/classifier';
 import { checkReputation } from './reputation/service';
+import { detectBEC, quickBECCheck, type BECSignal } from './bec';
 
 /**
  * Main detection pipeline - analyzes an email through all layers
@@ -23,8 +24,9 @@ import { checkReputation } from './reputation/service';
 export async function analyzeEmail(
   email: ParsedEmail,
   tenantId: string,
-  config: DetectionConfig = DEFAULT_DETECTION_CONFIG
+  configOverrides: Partial<DetectionConfig> = {}
 ): Promise<EmailVerdict> {
+  const config: DetectionConfig = { ...DEFAULT_DETECTION_CONFIG, ...configOverrides };
   const startTime = performance.now();
   const layerResults: LayerResult[] = [];
   let allSignals: Signal[] = [];
@@ -110,12 +112,17 @@ export async function analyzeEmail(
   layerResults.push(reputationResult);
   allSignals.push(...reputationResult.signals);
 
-  // Layer 3: ML Analysis (TODO - placeholder for now)
+  // Layer 3: ML Analysis
   const mlResult = await runMLAnalysis(email, allSignals);
   layerResults.push(mlResult);
   allSignals.push(...mlResult.signals);
 
-  // Layer 4: LLM Analysis (conditional - only for uncertain cases)
+  // Layer 4: BEC Detection (Business Email Compromise)
+  const becResult = await runBECAnalysis(email, tenantId);
+  layerResults.push(becResult);
+  allSignals.push(...becResult.signals);
+
+  // Layer 5: LLM Analysis (conditional - only for uncertain cases)
   // Skip LLM if explicitly disabled (e.g., for background sync to avoid timeout)
   const shouldUseLLM = !config.skipLLM && shouldInvokeLLM(
     deterministicResult.score,
@@ -123,7 +130,10 @@ export async function analyzeEmail(
     config
   );
 
-  if (shouldUseLLM) {
+  // Also invoke LLM if BEC is suspected but not confirmed
+  const becSuspected = becResult.score >= 30 && becResult.confidence < 0.8;
+
+  if (shouldUseLLM || becSuspected) {
     const llmResult = await runLLMAnalysis(email, allSignals);
     layerResults.push(llmResult);
     allSignals.push(...llmResult.signals);
@@ -143,7 +153,7 @@ export async function analyzeEmail(
     });
   }
 
-  // Layer 5: Sandbox (TODO - for attachments, placeholder for now)
+  // Layer 6: Sandbox (TODO - for attachments, placeholder for now)
   const sandboxResult = await runSandboxAnalysis(email);
   layerResults.push(sandboxResult);
   allSignals.push(...sandboxResult.signals);
@@ -441,6 +451,157 @@ async function runSandboxAnalysis(email: ParsedEmail): Promise<LayerResult> {
 }
 
 /**
+ * BEC Analysis using specialized BEC detection engine
+ */
+async function runBECAnalysis(email: ParsedEmail, tenantId: string): Promise<LayerResult> {
+  const startTime = performance.now();
+  const signals: Signal[] = [];
+
+  try {
+    // Extract sender info
+    const senderEmail = typeof email.from === 'string'
+      ? email.from
+      : (email.from?.address || '');
+    const senderDisplayName = typeof email.from === 'string'
+      ? email.from
+      : (email.from?.displayName || senderEmail);
+
+    // Get organization domain from sender if available
+    const orgDomain = senderEmail.split('@')[1]?.toLowerCase();
+
+    // Run full BEC detection
+    const becResult = await detectBEC(
+      {
+        subject: email.subject || '',
+        body: email.body.text || email.body.html || '',
+        senderEmail,
+        senderDisplayName,
+        replyTo: email.replyTo?.address,
+      },
+      tenantId,
+      orgDomain
+    );
+
+    // Convert BEC signals to pipeline signals
+    // Map BEC signal types to valid SignalType
+    const mapBECSignalType = (type: string): Signal['type'] => {
+      const typeMap: Record<string, Signal['type']> = {
+        'wire_transfer_request': 'bec_wire_transfer_request',
+        'gift_card_scam': 'bec_gift_card_scam',
+        'invoice_fraud': 'bec_invoice_fraud',
+        'payroll_diversion': 'bec_payroll_diversion',
+        'urgency_pressure': 'bec_urgency_pressure',
+        'secrecy_request': 'bec_secrecy_request',
+        'authority_manipulation': 'bec_authority_manipulation',
+        'compound_attack': 'bec_compound_attack',
+        'financial_amount': 'bec_financial_amount',
+        'display_name_spoof': 'bec_display_name_spoof',
+        'title_spoof': 'bec_title_spoof',
+        'domain_lookalike': 'bec_domain_lookalike',
+        'reply_to_mismatch': 'bec_reply_to_mismatch',
+        'unicode_spoof': 'bec_unicode_spoof',
+        'cousin_domain': 'bec_cousin_domain',
+        'free_email_executive': 'bec_free_email_executive',
+      };
+      return typeMap[type] || 'bec_detected';
+    };
+
+    for (const becSignal of becResult.signals) {
+      signals.push({
+        type: mapBECSignalType(becSignal.type),
+        severity: becSignal.severity === 'critical' ? 'critical' :
+                  becSignal.severity === 'high' ? 'critical' :
+                  becSignal.severity === 'medium' ? 'warning' : 'info',
+        score: becSignal.severity === 'critical' ? 35 :
+               becSignal.severity === 'high' ? 25 :
+               becSignal.severity === 'medium' ? 15 : 5,
+        detail: becSignal.description,
+        metadata: {
+          category: becSignal.category,
+          evidence: becSignal.evidence,
+        },
+      });
+    }
+
+    // Add impersonation signals
+    if (becResult.impersonation?.isImpersonation) {
+      signals.push({
+        type: 'bec_impersonation',
+        severity: 'critical',
+        score: 40,
+        detail: becResult.impersonation.explanation,
+        metadata: {
+          impersonationType: becResult.impersonation.impersonationType,
+          matchedVIP: becResult.impersonation.matchedVIP?.displayName,
+          confidence: becResult.impersonation.confidence,
+        },
+      });
+    }
+
+    // Add financial risk signals
+    if (becResult.financialRisk.hasFinancialRequest && becResult.financialRisk.maxAmount > 0) {
+      const riskSeverity = becResult.financialRisk.riskLevel === 'critical' ? 'critical' :
+                           becResult.financialRisk.riskLevel === 'high' ? 'critical' : 'warning';
+      signals.push({
+        type: 'bec_financial_risk',
+        severity: riskSeverity,
+        score: becResult.financialRisk.riskLevel === 'critical' ? 30 :
+               becResult.financialRisk.riskLevel === 'high' ? 20 : 10,
+        detail: `Financial request detected: $${becResult.financialRisk.maxAmount.toLocaleString()}`,
+        metadata: {
+          amounts: becResult.financialRisk.amounts,
+          riskLevel: becResult.financialRisk.riskLevel,
+        },
+      });
+    }
+
+    // Overall BEC verdict signal
+    if (becResult.isBEC) {
+      signals.push({
+        type: 'bec_detected',
+        severity: 'critical',
+        score: 35,
+        detail: becResult.summary,
+        metadata: {
+          confidence: becResult.confidence,
+          riskLevel: becResult.riskLevel,
+          patternCount: becResult.patterns.length,
+        },
+      });
+    }
+
+    // Calculate layer score
+    const score = Math.min(100, Math.round(becResult.confidence * 100));
+
+    return {
+      layer: 'bec' as LayerResult['layer'],
+      score: becResult.isBEC ? Math.max(score, 50) : score,
+      confidence: becResult.confidence,
+      signals,
+      processingTimeMs: performance.now() - startTime,
+      metadata: {
+        isBEC: becResult.isBEC,
+        riskLevel: becResult.riskLevel,
+        patternCount: becResult.patterns.length,
+        hasImpersonation: becResult.impersonation?.isImpersonation,
+        financialRisk: becResult.financialRisk,
+      },
+    };
+  } catch (error) {
+    console.error('BEC analysis error:', error);
+    return {
+      layer: 'bec' as LayerResult['layer'],
+      score: 0,
+      confidence: 0.3,
+      signals,
+      processingTimeMs: performance.now() - startTime,
+      skipped: true,
+      skipReason: 'BEC detection error',
+    };
+  }
+}
+
+/**
  * Calculate final weighted score from all layers
  */
 function calculateFinalScore(
@@ -448,12 +609,13 @@ function calculateFinalScore(
   config: DetectionConfig
 ): { overallScore: number; confidence: number } {
   // Layer weights (sum to 1.0)
-  const weights = {
-    deterministic: 0.35,
-    reputation: 0.20,
-    ml: 0.20,
-    llm: 0.15,
-    sandbox: 0.10,
+  const weights: Record<string, number> = {
+    deterministic: 0.30,
+    reputation: 0.15,
+    ml: 0.15,
+    bec: 0.20,
+    llm: 0.12,
+    sandbox: 0.08,
   };
 
   let weightedScore = 0;
@@ -463,7 +625,8 @@ function calculateFinalScore(
   for (const result of results) {
     if (result.skipped) continue;
 
-    const weight = weights[result.layer] || 0.1;
+    const layerName = result.layer as string;
+    const weight = weights[layerName] || 0.1;
     weightedScore += result.score * weight;
     weightedConfidence += result.confidence * weight;
     totalWeight += weight;

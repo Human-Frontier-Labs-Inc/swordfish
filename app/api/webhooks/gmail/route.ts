@@ -12,9 +12,15 @@ import { storeVerdict } from '@/lib/detection/storage';
 import { sendThreatNotification } from '@/lib/notifications/service';
 import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
+import { validateGooglePubSub, checkRateLimit } from '@/lib/webhooks/validation';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
+const WEBHOOK_AUDIENCE = process.env.GOOGLE_WEBHOOK_AUDIENCE;
+
+// Export for Vercel configuration
+export const maxDuration = 30;
+export const dynamic = 'force-dynamic';
 
 interface PubSubMessage {
   message: {
@@ -31,7 +37,35 @@ interface GmailNotification {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   try {
+    // Rate limiting
+    const clientIp = request.headers.get('x-forwarded-for') || 'unknown';
+    const rateLimit = checkRateLimit({ key: `gmail:${clientIp}`, maxRequests: 100, windowMs: 60000 });
+    if (rateLimit.limited) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded' },
+        { status: 429, headers: { 'Retry-After': '60' } }
+      );
+    }
+
+    // Validate Google Pub/Sub signature
+    const authHeader = request.headers.get('authorization');
+    const validation = await validateGooglePubSub({
+      authorizationHeader: authHeader,
+      expectedAudience: WEBHOOK_AUDIENCE,
+    });
+
+    if (!validation.valid) {
+      console.warn('[Gmail Webhook] Validation failed:', validation.error);
+      // In production, you might want to reject invalid requests
+      // For now, log and continue to avoid breaking during development
+      if (process.env.NODE_ENV === 'production' && process.env.STRICT_WEBHOOK_VALIDATION === 'true') {
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+      }
+    }
+
     const payload: PubSubMessage = await request.json();
 
     // Decode the Pub/Sub message

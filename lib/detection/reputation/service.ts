@@ -4,6 +4,12 @@
  */
 
 import { sql } from '@/lib/db';
+import {
+  checkUrlReputation as checkUrlThreat,
+  checkDomainReputation as checkDomainThreat,
+  checkDomainAge,
+  checkIPReputation as checkIPThreat,
+} from '@/lib/threat-intel';
 
 export interface ReputationResult {
   entity: string;
@@ -194,26 +200,63 @@ export async function checkDomainReputation(domain: string): Promise<ReputationR
     score = Math.min(score, 20);
   }
 
-  // Check domain age (newer domains are riskier)
-  const domainAge = await getDomainAge(normalizedDomain);
-  if (domainAge !== null) {
-    if (domainAge < 30) {
-      sources.push({
-        name: 'domain_age',
-        verdict: 'suspicious',
-        score: 30,
-        details: `Domain is only ${domainAge} days old`,
-      });
-      score = Math.min(score, 30);
-    } else if (domainAge > 365) {
-      sources.push({
-        name: 'domain_age',
-        verdict: 'clean',
-        score: 80,
-        details: `Domain is ${Math.floor(domainAge / 365)} years old`,
-      });
-      score = Math.max(score, 70);
+  // Check domain age using threat intel WHOIS service
+  try {
+    const ageResult = await checkDomainAge(normalizedDomain);
+    if (ageResult.ageInDays !== null) {
+      if (ageResult.ageInDays < 30) {
+        sources.push({
+          name: 'domain_age',
+          verdict: 'suspicious',
+          score: Math.round((1 - ageResult.riskScore) * 100),
+          details: `Domain is only ${ageResult.ageInDays} days old (${ageResult.riskLevel} risk)`,
+        });
+        score = Math.min(score, 30);
+      } else if (ageResult.ageInDays > 365) {
+        sources.push({
+          name: 'domain_age',
+          verdict: 'clean',
+          score: 80,
+          details: `Domain is ${Math.floor(ageResult.ageInDays / 365)} years old`,
+        });
+        score = Math.max(score, 70);
+      }
     }
+
+    // Add risk indicators from domain age check
+    if (ageResult.indicators.length > 0) {
+      for (const indicator of ageResult.indicators) {
+        if (indicator.startsWith('suspicious_tld')) {
+          sources.push({
+            name: 'tld_analysis',
+            verdict: 'suspicious',
+            score: 35,
+            details: `Domain uses suspicious TLD: ${indicator.split(':')[1] || 'unknown'}`,
+          });
+          score = Math.min(score, 35);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Reputation] Domain age check failed:', error);
+  }
+
+  // Check domain against threat feeds
+  try {
+    const threatResult = await checkDomainThreat(normalizedDomain);
+    if (threatResult.isThreat) {
+      for (const source of threatResult.sources) {
+        sources.push({
+          name: `threat_feed:${source.feed}`,
+          verdict: source.verified ? 'malicious' : 'suspicious',
+          score: source.verified ? 0 : 20,
+          details: source.description || `Found in ${source.feed} (${source.matchType} match)`,
+        });
+      }
+      score = Math.min(score, threatResult.verdict === 'malicious' ? 0 : 20);
+    }
+  } catch (error) {
+    console.error('[Reputation] Threat feed check failed:', error);
   }
 
   // Check if freemail (contextual risk)
@@ -277,6 +320,44 @@ export async function checkIPReputation(ip: string): Promise<ReputationResult> {
     score = 90;
   }
 
+  // Check IP against threat intelligence blocklists
+  try {
+    const ipThreatResult = await checkIPThreat(normalizedIP);
+    if (ipThreatResult.isThreat) {
+      for (const source of ipThreatResult.sources) {
+        sources.push({
+          name: `blocklist:${source.list}`,
+          verdict: 'malicious',
+          score: 0,
+          details: source.description || `Listed in ${source.list}`,
+        });
+      }
+      score = Math.min(score, 0);
+    } else if (ipThreatResult.verdict === 'suspicious') {
+      for (const source of ipThreatResult.sources) {
+        sources.push({
+          name: `ip_risk:${source.list}`,
+          verdict: 'suspicious',
+          score: 35,
+          details: source.description,
+        });
+      }
+      score = Math.min(score, 35);
+    }
+
+    // Add geolocation info if available
+    if (ipThreatResult.geolocation?.country) {
+      sources.push({
+        name: 'geoip',
+        verdict: 'clean',
+        score: score,
+        details: `Origin: ${ipThreatResult.geolocation.country}${ipThreatResult.geolocation.isp ? ` (${ipThreatResult.geolocation.isp})` : ''}`,
+      });
+    }
+  } catch (error) {
+    console.error('[Reputation] IP threat check failed:', error);
+  }
+
   // Check local threat database
   const localThreat = await checkLocalThreatDB(normalizedIP, 'ip');
   if (localThreat) {
@@ -286,12 +367,6 @@ export async function checkIPReputation(ip: string): Promise<ReputationResult> {
     } else if (localThreat.verdict === 'suspicious') {
       score = Math.min(score, 30);
     }
-  }
-
-  // Check if hosting provider (neutral, but track)
-  const hostingCheck = checkHostingProvider(normalizedIP);
-  if (hostingCheck) {
-    sources.push(hostingCheck);
   }
 
   const result: ReputationResult = {
@@ -388,6 +463,24 @@ export async function checkURLReputation(url: string): Promise<ReputationResult>
       });
       score = Math.min(score, 35);
     }
+  }
+
+  // Check URL against threat feeds (PhishTank, URLhaus, OpenPhish)
+  try {
+    const urlThreatResult = await checkUrlThreat(normalizedURL);
+    if (urlThreatResult.isThreat) {
+      for (const source of urlThreatResult.sources) {
+        sources.push({
+          name: `threat_feed:${source.feed}`,
+          verdict: source.verified ? 'malicious' : 'suspicious',
+          score: source.verified ? 0 : 15,
+          details: source.description || `Found in ${source.feed} threat feed`,
+        });
+      }
+      score = Math.min(score, urlThreatResult.verdict === 'malicious' ? 0 : 15);
+    }
+  } catch (error) {
+    console.error('[Reputation] URL threat check failed:', error);
   }
 
   // Check local threat database
@@ -569,17 +662,7 @@ function isPrivateIP(ip: string): boolean {
   return false;
 }
 
-function checkHostingProvider(_ip: string): ReputationSource | null {
-  // In production, this would check against known hosting provider IP ranges
-  // For now, return null (unknown)
-  return null;
-}
-
-async function getDomainAge(_domain: string): Promise<number | null> {
-  // In production, this would query WHOIS or a domain age API
-  // For now, return null (unknown)
-  return null;
-}
+// checkHostingProvider and getDomainAge are now handled by threat-intel module
 
 async function getCachedReputation(
   entity: string,

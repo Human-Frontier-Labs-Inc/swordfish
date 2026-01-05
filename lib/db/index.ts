@@ -133,6 +133,49 @@ export interface UsageMetrics {
   created_at: Date;
 }
 
+export interface ClickMapping {
+  id: string;
+  tenant_id: string;
+  email_id: string;
+  original_url: string;
+  click_count: number;
+  last_click_at: Date | null;
+  expires_at: Date;
+  metadata: Record<string, unknown> | null;
+  created_at: Date;
+}
+
+export interface ActionLog {
+  id: string;
+  tenant_id: string;
+  type: string;
+  user_id: string | null;
+  email_id: string | null;
+  target_url: string | null;
+  verdict: string | null;
+  risk_score: number | null;
+  signals: string | null;
+  metadata: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: Date;
+}
+
+export interface VIPEntry {
+  id: string;
+  tenant_id: string;
+  email: string;
+  display_name: string;
+  title: string | null;
+  department: string | null;
+  role: 'executive' | 'finance' | 'hr' | 'it' | 'legal' | 'board' | 'assistant' | 'custom';
+  aliases: string[];
+  is_active: boolean;
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 // Query helpers with tenant isolation
 export async function withTenant<T>(
   tenantId: string,

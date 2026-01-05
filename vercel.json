@@ -16,6 +16,12 @@
     },
     "app/api/reports/export/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/cron/sync-emails/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/sync/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [

@@ -102,6 +102,31 @@ export type SignalType =
   // ML/LLM
   | 'ml_phishing'
   | 'llm_suspicious'
+  | 'llm_analysis'
+  | 'llm_bec_detected'
+  | 'llm_phishing_detected'
+  | 'llm_bec_indicator'
+  | 'llm_phishing_indicator'
+  // BEC detection
+  | 'bec_detected'
+  | 'bec_impersonation'
+  | 'bec_financial_risk'
+  | 'bec_wire_transfer_request'
+  | 'bec_gift_card_scam'
+  | 'bec_invoice_fraud'
+  | 'bec_payroll_diversion'
+  | 'bec_urgency_pressure'
+  | 'bec_secrecy_request'
+  | 'bec_authority_manipulation'
+  | 'bec_compound_attack'
+  | 'bec_financial_amount'
+  | 'bec_display_name_spoof'
+  | 'bec_title_spoof'
+  | 'bec_domain_lookalike'
+  | 'bec_reply_to_mismatch'
+  | 'bec_unicode_spoof'
+  | 'bec_cousin_domain'
+  | 'bec_free_email_executive'
   // ML classifier signals
   | 'ml_urgency'
   | 'ml_threat_language'
@@ -150,7 +175,7 @@ export type SignalType =
 
 // Analysis result from each layer
 export interface LayerResult {
-  layer: 'deterministic' | 'reputation' | 'ml' | 'llm' | 'sandbox';
+  layer: 'deterministic' | 'reputation' | 'ml' | 'bec' | 'llm' | 'sandbox';
   score: number; // 0-100
   confidence: number; // 0-1
   signals: Signal[];

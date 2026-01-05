@@ -12,9 +12,15 @@ import { storeVerdict } from '@/lib/detection/storage';
 import { sendThreatNotification } from '@/lib/notifications/service';
 import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
+import { validateMicrosoftGraph, checkRateLimit } from '@/lib/webhooks/validation';
 
 const O365_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
 const O365_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
+const MICROSOFT_WEBHOOK_SECRET = process.env.MICROSOFT_WEBHOOK_SECRET || '';
+
+// Export for Vercel configuration
+export const maxDuration = 30;
+export const dynamic = 'force-dynamic';
 
 interface GraphNotification {
   value: Array<{
@@ -34,27 +40,58 @@ interface GraphNotification {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   try {
-    // Handle subscription validation
+    // Handle subscription validation (Microsoft sends this on subscription creation)
     const validationToken = request.nextUrl.searchParams.get('validationToken');
     if (validationToken) {
-      console.log('O365 subscription validation request');
+      console.log('[O365 Webhook] Subscription validation request');
       return new NextResponse(validationToken, {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
       });
     }
 
+    // Rate limiting
+    const clientIp = request.headers.get('x-forwarded-for') || 'unknown';
+    const rateLimit = checkRateLimit({ key: `o365:${clientIp}`, maxRequests: 100, windowMs: 60000 });
+    if (rateLimit.limited) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded' },
+        { status: 429, headers: { 'Retry-After': '60' } }
+      );
+    }
+
     const payload: GraphNotification = await request.json();
 
     // Process each notification
+    let processedCount = 0;
+    let threatCount = 0;
+
     for (const notification of payload.value) {
       try {
+        // Validate client state for each notification
+        const validation = validateMicrosoftGraph({
+          clientState: notification.clientState,
+          expectedClientState: MICROSOFT_WEBHOOK_SECRET,
+        });
+
+        if (!validation.valid) {
+          console.warn('[O365 Webhook] Validation failed:', validation.error);
+          if (process.env.NODE_ENV === 'production' && process.env.STRICT_WEBHOOK_VALIDATION === 'true') {
+            continue; // Skip invalid notifications
+          }
+        }
+
         await processNotification(notification);
+        processedCount++;
       } catch (error) {
-        console.error(`Failed to process notification ${notification.subscriptionId}:`, error);
+        console.error(`[O365 Webhook] Failed to process notification ${notification.subscriptionId}:`, error);
       }
     }
+
+    console.log(`[O365 Webhook] Processed ${processedCount} notifications in ${Date.now() - startTime}ms`);
 
     return NextResponse.json({ status: 'processed' });
   } catch (error) {

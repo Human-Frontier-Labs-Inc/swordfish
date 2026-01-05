@@ -25,12 +25,12 @@ const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
-// Sync configuration - optimized for Vercel's 30s timeout
+// Sync configuration - optimized for Vercel's 60s timeout
 const BATCH_SIZE = 5;
-const MAX_EMAILS_PER_SYNC = 10; // Keep low to avoid timeout
-const SYNC_TIMEOUT_MS = 25000; // Exit before Vercel's 30s limit
+const MAX_EMAILS_PER_SYNC = 20; // Increased with 60s timeout
+const SYNC_TIMEOUT_MS = 50000; // Exit before Vercel's 60s limit
 
-interface SyncResult {
+export interface SyncResult {
   integrationId: string;
   tenantId: string;
   type: 'o365' | 'gmail';
@@ -40,7 +40,7 @@ interface SyncResult {
   duration: number;
 }
 
-interface IntegrationRecord {
+export interface IntegrationRecord {
   id: string;
   tenant_id: string;
   type: string;
@@ -112,6 +112,7 @@ async function syncO365Integration(
   const errors: string[] = [];
   let emailsProcessed = 0;
   let threatsFound = 0;
+  let timedOut = false;
 
   const config = integration.config as {
     accessToken: string;
@@ -161,6 +162,13 @@ async function syncO365Integration(
     });
 
     for (const emailMeta of emails) {
+      // Check timeout before processing each email
+      if (Date.now() - startTime > SYNC_TIMEOUT_MS) {
+        console.log('O365 sync timeout reached, stopping early');
+        timedOut = true;
+        break;
+      }
+
       try {
         // Check if already processed
         const existing = await sql`
@@ -179,9 +187,11 @@ async function syncO365Integration(
           messageId: emailMeta.id as string,
         });
 
-        // Parse and analyze
+        // Parse and analyze (skip LLM for background sync - too slow)
         const parsedEmail = parseGraphEmail(fullEmail);
-        const verdict = await analyzeEmail(parsedEmail, integration.tenant_id);
+        const verdict = await analyzeEmail(parsedEmail, integration.tenant_id, {
+          skipLLM: true, // Skip LLM to stay within timeout
+        });
 
         // Store results
         await storeVerdict(integration.tenant_id, parsedEmail.messageId, verdict);
@@ -196,10 +206,10 @@ async function syncO365Integration(
       }
     }
 
-    // Update last sync time
+    // Update last sync time (even if partial sync due to timeout)
     await sql`
       UPDATE integrations
-      SET last_sync_at = NOW(), error_message = NULL, updated_at = NOW()
+      SET last_sync_at = NOW(), error_message = ${timedOut ? 'Partial sync - timeout' : null}, updated_at = NOW()
       WHERE id = ${integration.id}
     `;
   } catch (error) {
@@ -219,6 +229,7 @@ async function syncO365Integration(
       emailsProcessed,
       threatsFound,
       errors: errors.length,
+      timedOut,
     },
   });
 
