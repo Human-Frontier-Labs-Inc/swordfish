@@ -40,12 +40,15 @@ export async function GET() {
     }
 
     const row = result[0];
+    const metadata = row.metadata || {};
     return NextResponse.json({
       currentStep: row.current_step,
       completedSteps: row.completed_steps || [],
       skippedSteps: row.skipped_steps || [],
       completed: row.completed_at !== null,
-      metadata: row.metadata,
+      metadata: metadata,
+      accountType: metadata.accountType || null,
+      isMsp: metadata.accountType === 'msp',
     });
   } catch (error) {
     console.error('Get onboarding error:', error);
@@ -66,7 +69,7 @@ export async function PUT(request: NextRequest) {
 
     const tenantId = orgId || `personal_${userId}`;
     const body = await request.json();
-    const { currentStep, completedStep, skippedStep, completed, metadata } = body;
+    const { currentStep, completedStep, skippedStep, completed, metadata, accountType } = body;
 
     // Get current progress
     const current = await sql`
@@ -95,8 +98,12 @@ export async function PUT(request: NextRequest) {
       skippedSteps.push(skippedStep);
     }
 
-    // Merge metadata
-    const mergedMetadata = { ...existingMetadata, ...metadata };
+    // Merge metadata with accountType
+    const mergedMetadata = {
+      ...existingMetadata,
+      ...metadata,
+      ...(accountType && { accountType, isMsp: accountType === 'msp' }),
+    };
 
     if (existingData) {
       // Update existing record

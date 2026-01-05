@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useUser, useOrganization } from '@clerk/nextjs';
+import { useUser, useOrganization, useOrganizationList } from '@clerk/nextjs';
+import { Building2, Users, Shield, Mail, Check } from 'lucide-react';
 
 interface OnboardingStep {
   id: number;
@@ -19,36 +20,47 @@ const ONBOARDING_STEPS: Omit<OnboardingStep, 'completed'>[] = [
   },
   {
     id: 2,
+    title: 'Choose Account Type',
+    description: 'Select how you will use Swordfish.',
+  },
+  {
+    id: 3,
     title: 'Connect Email Provider',
     description: 'Link your Microsoft 365 or Google Workspace account.',
   },
   {
-    id: 3,
+    id: 4,
     title: 'Configure Detection',
     description: 'Set your security thresholds and policies.',
   },
   {
-    id: 4,
+    id: 5,
     title: 'Setup Notifications',
     description: 'Choose how you want to be alerted about threats.',
   },
   {
-    id: 5,
+    id: 6,
     title: 'You\'re All Set!',
     description: 'Start monitoring your email security.',
   },
 ];
 
+type AccountType = 'single' | 'msp' | null;
+
 export default function OnboardingPage() {
   const router = useRouter();
   const { user, isLoaded: userLoaded } = useUser();
   const { organization } = useOrganization();
+  const { createOrganization } = useOrganizationList();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [steps, setSteps] = useState<OnboardingStep[]>(
     ONBOARDING_STEPS.map(s => ({ ...s, completed: false }))
   );
   const [loading, setLoading] = useState(false);
+  const [accountType, setAccountType] = useState<AccountType>(null);
+  const [orgName, setOrgName] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState({
     detection: {
       suspiciousThreshold: 30,
@@ -73,9 +85,17 @@ export default function OnboardingPage() {
       .then(res => res.json())
       .then(data => {
         if (data.completed) {
-          router.push('/dashboard');
+          // Check if MSP and route accordingly
+          if (data.isMsp) {
+            router.push('/admin');
+          } else {
+            router.push('/dashboard');
+          }
         } else if (data.currentStep) {
           setCurrentStep(data.currentStep);
+          if (data.accountType) {
+            setAccountType(data.accountType);
+          }
           setSteps(prev => prev.map(s => ({
             ...s,
             completed: data.completedSteps?.includes(s.id) || false,
@@ -87,10 +107,93 @@ export default function OnboardingPage() {
       });
   }, [router]);
 
-  const handleNext = async () => {
+  const handleAccountTypeSelect = async (type: AccountType) => {
+    setAccountType(type);
+    setError(null);
+  };
+
+  const handleCreateOrganization = async () => {
+    if (!orgName.trim()) {
+      setError('Please enter an organization name');
+      return false;
+    }
+
     setLoading(true);
+    setError(null);
 
     try {
+      // Create organization via Clerk
+      if (createOrganization) {
+        const org = await createOrganization({ name: orgName });
+
+        // Set isMsp metadata via our API
+        const response = await fetch('/api/onboarding/setup-account', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            organizationId: org.id,
+            accountType: accountType,
+            organizationName: orgName,
+          }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to setup account');
+        }
+      }
+
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create organization');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNext = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Special handling for account type step
+      if (currentStep === 2) {
+        if (!accountType) {
+          setError('Please select an account type');
+          setLoading(false);
+          return;
+        }
+
+        // If user doesn't have an org, create one
+        if (!organization && orgName) {
+          const success = await handleCreateOrganization();
+          if (!success) {
+            setLoading(false);
+            return;
+          }
+        } else if (!organization && !orgName) {
+          setError('Please enter an organization name');
+          setLoading(false);
+          return;
+        } else if (organization) {
+          // Update existing org with account type
+          const response = await fetch('/api/onboarding/setup-account', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              organizationId: organization.id,
+              accountType: accountType,
+            }),
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to setup account');
+          }
+        }
+      }
+
       // Mark current step as completed
       await fetch('/api/onboarding', {
         method: 'PUT',
@@ -98,6 +201,7 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           currentStep: currentStep + 1,
           completedStep: currentStep,
+          accountType: accountType,
         }),
       });
 
@@ -116,15 +220,21 @@ export default function OnboardingPage() {
         await fetch('/api/onboarding', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ completed: true }),
+          body: JSON.stringify({ completed: true, accountType }),
         });
 
-        router.push('/dashboard');
+        // Route based on account type
+        if (accountType === 'msp') {
+          router.push('/admin');
+        } else {
+          router.push('/dashboard');
+        }
       } else {
         setCurrentStep(prev => prev + 1);
       }
-    } catch (error) {
-      console.error('Onboarding error:', error);
+    } catch (err) {
+      console.error('Onboarding error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -144,12 +254,16 @@ export default function OnboardingPage() {
       });
 
       if (currentStep === ONBOARDING_STEPS.length) {
-        router.push('/dashboard');
+        if (accountType === 'msp') {
+          router.push('/admin');
+        } else {
+          router.push('/dashboard');
+        }
       } else {
         setCurrentStep(prev => prev + 1);
       }
-    } catch (error) {
-      console.error('Skip error:', error);
+    } catch (err) {
+      console.error('Skip error:', err);
     } finally {
       setLoading(false);
     }
@@ -168,27 +282,29 @@ export default function OnboardingPage() {
       case 1:
         return (
           <div className="text-center">
-            <div className="text-6xl mb-6">🛡️</div>
+            <div className="text-6xl mb-6">
+              <Shield className="w-16 h-16 mx-auto text-blue-600" />
+            </div>
             <h2 className="text-2xl font-bold mb-4">Welcome to Swordfish</h2>
             <p className="text-gray-600 mb-6">
-              Your AI-powered email security platform. We'll help you set up protection
+              Your AI-powered email security platform. We&apos;ll help you set up protection
               against phishing, BEC, malware, and spam in just a few minutes.
             </p>
             <div className="grid grid-cols-2 gap-4 text-left max-w-md mx-auto">
               <div className="flex items-center gap-2">
-                <span className="text-green-500">✓</span>
+                <Check className="w-5 h-5 text-green-500" />
                 <span>Phishing Detection</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-green-500">✓</span>
+                <Check className="w-5 h-5 text-green-500" />
                 <span>BEC Prevention</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-green-500">✓</span>
+                <Check className="w-5 h-5 text-green-500" />
                 <span>Malware Scanning</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-green-500">✓</span>
+                <Check className="w-5 h-5 text-green-500" />
                 <span>Spam Filtering</span>
               </div>
             </div>
@@ -198,9 +314,120 @@ export default function OnboardingPage() {
       case 2:
         return (
           <div className="text-center">
+            <h2 className="text-2xl font-bold mb-4">How will you use Swordfish?</h2>
+            <p className="text-gray-600 mb-8">
+              Select the option that best describes your organization.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto mb-8">
+              {/* Single Company Option */}
+              <div
+                onClick={() => handleAccountTypeSelect('single')}
+                className={`p-6 border-2 rounded-xl cursor-pointer transition-all ${
+                  accountType === 'single'
+                    ? 'border-blue-500 bg-blue-50 shadow-md'
+                    : 'border-gray-200 hover:border-gray-300 hover:shadow'
+                }`}
+              >
+                <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+                  accountType === 'single' ? 'bg-blue-500' : 'bg-gray-100'
+                }`}>
+                  <Building2 className={`w-8 h-8 ${
+                    accountType === 'single' ? 'text-white' : 'text-gray-600'
+                  }`} />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Single Company</h3>
+                <p className="text-sm text-gray-500">
+                  I want to protect my own organization&apos;s email
+                </p>
+                <ul className="mt-4 text-sm text-left space-y-2">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-500" />
+                    <span>Dashboard for your team</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-500" />
+                    <span>Email threat detection</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-500" />
+                    <span>Quarantine management</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* MSP Option */}
+              <div
+                onClick={() => handleAccountTypeSelect('msp')}
+                className={`p-6 border-2 rounded-xl cursor-pointer transition-all ${
+                  accountType === 'msp'
+                    ? 'border-purple-500 bg-purple-50 shadow-md'
+                    : 'border-gray-200 hover:border-gray-300 hover:shadow'
+                }`}
+              >
+                <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+                  accountType === 'msp' ? 'bg-purple-500' : 'bg-gray-100'
+                }`}>
+                  <Users className={`w-8 h-8 ${
+                    accountType === 'msp' ? 'text-white' : 'text-gray-600'
+                  }`} />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Managed Service Provider</h3>
+                <p className="text-sm text-gray-500">
+                  I manage email security for multiple clients
+                </p>
+                <ul className="mt-4 text-sm text-left space-y-2">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-500" />
+                    <span>Multi-tenant dashboard</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-500" />
+                    <span>Client onboarding wizard</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-500" />
+                    <span>Cross-client analytics</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-500" />
+                    <span>Usage & billing reports</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Organization Name Input */}
+            {accountType && !organization && (
+              <div className="max-w-md mx-auto">
+                <label className="block text-sm font-medium text-gray-700 mb-2 text-left">
+                  {accountType === 'msp' ? 'Your MSP Company Name' : 'Your Organization Name'}
+                </label>
+                <input
+                  type="text"
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  placeholder={accountType === 'msp' ? 'e.g., SecureTech Solutions' : 'e.g., Acme Corporation'}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            )}
+
+            {error && (
+              <p className="mt-4 text-sm text-red-600">{error}</p>
+            )}
+          </div>
+        );
+
+      case 3:
+        return (
+          <div className="text-center">
             <h2 className="text-2xl font-bold mb-4">Connect Your Email Provider</h2>
             <p className="text-gray-600 mb-8">
-              Link your email system to start monitoring for threats.
+              {accountType === 'msp'
+                ? 'Connect your MSP\'s email or skip to set up client connections later.'
+                : 'Link your email system to start monitoring for threats.'
+              }
             </p>
             <div className="flex flex-col gap-4 max-w-sm mx-auto">
               <button
@@ -231,7 +458,7 @@ export default function OnboardingPage() {
           </div>
         );
 
-      case 3:
+      case 4:
         return (
           <div>
             <h2 className="text-2xl font-bold mb-4 text-center">Configure Detection Thresholds</h2>
@@ -303,7 +530,7 @@ export default function OnboardingPage() {
           </div>
         );
 
-      case 4:
+      case 5:
         return (
           <div>
             <h2 className="text-2xl font-bold mb-4 text-center">Setup Notifications</h2>
@@ -313,7 +540,7 @@ export default function OnboardingPage() {
             <div className="max-w-md mx-auto space-y-4">
               <div className="flex items-center justify-between p-4 border rounded-lg">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">📧</span>
+                  <Mail className="w-6 h-6 text-gray-600" />
                   <div>
                     <div className="font-medium">Email Notifications</div>
                     <div className="text-sm text-gray-500">Get alerts via email</div>
@@ -334,7 +561,9 @@ export default function OnboardingPage() {
               </div>
               <div className="flex items-center justify-between p-4 border rounded-lg">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">💬</span>
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="#4A154B">
+                    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                  </svg>
                   <div>
                     <div className="font-medium">Slack Notifications</div>
                     <div className="text-sm text-gray-500">Get alerts in Slack</div>
@@ -357,35 +586,60 @@ export default function OnboardingPage() {
           </div>
         );
 
-      case 5:
+      case 6:
         return (
           <div className="text-center">
-            <div className="text-6xl mb-6">🎉</div>
-            <h2 className="text-2xl font-bold mb-4">You're All Set!</h2>
+            <div className="text-6xl mb-6">
+              <Check className="w-16 h-16 mx-auto text-green-500" />
+            </div>
+            <h2 className="text-2xl font-bold mb-4">You&apos;re All Set!</h2>
             <p className="text-gray-600 mb-6">
-              Swordfish is now protecting your {organization?.name || 'organization'}'s email.
-              Head to your dashboard to monitor threats and manage security.
+              {accountType === 'msp'
+                ? 'Your MSP dashboard is ready. Start onboarding your clients!'
+                : `Swordfish is now protecting your ${organization?.name || 'organization'}'s email.`
+              }
             </p>
             <div className="bg-gray-50 rounded-lg p-6 max-w-md mx-auto text-left">
-              <h3 className="font-semibold mb-3">What's Next?</h3>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-500">→</span>
-                  View your security dashboard
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-500">→</span>
-                  Review detected threats
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-500">→</span>
-                  Configure advanced policies
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-500">→</span>
-                  Add team members
-                </li>
-              </ul>
+              <h3 className="font-semibold mb-3">What&apos;s Next?</h3>
+              {accountType === 'msp' ? (
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center gap-2">
+                    <span className="text-purple-500">→</span>
+                    Access your MSP admin dashboard
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-purple-500">→</span>
+                    Add your first client organization
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-purple-500">→</span>
+                    Configure default security policies
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-purple-500">→</span>
+                    View cross-client analytics
+                  </li>
+                </ul>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center gap-2">
+                    <span className="text-blue-500">→</span>
+                    View your security dashboard
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-blue-500">→</span>
+                    Review detected threats
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-blue-500">→</span>
+                    Configure advanced policies
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-blue-500">→</span>
+                    Add team members
+                  </li>
+                </ul>
+              )}
             </div>
           </div>
         );
@@ -420,11 +674,11 @@ export default function OnboardingPage() {
                       : 'bg-gray-200 text-gray-500'
                   }`}
                 >
-                  {step.completed ? '✓' : step.id}
+                  {step.completed ? <Check className="w-4 h-4" /> : step.id}
                 </div>
                 {index < steps.length - 1 && (
                   <div
-                    className={`w-16 h-1 mx-2 ${
+                    className={`w-12 h-1 mx-1 ${
                       step.completed ? 'bg-green-500' : 'bg-gray-200'
                     }`}
                   />
@@ -454,7 +708,7 @@ export default function OnboardingPage() {
               <div />
             )}
             <div className="flex gap-3">
-              {currentStep !== 1 && currentStep !== ONBOARDING_STEPS.length && (
+              {currentStep !== 1 && currentStep !== 2 && currentStep !== ONBOARDING_STEPS.length && (
                 <button
                   onClick={handleSkip}
                   className="px-6 py-2 text-gray-500 hover:text-gray-700"
@@ -465,16 +719,20 @@ export default function OnboardingPage() {
               )}
               <button
                 onClick={handleNext}
-                disabled={loading}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                disabled={loading || (currentStep === 2 && !accountType)}
+                className={`px-6 py-2 text-white rounded-lg disabled:opacity-50 ${
+                  accountType === 'msp' && currentStep === 2
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
                     <span className="animate-spin">⟳</span>
-                    Saving...
+                    {currentStep === 2 ? 'Setting up...' : 'Saving...'}
                   </span>
                 ) : currentStep === ONBOARDING_STEPS.length ? (
-                  'Go to Dashboard'
+                  accountType === 'msp' ? 'Go to MSP Dashboard' : 'Go to Dashboard'
                 ) : (
                   'Continue'
                 )}
