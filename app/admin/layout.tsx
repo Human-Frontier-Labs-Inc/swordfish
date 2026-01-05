@@ -61,6 +61,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <Link href="/admin/tenants" className="text-gray-300 hover:text-white text-sm">
               Tenants
             </Link>
+            <Link href="/admin/threats" className="text-gray-300 hover:text-white text-sm">
+              Threats
+            </Link>
+            <Link href="/admin/quarantine" className="text-gray-300 hover:text-white text-sm">
+              Quarantine
+            </Link>
             <Link href="/admin/users" className="text-gray-300 hover:text-white text-sm">
               Users
             </Link>
