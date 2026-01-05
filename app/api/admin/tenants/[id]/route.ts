@@ -89,9 +89,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check MSP admin access
+    // Check MSP admin access and get user UUID
     const currentUser = await sql`
-      SELECT is_msp_user, role, email FROM users
+      SELECT id, is_msp_user, role, email FROM users
       WHERE clerk_user_id = ${userId}
       LIMIT 1
     `;
@@ -103,6 +103,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const userUuid = user?.id as string || null;
     const { id } = await params;
     const body = await request.json();
     const { name, domain, plan, status, settings } = body;
@@ -129,10 +130,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       RETURNING id, clerk_org_id, name, domain, plan, status, settings, created_at, updated_at
     `;
 
-    // Audit log
+    // Audit log - use database UUID, not Clerk user ID
     await logAuditEvent({
       tenantId: tenant[0].clerk_org_id as string,
-      actorId: userId,
+      actorId: userUuid,
       actorEmail: user?.email as string || null,
       action: 'tenant.updated',
       resourceType: 'tenant',
@@ -171,9 +172,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check MSP admin access
+    // Check MSP admin access and get user UUID
     const currentUser = await sql`
-      SELECT is_msp_user, role, email FROM users
+      SELECT id, is_msp_user, role, email FROM users
       WHERE clerk_user_id = ${userId}
       LIMIT 1
     `;
@@ -185,6 +186,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const userUuid = user?.id as string || null;
     const { id } = await params;
 
     // Get tenant for audit
@@ -204,10 +206,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       WHERE id = ${id}::uuid
     `;
 
-    // Audit log
+    // Audit log - use database UUID, not Clerk user ID
     await logAuditEvent({
       tenantId: existing[0].clerk_org_id as string,
-      actorId: userId,
+      actorId: userUuid,
       actorEmail: user?.email as string || null,
       action: 'tenant.deleted',
       resourceType: 'tenant',

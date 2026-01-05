@@ -126,6 +126,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Get user UUID for audit log
+    const userResult = await sql`
+      SELECT id, email FROM users WHERE clerk_user_id = ${userId} LIMIT 1
+    `;
+    const userUuid = userResult[0]?.id as string || null;
+    const userEmail = userResult[0]?.email as string || null;
+
     const body = await request.json();
     const { name, domain, plan = 'starter', clerkOrgId } = body;
 
@@ -189,11 +196,11 @@ export async function POST(request: NextRequest) {
       RETURNING id, clerk_org_id, name, domain, plan, status, created_at
     `;
 
-    // Audit log
+    // Audit log - use database UUID, not Clerk user ID
     await logAuditEvent({
       tenantId: tenant[0].id as string,
-      actorId: userId,
-      actorEmail: null,
+      actorId: userUuid,
+      actorEmail: userEmail,
       action: 'tenant.created',
       resourceType: 'tenant',
       resourceId: tenant[0].id as string,
