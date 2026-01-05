@@ -53,19 +53,27 @@ export default function Home() {
             Protect your organization from phishing, malware, and advanced email threats
             with intelligent real-time analysis powered by Claude AI.
           </p>
-          <div className="flex justify-center gap-4">
+          <div className="flex flex-col items-center gap-4">
             <SignedOut>
+              <div className="flex gap-4">
+                <Link
+                  href="/sign-up"
+                  className="bg-cyan-500 hover:bg-cyan-400 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors"
+                >
+                  Start Free Trial
+                </Link>
+                <Link
+                  href="/sign-in"
+                  className="border border-slate-600 hover:border-slate-500 text-slate-300 hover:text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors"
+                >
+                  Sign In
+                </Link>
+              </div>
               <Link
                 href="/sign-up"
-                className="bg-cyan-500 hover:bg-cyan-400 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors"
+                className="text-purple-400 hover:text-purple-300 text-sm font-medium transition-colors"
               >
-                Start Free Trial
-              </Link>
-              <Link
-                href="/sign-in"
-                className="border border-slate-600 hover:border-slate-500 text-slate-300 hover:text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors"
-              >
-                Sign In
+                MSP / Partner? Sign up to manage multiple clients →
               </Link>
             </SignedOut>
             <SignedIn>

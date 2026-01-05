@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 
@@ -141,8 +141,23 @@ export async function PUT(request: NextRequest) {
       `;
     }
 
-    // Log completion
+    // Log completion and update Clerk user metadata
     if (completed) {
+      // Update Clerk user metadata so middleware knows onboarding is complete
+      try {
+        const client = await clerkClient();
+        await client.users.updateUserMetadata(userId, {
+          publicMetadata: {
+            onboardingCompleted: true,
+            accountType: mergedMetadata.accountType || 'single',
+            isMsp: mergedMetadata.accountType === 'msp',
+          },
+        });
+      } catch (clerkError) {
+        console.error('Failed to update Clerk metadata:', clerkError);
+        // Continue anyway - database is source of truth
+      }
+
       await logAuditEvent({
         tenantId,
         actorId: userId,
@@ -153,6 +168,7 @@ export async function PUT(request: NextRequest) {
         afterState: {
           completedSteps,
           skippedSteps,
+          accountType: mergedMetadata.accountType,
         },
       });
     }

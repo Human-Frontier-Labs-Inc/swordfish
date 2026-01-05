@@ -15,15 +15,16 @@ test.describe('Onboarding Journey', () => {
       const heading = page.locator('h1');
       await expect(heading).toBeVisible();
 
-      // Check for CTA buttons
-      const signUpButton = page.getByRole('link', { name: /sign up|get started/i });
+      // Check for CTA buttons (use first() since we have multiple sign-up links now including MSP)
+      const signUpButton = page.getByRole('link', { name: /get started|start free trial/i }).first();
       await expect(signUpButton).toBeVisible();
     });
 
     test('should navigate to sign up page', async ({ page }) => {
       await page.goto('/');
 
-      const signUpLink = page.getByRole('link', { name: /sign up|get started/i });
+      // Use first() to select the primary CTA button (not the MSP link)
+      const signUpLink = page.getByRole('link', { name: /start free trial/i }).first();
       await signUpLink.click();
 
       await expect(page).toHaveURL(/sign-up/);
