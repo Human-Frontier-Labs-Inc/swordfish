@@ -6,7 +6,7 @@
 
 import { analyzeEmail } from '@/lib/detection/pipeline';
 import { storeVerdict } from '@/lib/detection/storage';
-import type { ParsedEmail, ThreatVerdict } from '@/lib/detection/types';
+import type { ParsedEmail, EmailVerdict } from '@/lib/detection/types';
 import { EventEmitter } from 'events';
 
 export interface EmailData {
@@ -40,7 +40,7 @@ export interface ProcessingJob {
 export interface JobResult {
   success: boolean;
   verdictId?: string;
-  verdict?: ThreatVerdict;
+  verdict?: EmailVerdict;
   error?: string;
   processingTime?: number;
 }
@@ -49,7 +49,7 @@ export interface QueueConfig {
   maxConcurrent: number;
   maxRetries: number;
   retryDelayMs?: number;
-  onThreatDetected?: (verdict: ThreatVerdict) => void | Promise<void>;
+  onThreatDetected?: (verdict: EmailVerdict) => void | Promise<void>;
 }
 
 export interface QueueStats {

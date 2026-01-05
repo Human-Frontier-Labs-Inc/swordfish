@@ -3,6 +3,12 @@
  * Unified interface for all threat intelligence services
  */
 
+// Sandbox service exports
+export * from './sandbox';
+
+// Threat Intel Service exports
+export * from './intel-service';
+
 // Feed exports
 export {
   checkUrlReputation,
