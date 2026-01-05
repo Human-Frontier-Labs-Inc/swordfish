@@ -115,14 +115,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is MSP admin
+    // Check if user is MSP admin and get their UUID
     const userResult = await sql`
-      SELECT is_msp_user FROM users WHERE clerk_user_id = ${userId}
+      SELECT id, is_msp_user FROM users WHERE clerk_user_id = ${userId}
     `;
 
     if (!userResult[0]?.is_msp_user) {
       return NextResponse.json({ error: 'Forbidden - MSP admin required' }, { status: 403 });
     }
+
+    const userUuid = userResult[0].id;
 
     const body = await request.json();
     const {
@@ -162,8 +164,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create tenant
-    const tenantId = nanoid();
+    // Create tenant with auto-generated UUID
+    const clerkOrgId = `msp_tenant_${nanoid()}`; // Placeholder clerk org id for MSP-created tenants
     const settings = {
       integrationType,
       onboardingCompleted: false,
@@ -172,9 +174,9 @@ export async function POST(request: NextRequest) {
     };
 
     const newTenant = await sql`
-      INSERT INTO tenants (id, name, domain, plan, status, settings, created_at, updated_at)
+      INSERT INTO tenants (clerk_org_id, name, domain, plan, status, settings, created_at, updated_at)
       VALUES (
-        ${tenantId},
+        ${clerkOrgId},
         ${organizationName.trim()},
         ${domain.toLowerCase().trim()},
         ${plan},
@@ -183,8 +185,10 @@ export async function POST(request: NextRequest) {
         NOW(),
         NOW()
       )
-      RETURNING id, name, domain, plan, status
+      RETURNING id, clerk_org_id, name, domain, plan, status
     `;
+
+    const tenantId = newTenant[0].id;
 
     // Apply default policies if selected
     if (useDefaultPolicies) {
@@ -195,10 +199,9 @@ export async function POST(request: NextRequest) {
 
       for (const policy of defaultPolicies) {
         await sql`
-          INSERT INTO policies (id, tenant_id, type, target, value, action, priority, is_active, created_at, updated_at)
+          INSERT INTO policies (tenant_id, type, target, value, action, priority, is_active, created_at, updated_at)
           VALUES (
-            ${nanoid()},
-            ${tenantId},
+            ${clerkOrgId},
             ${policy.type},
             ${policy.target},
             ${policy.value},
@@ -214,11 +217,10 @@ export async function POST(request: NextRequest) {
 
     // Log the creation
     await sql`
-      INSERT INTO audit_logs (id, tenant_id, actor_id, action, resource_type, resource_id, after_state, ip_address, user_agent, created_at)
+      INSERT INTO audit_log (tenant_id, actor_id, action, resource_type, resource_id, after_state, ip_address, user_agent, created_at)
       VALUES (
-        ${nanoid()},
-        ${tenantId},
-        ${userId},
+        ${clerkOrgId},
+        ${userUuid},
         'tenant.created',
         'tenant',
         ${tenantId},
