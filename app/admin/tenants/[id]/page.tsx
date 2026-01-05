@@ -202,11 +202,11 @@ export default function TenantDetailPage() {
             <dl className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <dt className="text-gray-500">Tenant ID</dt>
-                <dd className="font-mono text-gray-900">{tenant.id.substring(0, 8)}...</dd>
+                <dd className="font-mono text-gray-900">{tenant.id ? tenant.id.substring(0, 8) + '...' : 'N/A'}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-gray-500">Clerk Org ID</dt>
-                <dd className="font-mono text-gray-900">{tenant.clerkOrgId.substring(0, 12)}...</dd>
+                <dd className="font-mono text-gray-900">{tenant.clerkOrgId ? tenant.clerkOrgId.substring(0, 12) + '...' : 'N/A'}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-gray-500">Created</dt>
@@ -259,45 +259,59 @@ export default function TenantDetailPage() {
 
       {activeTab === 'settings' && (
         <div className="bg-white rounded-lg border p-6 space-y-6">
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-4">Detection Settings</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="flex justify-between p-3 bg-gray-50 rounded">
-                <span>Suspicious Threshold</span>
-                <span className="font-medium">{tenant.settings.detection.suspiciousThreshold}%</span>
-              </div>
-              <div className="flex justify-between p-3 bg-gray-50 rounded">
-                <span>Quarantine Threshold</span>
-                <span className="font-medium">{tenant.settings.detection.quarantineThreshold}%</span>
-              </div>
-              <div className="flex justify-between p-3 bg-gray-50 rounded">
-                <span>Block Threshold</span>
-                <span className="font-medium">{tenant.settings.detection.blockThreshold}%</span>
-              </div>
-              <div className="flex justify-between p-3 bg-gray-50 rounded">
-                <span>LLM Analysis</span>
-                <span className={`font-medium ${tenant.settings.detection.enableLlmAnalysis ? 'text-green-600' : 'text-gray-400'}`}>
-                  {tenant.settings.detection.enableLlmAnalysis ? 'Enabled' : 'Disabled'}
-                </span>
+          {tenant.settings?.detection ? (
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Detection Settings</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="flex justify-between p-3 bg-gray-50 rounded">
+                  <span>Suspicious Threshold</span>
+                  <span className="font-medium">{tenant.settings.detection.suspiciousThreshold ?? 'N/A'}%</span>
+                </div>
+                <div className="flex justify-between p-3 bg-gray-50 rounded">
+                  <span>Quarantine Threshold</span>
+                  <span className="font-medium">{tenant.settings.detection.quarantineThreshold ?? 'N/A'}%</span>
+                </div>
+                <div className="flex justify-between p-3 bg-gray-50 rounded">
+                  <span>Block Threshold</span>
+                  <span className="font-medium">{tenant.settings.detection.blockThreshold ?? 'N/A'}%</span>
+                </div>
+                <div className="flex justify-between p-3 bg-gray-50 rounded">
+                  <span>LLM Analysis</span>
+                  <span className={`font-medium ${tenant.settings.detection.enableLlmAnalysis ? 'text-green-600' : 'text-gray-400'}`}>
+                    {tenant.settings.detection.enableLlmAnalysis ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Detection Settings</h3>
+              <p className="text-gray-500">No detection settings configured</p>
+            </div>
+          )}
 
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-4">Quarantine Settings</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="flex justify-between p-3 bg-gray-50 rounded">
-                <span>Auto-delete After</span>
-                <span className="font-medium">{tenant.settings.quarantine.autoDeleteAfterDays} days</span>
-              </div>
-              <div className="flex justify-between p-3 bg-gray-50 rounded">
-                <span>User Release</span>
-                <span className={`font-medium ${tenant.settings.quarantine.allowUserRelease ? 'text-green-600' : 'text-gray-400'}`}>
-                  {tenant.settings.quarantine.allowUserRelease ? 'Allowed' : 'Disabled'}
-                </span>
+          {tenant.settings?.quarantine ? (
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Quarantine Settings</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="flex justify-between p-3 bg-gray-50 rounded">
+                  <span>Auto-delete After</span>
+                  <span className="font-medium">{tenant.settings.quarantine.autoDeleteAfterDays ?? 30} days</span>
+                </div>
+                <div className="flex justify-between p-3 bg-gray-50 rounded">
+                  <span>User Release</span>
+                  <span className={`font-medium ${tenant.settings.quarantine.allowUserRelease ? 'text-green-600' : 'text-gray-400'}`}>
+                    {tenant.settings.quarantine.allowUserRelease ? 'Allowed' : 'Disabled'}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Quarantine Settings</h3>
+              <p className="text-gray-500">No quarantine settings configured</p>
+            </div>
+          )}
         </div>
       )}
 
