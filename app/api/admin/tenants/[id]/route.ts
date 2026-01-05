@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         t.settings,
         t.created_at,
         t.updated_at,
-        (SELECT COUNT(*)::int FROM users WHERE tenant_id = t.id) as user_count,
+        (SELECT COUNT(*)::int FROM users WHERE tenant_id = t.clerk_org_id OR tenant_id = t.id::text) as user_count,
         COALESCE(stats.emails_processed, 0) as emails_processed,
         COALESCE(stats.threats_blocked, 0) as threats_blocked
       FROM tenants t
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           COUNT(*)::int as emails_processed,
           COUNT(*) FILTER (WHERE verdict IN ('quarantine', 'block'))::int as threats_blocked
         FROM email_verdicts
-        WHERE tenant_id::text = t.clerk_org_id OR tenant_id::uuid = t.id
+        WHERE tenant_id = t.clerk_org_id OR tenant_id = t.id::text
         AND created_at >= NOW() - INTERVAL '30 days'
       ) stats ON true
       WHERE t.id = ${id}::uuid

@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
         u.last_login_at,
         u.created_at
       FROM users u
-      LEFT JOIN tenants t ON u.tenant_id::text = t.clerk_org_id OR u.tenant_id::uuid = t.id
+      LEFT JOIN tenants t ON u.tenant_id = t.clerk_org_id OR u.tenant_id = t.id::text
       ORDER BY u.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
