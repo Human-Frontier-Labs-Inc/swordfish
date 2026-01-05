@@ -192,7 +192,7 @@ export class OnboardingWizard {
   }
 
   getStepData(stepId: string): Record<string, unknown> {
-    return { ...this.state.stepData[stepId] } || {};
+    return { ...this.state.stepData[stepId] };
   }
 
   getAllData(): Record<string, Record<string, unknown>> {

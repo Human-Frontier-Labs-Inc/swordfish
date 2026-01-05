@@ -25,6 +25,11 @@ const { mockStripeInstance } = vi.hoisted(() => {
       subscriptionItems: {
         createUsageRecord: vi.fn(),
       },
+      billing: {
+        meterEvents: {
+          create: vi.fn(),
+        },
+      },
       checkout: {
         sessions: {
           create: vi.fn(),
@@ -378,9 +383,8 @@ describe('Usage Tracking', () => {
 
   describe('Metered Billing', () => {
     it('should report usage to Stripe', async () => {
-      mockStripeInstance.subscriptionItems.createUsageRecord.mockResolvedValueOnce({
-        id: 'mbur_test123',
-        quantity: 100,
+      mockStripeInstance.billing.meterEvents.create.mockResolvedValueOnce({
+        id: 'mev_test123',
       });
 
       const tracker = new UsageTracker();
@@ -401,6 +405,7 @@ describe('Usage Tracking', () => {
       });
 
       expect(reported.quantity).toBe(100);
+      expect(mockStripeInstance.billing.meterEvents.create).toHaveBeenCalled();
     });
   });
 });

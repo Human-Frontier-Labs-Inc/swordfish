@@ -231,13 +231,14 @@ export class EmailProcessingQueue extends EventEmitter {
     const parsedEmail: ParsedEmail = {
       messageId: job.email.messageId,
       from: {
-        email: job.email.from.address,
-        name: job.email.from.name,
+        address: job.email.from.address,
+        displayName: job.email.from.name,
         domain: job.email.from.address.split('@')[1] || '',
       },
       to: job.email.to.map(t => ({
-        email: t.address,
-        name: t.name,
+        address: t.address,
+        displayName: t.name,
+        domain: t.address.split('@')[1] || '',
       })),
       subject: job.email.subject,
       body: {
@@ -245,12 +246,13 @@ export class EmailProcessingQueue extends EventEmitter {
         html: job.email.body.html,
       },
       headers: job.email.headers.reduce((acc, h) => ({ ...acc, [h.name]: h.value }), {} as Record<string, string>),
-      receivedAt: job.email.receivedAt,
+      date: job.email.receivedAt,
+      rawHeaders: job.email.headers.map(h => `${h.name}: ${h.value}`).join('\r\n'),
       attachments: job.email.attachments.map(a => ({
         filename: a.name,
         contentType: a.contentType,
         size: a.size,
-        content: a.content,
+        content: a.content ? Buffer.from(a.content, 'base64') : undefined,
       })),
     };
 
@@ -264,7 +266,7 @@ export class EmailProcessingQueue extends EventEmitter {
 
     return {
       success: true,
-      verdictId: stored?.id,
+      verdictId: stored,
       verdict,
     };
   }

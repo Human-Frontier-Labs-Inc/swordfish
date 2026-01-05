@@ -7,7 +7,7 @@
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
-  apiVersion: '2024-06-20',
+  apiVersion: '2025-12-15.clover',
 });
 
 export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
@@ -408,10 +408,13 @@ export class UsageTracker {
   }): Promise<{ quantity: number }> {
     const usage = await this.getUsage(params.tenantId, params.usageType);
 
-    await stripe.subscriptionItems.createUsageRecord(params.subscriptionItemId, {
-      quantity: usage.total,
-      timestamp: Math.floor(Date.now() / 1000),
-      action: 'set',
+    // Use billing meter events for usage-based billing in newer Stripe API
+    await stripe.billing.meterEvents.create({
+      event_name: params.usageType,
+      payload: {
+        value: String(usage.total),
+        stripe_customer_id: params.subscriptionItemId,
+      },
     });
 
     return { quantity: usage.total };
