@@ -30,14 +30,61 @@ const BATCH_SIZE = 5;
 const MAX_EMAILS_PER_SYNC = 20; // Increased with 60s timeout
 const SYNC_TIMEOUT_MS = 50000; // Exit before Vercel's 60s limit
 
+export interface SyncError {
+  type: 'token_refresh' | 'api_error' | 'rate_limit' | 'parse_error' | 'storage_error' | 'unknown';
+  messageId?: string;
+  message: string;
+  details?: string;
+  timestamp: string;
+}
+
 export interface SyncResult {
   integrationId: string;
   tenantId: string;
   type: 'o365' | 'gmail';
   emailsProcessed: number;
+  emailsSkipped: number;
   threatsFound: number;
   errors: string[];
+  detailedErrors: SyncError[];
   duration: number;
+  timedOut: boolean;
+}
+
+/**
+ * Categorize error type for better reporting
+ */
+function categorizeError(error: unknown, messageId?: string): SyncError {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorDetails = error instanceof Error ? error.stack : undefined;
+  const timestamp = new Date().toISOString();
+
+  // Rate limit errors
+  if (errorMessage.includes('429') || errorMessage.includes('rate limit') || errorMessage.includes('quota')) {
+    return { type: 'rate_limit', messageId, message: 'API rate limit exceeded', details: errorMessage, timestamp };
+  }
+
+  // Token/auth errors
+  if (errorMessage.includes('401') || errorMessage.includes('403') || errorMessage.includes('token') || errorMessage.includes('auth')) {
+    return { type: 'token_refresh', messageId, message: 'Authentication error', details: errorMessage, timestamp };
+  }
+
+  // API errors
+  if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED')) {
+    return { type: 'api_error', messageId, message: 'API connection error', details: errorMessage, timestamp };
+  }
+
+  // Parse errors
+  if (errorMessage.includes('parse') || errorMessage.includes('undefined') || errorMessage.includes('null')) {
+    return { type: 'parse_error', messageId, message: 'Email parsing error', details: errorMessage, timestamp };
+  }
+
+  // Storage errors
+  if (errorMessage.includes('sql') || errorMessage.includes('database') || errorMessage.includes('constraint')) {
+    return { type: 'storage_error', messageId, message: 'Database storage error', details: errorMessage, timestamp };
+  }
+
+  return { type: 'unknown', messageId, message: errorMessage, details: errorDetails, timestamp };
 }
 
 export interface IntegrationRecord {
@@ -69,14 +116,18 @@ export async function runFullSync(): Promise<SyncResult[]> {
       results.push(result);
     } catch (error) {
       console.error(`Sync failed for integration ${integration.id}:`, error);
+      const syncError = categorizeError(error);
       results.push({
         integrationId: integration.id,
         tenantId: integration.tenant_id,
         type: integration.type as 'o365' | 'gmail',
         emailsProcessed: 0,
+        emailsSkipped: 0,
         threatsFound: 0,
         errors: [error instanceof Error ? error.message : 'Unknown error'],
+        detailedErrors: [syncError],
         duration: 0,
+        timedOut: false,
       });
     }
   }
@@ -110,7 +161,9 @@ async function syncO365Integration(
   startTime: number
 ): Promise<SyncResult> {
   const errors: string[] = [];
+  const detailedErrors: SyncError[] = [];
   let emailsProcessed = 0;
+  let emailsSkipped = 0;
   let threatsFound = 0;
   let timedOut = false;
 
@@ -143,9 +196,11 @@ async function syncO365Integration(
         WHERE id = ${integration.id}
       `;
     } catch (error) {
+      const syncError = categorizeError(error);
       errors.push(`Token refresh failed: ${error}`);
+      detailedErrors.push(syncError);
       await updateIntegrationError(integration.id, 'Token refresh failed');
-      return createResult(integration, emailsProcessed, threatsFound, errors, startTime);
+      return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
     }
   }
 
@@ -161,10 +216,12 @@ async function syncO365Integration(
       top: MAX_EMAILS_PER_SYNC,
     });
 
+    console.log(`[O365 Sync] Found ${emails.length} emails to process for tenant ${integration.tenant_id}`);
+
     for (const emailMeta of emails) {
       // Check timeout before processing each email
       if (Date.now() - startTime > SYNC_TIMEOUT_MS) {
-        console.log('O365 sync timeout reached, stopping early');
+        console.log('[O365 Sync] Timeout reached, stopping early');
         timedOut = true;
         break;
       }
@@ -178,6 +235,7 @@ async function syncO365Integration(
         `;
 
         if (existing.length > 0) {
+          emailsSkipped++;
           continue;
         }
 
@@ -202,7 +260,10 @@ async function syncO365Integration(
 
         emailsProcessed++;
       } catch (error) {
-        errors.push(`Email ${emailMeta.id}: ${error}`);
+        const syncError = categorizeError(error, emailMeta.id as string);
+        errors.push(`Email ${emailMeta.id}: ${syncError.message}`);
+        detailedErrors.push(syncError);
+        console.error(`[O365 Sync] Error processing email ${emailMeta.id}:`, syncError.message, syncError.details?.substring(0, 200));
       }
     }
 
@@ -212,9 +273,14 @@ async function syncO365Integration(
       SET last_sync_at = NOW(), error_message = ${timedOut ? 'Partial sync - timeout' : null}, updated_at = NOW()
       WHERE id = ${integration.id}
     `;
+
+    console.log(`[O365 Sync] Completed: ${emailsProcessed} processed, ${emailsSkipped} skipped, ${errors.length} errors`);
   } catch (error) {
-    errors.push(`List emails failed: ${error}`);
+    const syncError = categorizeError(error);
+    errors.push(`List emails failed: ${syncError.message}`);
+    detailedErrors.push(syncError);
     await updateIntegrationError(integration.id, 'Sync failed');
+    console.error('[O365 Sync] Failed to list emails:', syncError.message);
   }
 
   // Audit log
@@ -227,14 +293,16 @@ async function syncO365Integration(
     resourceId: integration.id, // Use actual integration UUID
     afterState: {
       emailsProcessed,
+      emailsSkipped,
       threatsFound,
       errors: errors.length,
+      errorTypes: detailedErrors.map(e => e.type),
       timedOut,
       integrationType: 'o365',
     },
   });
 
-  return createResult(integration, emailsProcessed, threatsFound, errors, startTime);
+  return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
 }
 
 /**
@@ -245,7 +313,9 @@ async function syncGmailIntegration(
   startTime: number
 ): Promise<SyncResult> {
   const errors: string[] = [];
+  const detailedErrors: SyncError[] = [];
   let emailsProcessed = 0;
+  let emailsSkipped = 0;
   let threatsFound = 0;
   let timedOut = false;
 
@@ -277,9 +347,11 @@ async function syncGmailIntegration(
         WHERE id = ${integration.id}
       `;
     } catch (error) {
+      const syncError = categorizeError(error);
       errors.push(`Token refresh failed: ${error}`);
+      detailedErrors.push(syncError);
       await updateIntegrationError(integration.id, 'Token refresh failed');
-      return createResult(integration, emailsProcessed, threatsFound, errors, startTime);
+      return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
     }
   }
 
@@ -298,10 +370,12 @@ async function syncGmailIntegration(
       labelIds: ['INBOX'],
     });
 
+    console.log(`[Gmail Sync] Found ${messages.length} messages to process for tenant ${integration.tenant_id}`);
+
     for (const messageMeta of messages) {
       // Check timeout before processing each email
       if (Date.now() - startTime > SYNC_TIMEOUT_MS) {
-        console.log('Sync timeout reached, stopping early to avoid Vercel timeout');
+        console.log('[Gmail Sync] Timeout reached, stopping early to avoid Vercel timeout');
         timedOut = true;
         break;
       }
@@ -315,6 +389,7 @@ async function syncGmailIntegration(
         `;
 
         if (existing.length > 0) {
+          emailsSkipped++;
           continue;
         }
 
@@ -340,7 +415,10 @@ async function syncGmailIntegration(
 
         emailsProcessed++;
       } catch (error) {
-        errors.push(`Message ${messageMeta.id}: ${error}`);
+        const syncError = categorizeError(error, messageMeta.id);
+        errors.push(`Message ${messageMeta.id}: ${syncError.message}`);
+        detailedErrors.push(syncError);
+        console.error(`[Gmail Sync] Error processing message ${messageMeta.id}:`, syncError.message, syncError.details?.substring(0, 200));
       }
     }
 
@@ -350,9 +428,14 @@ async function syncGmailIntegration(
       SET last_sync_at = NOW(), error_message = ${timedOut ? 'Partial sync - timeout' : null}, updated_at = NOW()
       WHERE id = ${integration.id}
     `;
+
+    console.log(`[Gmail Sync] Completed: ${emailsProcessed} processed, ${emailsSkipped} skipped, ${errors.length} errors`);
   } catch (error) {
-    errors.push(`List messages failed: ${error}`);
+    const syncError = categorizeError(error);
+    errors.push(`List messages failed: ${syncError.message}`);
+    detailedErrors.push(syncError);
     await updateIntegrationError(integration.id, 'Sync failed');
+    console.error('[Gmail Sync] Failed to list messages:', syncError.message);
   }
 
   // Audit log
@@ -365,14 +448,16 @@ async function syncGmailIntegration(
     resourceId: integration.id, // Use actual integration UUID
     afterState: {
       emailsProcessed,
+      emailsSkipped,
       threatsFound,
       errors: errors.length,
+      errorTypes: detailedErrors.map(e => e.type),
       timedOut,
       integrationType: 'gmail',
     },
   });
 
-  return createResult(integration, emailsProcessed, threatsFound, errors, startTime);
+  return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
 }
 
 /**
@@ -392,18 +477,24 @@ async function updateIntegrationError(integrationId: string, errorMessage: strin
 function createResult(
   integration: IntegrationRecord,
   emailsProcessed: number,
+  emailsSkipped: number,
   threatsFound: number,
   errors: string[],
-  startTime: number
+  detailedErrors: SyncError[],
+  startTime: number,
+  timedOut: boolean = false
 ): SyncResult {
   return {
     integrationId: integration.id,
     tenantId: integration.tenant_id,
     type: integration.type as 'o365' | 'gmail',
     emailsProcessed,
+    emailsSkipped,
     threatsFound,
     errors,
+    detailedErrors,
     duration: Date.now() - startTime,
+    timedOut,
   };
 }
 
