@@ -221,15 +221,16 @@ async function syncO365Integration(
   await logAuditEvent({
     tenantId: integration.tenant_id,
     actorId: null, // System action
-    actorEmail: null,
+    actorEmail: 'system',
     action: 'email.sync',
     resourceType: 'integration',
-    resourceId: 'o365',
+    resourceId: integration.id, // Use actual integration UUID
     afterState: {
       emailsProcessed,
       threatsFound,
       errors: errors.length,
       timedOut,
+      integrationType: 'o365',
     },
   });
 
@@ -358,15 +359,16 @@ async function syncGmailIntegration(
   await logAuditEvent({
     tenantId: integration.tenant_id,
     actorId: null, // System action
-    actorEmail: null,
+    actorEmail: 'system',
     action: 'email.sync',
     resourceType: 'integration',
-    resourceId: 'gmail',
+    resourceId: integration.id, // Use actual integration UUID
     afterState: {
       emailsProcessed,
       threatsFound,
       errors: errors.length,
       timedOut,
+      integrationType: 'gmail',
     },
   });
 
