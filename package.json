@@ -53,6 +53,7 @@
   "devDependencies": {
     "@playwright/test": "^1.57.0",
     "@vitest/coverage-v8": "^2.1.0",
+    "md-to-pdf": "^5.2.5",
     "tsx": "^4.21.0",
     "vitest": "^2.1.0"
   }
