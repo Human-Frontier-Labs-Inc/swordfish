@@ -37,7 +37,7 @@ export async function storeVerdict(
       ${JSON.stringify(verdict.layerResults || {})},
       ${verdict.explanation || null},
       ${verdict.recommendation || null},
-      ${verdict.processingTimeMs || 0},
+      ${Math.round(verdict.processingTimeMs || 0)},
       ${verdict.llmTokensUsed || null}
     )
     ON CONFLICT (tenant_id, message_id) DO UPDATE SET
