@@ -232,8 +232,8 @@ async function processNotification(notification: GraphNotification['value'][0]) 
   // Audit log
   await logAuditEvent({
     tenantId,
-    actorId: 'system',
-    actorEmail: null,
+    actorId: null,
+    actorEmail: 'system',
     action: 'email.analyzed',
     resourceType: 'email',
     resourceId: parsedEmail.messageId,

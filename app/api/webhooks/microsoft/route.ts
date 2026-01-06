@@ -168,8 +168,8 @@ export async function POST(request: NextRequest) {
         // Log audit event
         await logAuditEvent({
           tenantId,
-          actorId: 'system',
-          actorEmail: null,
+          actorId: null,
+          actorEmail: 'system',
           action: 'webhook.microsoft',
           resourceType: 'email',
           resourceId: parsedEmail.messageId,
