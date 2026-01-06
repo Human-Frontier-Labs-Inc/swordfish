@@ -57,7 +57,10 @@ export default function DashboardPage() {
     detectionRate: stats?.detectionRate || 0,
   };
 
-  // Show demo threats if no real data yet
+  // Demo mode is only when no emails have been scanned at all
+  const isDemo = (stats?.emailsScanned || 0) === 0 && threats.length === 0;
+
+  // Show demo threats only in demo mode, otherwise show real threats (or empty if no threats)
   const displayThreats = threats.length > 0
     ? threats.map(t => ({
         id: t.id,
@@ -67,9 +70,7 @@ export default function DashboardPage() {
         signals: [t.detail],
         timestamp: new Date(t.timestamp),
       }))
-    : demoThreats;
-
-  const isDemo = threats.length === 0;
+    : isDemo ? demoThreats : [];
 
   return (
     <div className="space-y-6">
