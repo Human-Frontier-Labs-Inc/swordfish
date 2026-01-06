@@ -33,6 +33,11 @@ export async function GET(request: NextRequest) {
         SELECT
           id,
           message_id,
+          subject,
+          from_address,
+          from_display_name,
+          to_addresses,
+          received_at,
           verdict,
           score,
           confidence,
@@ -51,6 +56,11 @@ export async function GET(request: NextRequest) {
         SELECT
           id,
           message_id,
+          subject,
+          from_address,
+          from_display_name,
+          to_addresses,
+          received_at,
           verdict,
           score,
           confidence,
@@ -82,12 +92,23 @@ export async function GET(request: NextRequest) {
         || signals.find(s => s.severity === 'warning')
         || signals[0];
 
+      // Format sender display
+      const fromDisplay = email.from_display_name
+        ? `${email.from_display_name} <${email.from_address}>`
+        : email.from_address || 'Unknown sender';
+
       return {
         id: email.id,
         messageId: email.message_id,
+        subject: email.subject || '(No subject)',
+        from: fromDisplay,
+        fromAddress: email.from_address,
+        to: email.to_addresses,
+        receivedAt: email.received_at,
         verdict: email.verdict,
         score: email.score || 0,
         confidence: email.confidence || 0,
+        signals: signals,
         signalCount: signals.length,
         primarySignal: primarySignal?.detail || (email.verdict === 'pass' ? 'No threats detected' : 'Unknown'),
         processingTimeMs: email.processing_time_ms || 0,

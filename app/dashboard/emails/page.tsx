@@ -3,12 +3,24 @@
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
 
+interface Signal {
+  type: string;
+  severity: string;
+  detail: string;
+}
+
 interface ScannedEmail {
   id: string;
   messageId: string;
+  subject: string;
+  from: string;
+  fromAddress: string;
+  to: Array<{ address: string; displayName?: string }>;
+  receivedAt: string;
   verdict: 'pass' | 'suspicious' | 'quarantine' | 'block';
   score: number;
   confidence: number;
+  signals: Signal[];
   signalCount: number;
   primarySignal: string;
   processingTimeMs: number;
@@ -47,6 +59,7 @@ export default function ScannedEmailsPage() {
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
+  const [selectedEmail, setSelectedEmail] = useState<ScannedEmail | null>(null);
 
   useEffect(() => {
     fetchEmails();
@@ -73,7 +86,8 @@ export default function ScannedEmailsPage() {
     }
   }
 
-  function formatDate(dateStr: string) {
+  function formatDate(dateStr: string | null) {
+    if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
     return date.toLocaleString();
   }
@@ -151,90 +165,195 @@ export default function ScannedEmailsPage() {
             <h3 className="mt-2 text-sm font-medium text-gray-900">No emails found</h3>
             <p className="mt-1 text-sm text-gray-500">
               {filter === 'all'
-                ? 'No emails have been scanned yet.'
+                ? 'No emails have been scanned yet. Click "Sync Now" on the Integrations page.'
                 : `No emails with verdict "${filter}" found.`}
             </p>
           </div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Message ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Result
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Score
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Signals
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Time
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Scanned
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {emails.map((email) => {
-                const config = verdictConfig[email.verdict] || verdictConfig.pass;
-                return (
-                  <tr key={email.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span
-                        className={clsx(
-                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                          config.bgClass,
-                          config.textClass
-                        )}
-                      >
-                        {config.icon} {config.label}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="max-w-xs truncate text-sm text-gray-900" title={email.messageId}>
-                        {email.messageId.substring(0, 30)}...
+          <div className="divide-y divide-gray-200">
+            {emails.map((email) => {
+              const config = verdictConfig[email.verdict] || verdictConfig.pass;
+              return (
+                <div
+                  key={email.id}
+                  className="px-6 py-4 hover:bg-gray-50 cursor-pointer"
+                  onClick={() => setSelectedEmail(email)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={clsx(
+                            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                            config.bgClass,
+                            config.textClass
+                          )}
+                        >
+                          {config.icon} {config.label}
+                        </span>
+                        <span
+                          className={clsx(
+                            'text-xs font-medium',
+                            email.score >= 70 ? 'text-red-600' :
+                            email.score >= 40 ? 'text-orange-600' :
+                            email.score >= 20 ? 'text-yellow-600' :
+                            'text-green-600'
+                          )}
+                        >
+                          Score: {email.score}
+                        </span>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {email.primarySignal}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span
-                        className={clsx(
-                          'text-sm font-medium',
-                          email.score >= 70 ? 'text-red-600' :
-                          email.score >= 40 ? 'text-orange-600' :
-                          email.score >= 20 ? 'text-yellow-600' :
-                          'text-green-600'
-                        )}
-                      >
-                        {email.score}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {email.signalCount}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {email.processingTimeMs}ms
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {formatDate(email.scannedAt)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      <p className="mt-1 truncate font-medium text-gray-900">
+                        {email.subject}
+                      </p>
+                      <p className="mt-1 truncate text-sm text-gray-500">
+                        From: {email.from}
+                      </p>
+                      {email.signalCount > 0 && (
+                        <p className="mt-1 text-sm text-gray-500">
+                          {email.primarySignal}
+                        </p>
+                      )}
+                    </div>
+                    <div className="ml-4 text-right text-xs text-gray-400">
+                      <div>{formatDate(email.receivedAt)}</div>
+                      <div className="mt-1">{email.processingTimeMs}ms</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
+
+      {/* Detail Slide-over */}
+      {selectedEmail && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          <div className="absolute inset-0 bg-gray-500 bg-opacity-75" onClick={() => setSelectedEmail(null)} />
+          <div className="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-10">
+            <div className="pointer-events-auto w-screen max-w-lg">
+              <div className="flex h-full flex-col overflow-y-scroll bg-white shadow-xl">
+                {/* Header */}
+                <div className="bg-gray-50 px-4 py-6 sm:px-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h2 className="text-lg font-medium text-gray-900">Email Details</h2>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Analysis results and metadata
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedEmail(null)}
+                      className="rounded-md bg-white text-gray-400 hover:text-gray-500"
+                    >
+                      <span className="sr-only">Close</span>
+                      <XIcon className="h-6 w-6" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 px-4 py-6 sm:px-6">
+                  <dl className="space-y-6">
+                    {/* Verdict */}
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Verdict</dt>
+                      <dd className="mt-1 flex items-center gap-2">
+                        <span
+                          className={clsx(
+                            'inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium',
+                            verdictConfig[selectedEmail.verdict].bgClass,
+                            verdictConfig[selectedEmail.verdict].textClass
+                          )}
+                        >
+                          {verdictConfig[selectedEmail.verdict].icon} {verdictConfig[selectedEmail.verdict].label}
+                        </span>
+                        <span className="text-sm text-gray-500">Score: {selectedEmail.score}/100</span>
+                      </dd>
+                    </div>
+
+                    {/* Subject */}
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Subject</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{selectedEmail.subject}</dd>
+                    </div>
+
+                    {/* From */}
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">From</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{selectedEmail.from}</dd>
+                    </div>
+
+                    {/* To */}
+                    {selectedEmail.to && selectedEmail.to.length > 0 && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">To</dt>
+                        <dd className="mt-1 text-sm text-gray-900">
+                          {selectedEmail.to.map(t => t.displayName ? `${t.displayName} <${t.address}>` : t.address).join(', ')}
+                        </dd>
+                      </div>
+                    )}
+
+                    {/* Received */}
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Received</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{formatDate(selectedEmail.receivedAt)}</dd>
+                    </div>
+
+                    {/* Message ID */}
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Message ID</dt>
+                      <dd className="mt-1 text-sm text-gray-500 break-all font-mono text-xs">{selectedEmail.messageId}</dd>
+                    </div>
+
+                    {/* Signals */}
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Detection Signals ({selectedEmail.signalCount})</dt>
+                      <dd className="mt-2">
+                        {selectedEmail.signals.length === 0 ? (
+                          <p className="text-sm text-green-600">No security signals detected</p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {selectedEmail.signals.map((signal, idx) => (
+                              <li
+                                key={idx}
+                                className={clsx(
+                                  'rounded-md px-3 py-2 text-sm',
+                                  signal.severity === 'critical' ? 'bg-red-50 text-red-700' :
+                                  signal.severity === 'warning' ? 'bg-yellow-50 text-yellow-700' :
+                                  'bg-gray-50 text-gray-700'
+                                )}
+                              >
+                                <div className="font-medium capitalize">{signal.type.replace(/_/g, ' ')}</div>
+                                <div className="mt-0.5 text-xs opacity-75">{signal.detail}</div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </dd>
+                    </div>
+
+                    {/* Processing */}
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Processing</dt>
+                      <dd className="mt-1 text-sm text-gray-500">
+                        Analyzed in {selectedEmail.processingTimeMs}ms • Confidence: {Math.round(selectedEmail.confidence * 100)}%
+                      </dd>
+                    </div>
+
+                    {/* Scanned At */}
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Scanned At</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{formatDate(selectedEmail.scannedAt)}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -259,6 +378,14 @@ function MailIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"
       />
+    </svg>
+  );
+}
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
   );
 }

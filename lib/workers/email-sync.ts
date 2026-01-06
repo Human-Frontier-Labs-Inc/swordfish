@@ -251,8 +251,8 @@ async function syncO365Integration(
           skipLLM: true, // Skip LLM to stay within timeout
         });
 
-        // Store results
-        await storeVerdict(integration.tenant_id, parsedEmail.messageId, verdict);
+        // Store results with email metadata
+        await storeVerdict(integration.tenant_id, parsedEmail.messageId, verdict, parsedEmail);
 
         if (verdict.verdict !== 'pass' && verdict.overallScore >= 30) {
           threatsFound++;
@@ -406,8 +406,8 @@ async function syncGmailIntegration(
           skipLLM: true, // Skip LLM to stay within timeout
         });
 
-        // Store results
-        await storeVerdict(integration.tenant_id, parsedEmail.messageId, verdict);
+        // Store results with email metadata
+        await storeVerdict(integration.tenant_id, parsedEmail.messageId, verdict, parsedEmail);
 
         if (verdict.verdict !== 'pass' && verdict.overallScore >= 30) {
           threatsFound++;

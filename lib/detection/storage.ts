@@ -4,7 +4,7 @@
  */
 
 import { sql } from '@/lib/db';
-import type { EmailVerdict, Signal } from './types';
+import type { EmailVerdict, Signal, ParsedEmail } from './types';
 
 /**
  * Store an email verdict in the database
@@ -12,12 +12,18 @@ import type { EmailVerdict, Signal } from './types';
 export async function storeVerdict(
   tenantId: string,
   messageId: string,
-  verdict: EmailVerdict
+  verdict: EmailVerdict,
+  email?: ParsedEmail
 ): Promise<string> {
   const result = await sql`
     INSERT INTO email_verdicts (
       tenant_id,
       message_id,
+      subject,
+      from_address,
+      from_display_name,
+      to_addresses,
+      received_at,
       verdict,
       score,
       confidence,
@@ -30,6 +36,11 @@ export async function storeVerdict(
     ) VALUES (
       ${tenantId},
       ${messageId},
+      ${email?.subject || null},
+      ${email?.from?.address || null},
+      ${email?.from?.displayName || null},
+      ${email?.to ? JSON.stringify(email.to) : null},
+      ${email?.date || null},
       ${verdict.verdict},
       ${verdict.overallScore},
       ${verdict.confidence},
@@ -41,6 +52,11 @@ export async function storeVerdict(
       ${verdict.llmTokensUsed || null}
     )
     ON CONFLICT (tenant_id, message_id) DO UPDATE SET
+      subject = COALESCE(EXCLUDED.subject, email_verdicts.subject),
+      from_address = COALESCE(EXCLUDED.from_address, email_verdicts.from_address),
+      from_display_name = COALESCE(EXCLUDED.from_display_name, email_verdicts.from_display_name),
+      to_addresses = COALESCE(EXCLUDED.to_addresses, email_verdicts.to_addresses),
+      received_at = COALESCE(EXCLUDED.received_at, email_verdicts.received_at),
       verdict = EXCLUDED.verdict,
       score = EXCLUDED.score,
       confidence = EXCLUDED.confidence,
