@@ -212,10 +212,11 @@ export async function POST(request: NextRequest) {
       actorEmail: 'system',
       action: 'email.sync',
       resourceType: 'integration',
-      resourceId: 'gmail',
+      resourceId: integration.id as string,
       afterState: {
         messagesProcessed: processedCount,
         historyId: historyResult.historyId,
+        integrationType: 'gmail',
       },
     });
 

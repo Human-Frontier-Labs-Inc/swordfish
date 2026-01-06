@@ -90,8 +90,8 @@ export async function GET(request: NextRequest) {
       quarantineLabelId,
     };
 
-    // Upsert integration
-    await sql`
+    // Upsert integration and get ID
+    const [integration] = await sql`
       INSERT INTO integrations (tenant_id, type, status, config, created_at, updated_at)
       VALUES (${tenantId}, 'gmail', 'connected', ${JSON.stringify(config)}::jsonb, NOW(), NOW())
       ON CONFLICT (tenant_id, type)
@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
         config = ${JSON.stringify(config)}::jsonb,
         error_message = NULL,
         updated_at = NOW()
+      RETURNING id
     `;
 
     // Audit log
@@ -109,8 +110,8 @@ export async function GET(request: NextRequest) {
       actorEmail: null,
       action: 'integration.connect',
       resourceType: 'integration',
-      resourceId: 'gmail',
-      afterState: { email: profile.email },
+      resourceId: integration.id as string,
+      afterState: { email: profile.email, integrationType: 'gmail' },
     });
 
     return NextResponse.redirect(
