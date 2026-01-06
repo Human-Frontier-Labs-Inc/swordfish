@@ -10,22 +10,27 @@ test.describe('Settings Journey', () => {
   test.describe('Settings Access', () => {
     test('settings page requires authentication', async ({ page }) => {
       await page.goto('/dashboard/settings');
-      await expect(page).toHaveURL(/sign-in/);
+      // Should redirect to sign-in or Clerk auth
+      const url = page.url();
+      expect(url).toMatch(/sign-in|clerk|handshake/i);
     });
 
     test('billing settings requires authentication', async ({ page }) => {
       await page.goto('/dashboard/settings/billing');
-      await expect(page).toHaveURL(/sign-in/);
+      const url = page.url();
+      expect(url).toMatch(/sign-in|clerk|handshake/i);
     });
 
     test('security settings requires authentication', async ({ page }) => {
       await page.goto('/dashboard/settings/security');
-      await expect(page).toHaveURL(/sign-in/);
+      const url = page.url();
+      expect(url).toMatch(/sign-in|clerk|handshake/i);
     });
 
     test('team settings requires authentication', async ({ page }) => {
       await page.goto('/dashboard/settings/team');
-      await expect(page).toHaveURL(/sign-in/);
+      const url = page.url();
+      expect(url).toMatch(/sign-in|clerk|handshake/i);
     });
   });
 

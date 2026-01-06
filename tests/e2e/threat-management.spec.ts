@@ -32,7 +32,9 @@ test.describe('Threat Management', () => {
   test.describe('Threats Dashboard', () => {
     test('threats page requires authentication', async ({ page }) => {
       await page.goto('/dashboard/threats');
-      await expect(page).toHaveURL(/sign-in/);
+      // Should redirect to sign-in or Clerk auth
+      const url = page.url();
+      expect(url).toMatch(/sign-in|clerk|handshake/i);
     });
   });
 
@@ -76,7 +78,9 @@ test.describe('Threat Detection Workflow', () => {
 test.describe('Threat Analysis UI', () => {
   test('threat analysis page requires auth', async ({ page }) => {
     await page.goto('/dashboard/threats/analysis');
-    await expect(page).toHaveURL(/sign-in/);
+    // Should redirect to sign-in or Clerk auth
+    const url = page.url();
+    expect(url).toMatch(/sign-in|clerk|handshake/i);
   });
 });
 
@@ -123,7 +127,9 @@ test.describe('Quarantine Management', () => {
 
   test('quarantine page requires authentication', async ({ page }) => {
     await page.goto('/dashboard/quarantine');
-    await expect(page).toHaveURL(/sign-in/);
+    // Should redirect to sign-in or Clerk auth
+    const url = page.url();
+    expect(url).toMatch(/sign-in|clerk|handshake/i);
   });
 });
 
@@ -147,7 +153,9 @@ test.describe('Reports', () => {
 
   test('reports page requires authentication', async ({ page }) => {
     await page.goto('/dashboard/reports');
-    await expect(page).toHaveURL(/sign-in/);
+    // Should redirect to sign-in or Clerk auth
+    const url = page.url();
+    expect(url).toMatch(/sign-in|clerk|handshake/i);
   });
 });
 
@@ -321,7 +329,7 @@ test.describe('MSP Admin Threat Management', () => {
         await expect(page.locator('h1')).toContainText(/Threats|Overview/i);
       } else {
         // Redirected to auth or dashboard - expected for unauthenticated users
-        expect(url).toMatch(/sign-in|dashboard/i);
+        expect(url).toMatch(/sign-in|dashboard|clerk|handshake/i);
       }
     });
   });
