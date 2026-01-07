@@ -306,24 +306,24 @@ function analyzeContent(content: string, subject: string): Signal[] {
     });
   }
 
-  // Check for financial requests
+  // Check for financial requests - HIGH RISK indicator
   const financialMatches = FINANCIAL_PATTERNS.filter(p => p.test(fullText));
   if (financialMatches.length > 0) {
     signals.push({
       type: 'financial_request',
-      severity: 'warning',
-      score: 20,
+      severity: 'critical',
+      score: 35,
       detail: 'Email contains financial request language',
     });
   }
 
-  // Check for credential requests
+  // Check for credential requests - HIGH RISK indicator
   const credentialMatches = CREDENTIAL_PATTERNS.filter(p => p.test(fullText));
   if (credentialMatches.length > 0) {
     signals.push({
       type: 'credential_request',
-      severity: 'warning',
-      score: 20,
+      severity: 'critical',
+      score: 40,
       detail: 'Email requests credentials or sensitive information',
     });
   }

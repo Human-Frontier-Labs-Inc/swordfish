@@ -317,33 +317,37 @@ async function runMLAnalysis(email: ParsedEmail, _priorSignals: Signal[]): Promi
       });
     }
 
-    // Add category-specific signals
+    // Add category-specific signals - scores scaled by confidence
     if (prediction.category === 'phishing' && prediction.confidence > 0.6) {
+      // Scale score by confidence: 60% = 45, 80% = 60, 100% = 75
+      const phishingScore = Math.round(45 + (prediction.confidence - 0.6) * 75);
       signals.push({
         type: 'ml_phishing_detected',
         severity: 'critical',
-        score: 30,
+        score: phishingScore,
         detail: `ML classifier detected phishing (${(prediction.confidence * 100).toFixed(0)}% confidence)`,
       });
     } else if (prediction.category === 'bec' && prediction.confidence > 0.6) {
+      const becScore = Math.round(50 + (prediction.confidence - 0.6) * 75);
       signals.push({
         type: 'ml_bec_detected',
         severity: 'critical',
-        score: 35,
+        score: becScore,
         detail: `ML classifier detected business email compromise (${(prediction.confidence * 100).toFixed(0)}% confidence)`,
       });
     } else if (prediction.category === 'malware' && prediction.confidence > 0.6) {
+      const malwareScore = Math.round(55 + (prediction.confidence - 0.6) * 75);
       signals.push({
         type: 'ml_malware_detected',
         severity: 'critical',
-        score: 40,
+        score: malwareScore,
         detail: `ML classifier detected potential malware delivery (${(prediction.confidence * 100).toFixed(0)}% confidence)`,
       });
     } else if (prediction.category === 'spam' && prediction.confidence > 0.6) {
       signals.push({
         type: 'ml_spam_detected',
         severity: 'warning',
-        score: 15,
+        score: 20,
         detail: `ML classifier detected spam (${(prediction.confidence * 100).toFixed(0)}% confidence)`,
       });
     }
@@ -636,12 +640,16 @@ function calculateFinalScore(
   const normalizedScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
   const normalizedConfidence = totalWeight > 0 ? weightedConfidence / totalWeight : 0;
 
-  // Boost score if multiple critical signals
+  // Boost score if multiple critical signals - more aggressive boosting
   const criticalSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'critical'));
-  const criticalBoost = Math.min(20, criticalSignals.length * 5);
+  const warningSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'warning'));
+
+  // Critical signals add 10 points each (max 40), warnings add 3 each (max 15)
+  const criticalBoost = Math.min(40, criticalSignals.length * 10);
+  const warningBoost = Math.min(15, warningSignals.length * 3);
 
   return {
-    overallScore: Math.min(100, Math.round(normalizedScore * (totalWeight / 0.8) + criticalBoost)),
+    overallScore: Math.min(100, Math.round(normalizedScore * (totalWeight / 0.8) + criticalBoost + warningBoost)),
     confidence: normalizedConfidence,
   };
 }
