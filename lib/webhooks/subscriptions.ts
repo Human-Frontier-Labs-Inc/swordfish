@@ -254,27 +254,35 @@ export async function getSubscriptions(tenantId: string): Promise<SubscriptionIn
 }
 
 /**
- * Renew all expiring subscriptions
+ * Renew all expiring subscriptions AND register missing push subscriptions
  * Should be called by a cron job every hour
  */
 export async function renewExpiringSubscriptions(): Promise<{
   renewed: number;
+  registered: number;
   failed: number;
   errors: string[];
 }> {
   const errors: string[] = [];
   let renewed = 0;
+  let registered = 0;
   let failed = 0;
 
-  // Find integrations with subscriptions expiring in the next 24 hours
+  // Find integrations that need push registration OR renewal:
+  // 1. Subscriptions expiring in the next 24 hours
+  // 2. Gmail integrations with sync enabled but no watchExpiration (never registered)
   const integrations = await sql`
     SELECT id, tenant_id, type, config
     FROM integrations
     WHERE status = 'connected'
+    AND (config->>'syncEnabled')::boolean = true
     AND (
       (type = 'o365' AND (config->>'subscriptionExpiresAt')::timestamp < NOW() + INTERVAL '24 hours')
       OR
-      (type = 'gmail' AND (config->>'watchExpiration')::timestamp < NOW() + INTERVAL '24 hours')
+      (type = 'gmail' AND (
+        (config->>'watchExpiration')::timestamp < NOW() + INTERVAL '24 hours'
+        OR config->>'watchExpiration' IS NULL
+      ))
     )
   `;
 
@@ -323,14 +331,21 @@ export async function renewExpiringSubscriptions(): Promise<{
 
         renewed++;
       } else if (type === 'gmail') {
-        // Gmail watch needs to be recreated
+        // Gmail watch needs to be created or recreated
+        const isNewRegistration = !config.watchExpiration;
         const result = await createGmailSubscription({
           integrationId: integration.id as string,
           tenantId: integration.tenant_id as string,
           accessToken,
         });
 
-        renewed++;
+        if (isNewRegistration) {
+          registered++;
+          console.log(`[Subscriptions] Registered push for Gmail integration ${integration.id}`);
+        } else {
+          renewed++;
+          console.log(`[Subscriptions] Renewed push for Gmail integration ${integration.id}`);
+        }
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -339,5 +354,5 @@ export async function renewExpiringSubscriptions(): Promise<{
     }
   }
 
-  return { renewed, failed, errors };
+  return { renewed, registered, failed, errors };
 }

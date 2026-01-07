@@ -22,6 +22,9 @@
     },
     "app/api/sync/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/cron/renew-subscriptions/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [

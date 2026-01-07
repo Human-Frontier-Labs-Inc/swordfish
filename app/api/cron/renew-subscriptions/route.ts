@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
       duration: Date.now() - startTime,
       renewed: result.renewed,
+      registered: result.registered,
       failed: result.failed,
       errors: result.errors.length > 0 ? result.errors : undefined,
     };
