@@ -18,6 +18,7 @@ import { parseGraphEmail, parseGmailEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
 import { storeVerdict } from '@/lib/detection/storage';
 import { logAuditEvent } from '@/lib/db/audit';
+import { autoRemediate } from '@/lib/workers/remediation';
 import type { ParsedEmail } from '@/lib/detection/types';
 
 const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
@@ -258,6 +259,24 @@ async function syncO365Integration(
           threatsFound++;
         }
 
+        // Auto-remediate threats (quarantine or block)
+        if (verdict.verdict === 'quarantine' || verdict.verdict === 'block') {
+          try {
+            await autoRemediate({
+              tenantId: integration.tenant_id,
+              messageId: parsedEmail.messageId,
+              externalMessageId: emailMeta.id as string,
+              integrationId: integration.id,
+              integrationType: 'o365',
+              verdict: verdict.verdict,
+              score: verdict.overallScore,
+            });
+            console.log(`[O365 Sync] Auto-remediated email ${emailMeta.id} with verdict: ${verdict.verdict}`);
+          } catch (remediationError) {
+            console.error(`[O365 Sync] Auto-remediation failed for ${emailMeta.id}:`, remediationError);
+          }
+        }
+
         emailsProcessed++;
       } catch (error) {
         const syncError = categorizeError(error, emailMeta.id as string);
@@ -411,6 +430,24 @@ async function syncGmailIntegration(
 
         if (verdict.verdict !== 'pass' && verdict.overallScore >= 30) {
           threatsFound++;
+        }
+
+        // Auto-remediate threats (quarantine or block)
+        if (verdict.verdict === 'quarantine' || verdict.verdict === 'block') {
+          try {
+            await autoRemediate({
+              tenantId: integration.tenant_id,
+              messageId: parsedEmail.messageId,
+              externalMessageId: messageMeta.id,
+              integrationId: integration.id,
+              integrationType: 'gmail',
+              verdict: verdict.verdict,
+              score: verdict.overallScore,
+            });
+            console.log(`[Gmail Sync] Auto-remediated email ${messageMeta.id} with verdict: ${verdict.verdict}`);
+          } catch (remediationError) {
+            console.error(`[Gmail Sync] Auto-remediation failed for ${messageMeta.id}:`, remediationError);
+          }
         }
 
         emailsProcessed++;
