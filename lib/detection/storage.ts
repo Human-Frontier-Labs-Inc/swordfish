@@ -6,6 +6,12 @@
 import { sql } from '@/lib/db';
 import type { EmailVerdict, Signal, ParsedEmail } from './types';
 
+// Helper to truncate strings to fit database column limits
+function truncate(str: string | null | undefined, maxLength: number): string | null {
+  if (!str) return null;
+  return str.length > maxLength ? str.substring(0, maxLength - 3) + '...' : str;
+}
+
 /**
  * Store an email verdict in the database
  */
@@ -36,9 +42,9 @@ export async function storeVerdict(
     ) VALUES (
       ${tenantId},
       ${messageId},
-      ${email?.subject || null},
-      ${email?.from?.address || null},
-      ${email?.from?.displayName || null},
+      ${truncate(email?.subject, 100)},
+      ${truncate(email?.from?.address, 100)},
+      ${truncate(email?.from?.displayName, 100)},
       ${email?.to ? JSON.stringify(email.to) : null},
       ${email?.date || null},
       ${verdict.verdict},
@@ -102,9 +108,9 @@ export async function storeThreat(
     ) VALUES (
       ${tenantId},
       ${email.messageId},
-      ${email.subject},
-      ${email.from.address},
-      ${email.to[0]?.address || ''},
+      ${truncate(email.subject, 100)},
+      ${truncate(email.from.address, 100)},
+      ${truncate(email.to[0]?.address, 100) || ''},
       ${verdict.verdict},
       ${verdict.overallScore},
       ${JSON.stringify(signalTypes)},

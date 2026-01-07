@@ -8,6 +8,7 @@ import { auth } from '@clerk/nextjs/server';
 import { exchangeGmailCode, getGmailUserProfile, getOrCreateQuarantineLabel } from '@/lib/integrations/gmail';
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
+import { createGmailSubscription } from '@/lib/webhooks/subscriptions';
 
 const GMAIL_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GMAIL_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
@@ -103,16 +104,33 @@ export async function GET(request: NextRequest) {
       RETURNING id
     `;
 
-    // Audit log
+    // Audit log - actorId must be null since Clerk userId is not a valid UUID
     await logAuditEvent({
       tenantId,
-      actorId: userId,
+      actorId: null,
       actorEmail: null,
       action: 'integration.connect',
       resourceType: 'integration',
       resourceId: integration.id as string,
-      afterState: { email: profile.email, integrationType: 'gmail' },
+      afterState: { email: profile.email, integrationType: 'gmail', clerkUserId: userId },
     });
+
+    // Register Gmail push notifications for real-time email detection
+    try {
+      if (process.env.GOOGLE_PUBSUB_TOPIC) {
+        const subscription = await createGmailSubscription({
+          integrationId: integration.id as string,
+          tenantId,
+          accessToken: tokens.accessToken,
+        });
+        console.log(`[Gmail] Push notifications enabled, expires: ${subscription.expiresAt}`);
+      } else {
+        console.log('[Gmail] Push notifications skipped - GOOGLE_PUBSUB_TOPIC not configured');
+      }
+    } catch (pushError) {
+      // Don't fail the connection if push setup fails - cron will still work
+      console.warn('[Gmail] Failed to setup push notifications:', pushError);
+    }
 
     return NextResponse.redirect(
       new URL('/dashboard/integrations?success=Gmail connected successfully', request.url)

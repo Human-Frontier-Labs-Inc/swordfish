@@ -8,6 +8,7 @@ import { auth } from '@clerk/nextjs/server';
 import { exchangeO365Code, getO365UserProfile, getOrCreateQuarantineFolder } from '@/lib/integrations/o365';
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
+import { createO365Subscription } from '@/lib/webhooks/subscriptions';
 
 const O365_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
 const O365_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
@@ -105,16 +106,31 @@ export async function GET(request: NextRequest) {
       RETURNING id
     `;
 
-    // Audit log
+    // Audit log - actorId must be null since Clerk userId is not a valid UUID
     await logAuditEvent({
       tenantId,
-      actorId: userId,
+      actorId: null,
       actorEmail: null,
       action: 'integration.connect',
       resourceType: 'integration',
       resourceId: integration.id as string,
-      afterState: { email: profile.email, integrationType: 'o365' },
+      afterState: { email: profile.email, integrationType: 'o365', clerkUserId: userId },
     });
+
+    // Register Microsoft Graph webhook for real-time email detection
+    try {
+      const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/o365`;
+      const subscription = await createO365Subscription({
+        integrationId: integration.id as string,
+        tenantId,
+        accessToken: tokens.accessToken,
+        webhookUrl,
+      });
+      console.log(`[O365] Push notifications enabled, expires: ${subscription.expiresAt}`);
+    } catch (pushError) {
+      // Don't fail the connection if push setup fails - cron will still work
+      console.warn('[O365] Failed to setup push notifications:', pushError);
+    }
 
     return NextResponse.redirect(
       new URL('/dashboard/integrations?success=Microsoft 365 connected successfully', request.url)

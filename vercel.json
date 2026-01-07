@@ -36,6 +36,10 @@
     {
       "path": "/api/cron/sync-emails",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/renew-subscriptions",
+      "schedule": "0 */6 * * *"
     }
   ],
   "headers": [
