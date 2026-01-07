@@ -375,21 +375,24 @@ async function syncGmailIntegration(
   }
 
   // Get emails received since last sync
+  // Use a slightly earlier timestamp to catch emails that might be missed due to timing
   const sinceDate = integration.last_sync_at
-    ? new Date(integration.last_sync_at)
+    ? new Date(new Date(integration.last_sync_at).getTime() - 60000) // 1 minute buffer
     : new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const sinceTimestamp = Math.floor(sinceDate.getTime() / 1000);
 
   try {
+    // Use query parameter instead of labelIds for more reliable filtering
+    // The 'in:inbox' query is more reliable than labelIds filter
     const { messages } = await listGmailMessages({
       accessToken,
-      query: `after:${sinceTimestamp}`,
+      query: `in:inbox after:${sinceTimestamp}`,
       maxResults: MAX_EMAILS_PER_SYNC,
-      labelIds: ['INBOX'],
+      // Don't use labelIds - it can cause issues with Gmail's filtering
     });
 
-    console.log(`[Gmail Sync] Found ${messages.length} messages to process for tenant ${integration.tenant_id}`);
+    console.log(`[Gmail Sync] Found ${messages.length} messages since ${sinceDate.toISOString()} for tenant ${integration.tenant_id}`);
 
     for (const messageMeta of messages) {
       // Check timeout before processing each email
@@ -400,11 +403,21 @@ async function syncGmailIntegration(
       }
 
       try {
-        // Check if already processed
+        // Get full message first to get the actual message ID
+        const fullMessage = await getGmailMessage({
+          accessToken,
+          messageId: messageMeta.id,
+          format: 'full',
+        });
+
+        // Parse email to get proper message ID
+        const parsedEmail = parseGmailEmail(fullMessage);
+
+        // Check if already processed using exact match on parsed message ID
         const existing = await sql`
           SELECT id FROM email_verdicts
           WHERE tenant_id = ${integration.tenant_id}
-          AND message_id LIKE ${`%${messageMeta.id}%`}
+          AND (message_id = ${parsedEmail.messageId} OR message_id LIKE ${`%${messageMeta.id}%`})
         `;
 
         if (existing.length > 0) {
@@ -412,15 +425,7 @@ async function syncGmailIntegration(
           continue;
         }
 
-        // Get full message
-        const fullMessage = await getGmailMessage({
-          accessToken,
-          messageId: messageMeta.id,
-          format: 'full',
-        });
-
-        // Parse and analyze (skip LLM for background sync - too slow)
-        const parsedEmail = parseGmailEmail(fullMessage);
+        // Analyze email (skip LLM for background sync - too slow)
         const verdict = await analyzeEmail(parsedEmail, integration.tenant_id, {
           skipLLM: true, // Skip LLM to stay within timeout
         });
