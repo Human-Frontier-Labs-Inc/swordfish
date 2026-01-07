@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
 
     // Find active integrations that need sync
     // Only get integrations where syncEnabled is true in config
+    // Use LEFT JOIN since personal users (personal_xxx) don't have tenants table entries
     const integrations = await sql`
       SELECT
         i.id,
@@ -44,9 +45,9 @@ export async function GET(request: NextRequest) {
         i.type,
         i.config,
         i.last_sync_at,
-        t.name as tenant_name
+        COALESCE(t.name, i.tenant_id) as tenant_name
       FROM integrations i
-      JOIN tenants t ON i.tenant_id = t.id
+      LEFT JOIN tenants t ON i.tenant_id = t.id
       WHERE i.status = 'connected'
       AND (i.config->>'syncEnabled')::boolean = true
       AND (i.last_sync_at IS NULL OR i.last_sync_at < NOW() - INTERVAL '5 minutes')
