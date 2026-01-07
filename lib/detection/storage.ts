@@ -21,6 +21,14 @@ export async function storeVerdict(
   verdict: EmailVerdict,
   email?: ParsedEmail
 ): Promise<string> {
+  // Truncate all string fields to fit database limits (use 250 to be safe with VARCHAR(255))
+  const safeMessageId = truncate(messageId, 250);
+  const safeSubject = truncate(email?.subject, 250);
+  const safeFromAddress = truncate(email?.from?.address, 250);
+  const safeFromDisplayName = truncate(email?.from?.displayName, 250);
+  const safeExplanation = truncate(verdict.explanation, 1000);
+  const safeRecommendation = truncate(verdict.recommendation, 1000);
+
   const result = await sql`
     INSERT INTO email_verdicts (
       tenant_id,
@@ -41,10 +49,10 @@ export async function storeVerdict(
       llm_tokens_used
     ) VALUES (
       ${tenantId},
-      ${messageId},
-      ${truncate(email?.subject, 100)},
-      ${truncate(email?.from?.address, 100)},
-      ${truncate(email?.from?.displayName, 100)},
+      ${safeMessageId},
+      ${safeSubject},
+      ${safeFromAddress},
+      ${safeFromDisplayName},
       ${email?.to ? JSON.stringify(email.to) : null},
       ${email?.date || null},
       ${verdict.verdict},
@@ -52,8 +60,8 @@ export async function storeVerdict(
       ${verdict.confidence},
       ${JSON.stringify(verdict.signals)},
       ${JSON.stringify(verdict.layerResults || {})},
-      ${verdict.explanation || null},
-      ${verdict.recommendation || null},
+      ${safeExplanation},
+      ${safeRecommendation},
       ${Math.round(verdict.processingTimeMs || 0)},
       ${verdict.llmTokensUsed || null}
     )
@@ -107,10 +115,10 @@ export async function storeThreat(
       received_at
     ) VALUES (
       ${tenantId},
-      ${email.messageId},
-      ${truncate(email.subject, 100)},
-      ${truncate(email.from.address, 100)},
-      ${truncate(email.to[0]?.address, 100) || ''},
+      ${truncate(email.messageId, 250)},
+      ${truncate(email.subject, 250)},
+      ${truncate(email.from.address, 250)},
+      ${truncate(email.to[0]?.address, 250) || ''},
       ${verdict.verdict},
       ${verdict.overallScore},
       ${JSON.stringify(signalTypes)},
