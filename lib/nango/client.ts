@@ -8,10 +8,26 @@
 import { Nango } from '@nangohq/node';
 import type { IntegrationType } from '@/lib/integrations/types';
 
-// Initialize Nango client
-// In production, NANGO_SECRET_KEY comes from Nango dashboard
-export const nango = new Nango({
-  secretKey: process.env.NANGO_SECRET_KEY!,
+// Lazy-initialized Nango client to prevent build-time initialization errors
+let _nango: Nango | null = null;
+
+function getNangoClient(): Nango {
+  if (!_nango) {
+    if (!process.env.NANGO_SECRET_KEY) {
+      throw new Error('NANGO_SECRET_KEY is not configured');
+    }
+    _nango = new Nango({
+      secretKey: process.env.NANGO_SECRET_KEY,
+    });
+  }
+  return _nango;
+}
+
+// Proxy for backward compatibility - lazily initializes on first use
+export const nango = new Proxy({} as Nango, {
+  get(_, prop) {
+    return (getNangoClient() as Record<string | symbol, unknown>)[prop];
+  },
 });
 
 /**
