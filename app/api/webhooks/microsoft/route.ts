@@ -5,15 +5,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { getO365Email, refreshO365Token } from '@/lib/integrations/o365';
+import { getO365Email, getO365AccessToken } from '@/lib/integrations/o365';
 import { parseGraphEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
 import { storeVerdict } from '@/lib/detection/storage';
 import { sendThreatNotification } from '@/lib/notifications/service';
 import { logAuditEvent } from '@/lib/db/audit';
-
-const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || '';
-const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || '';
 
 interface ChangeNotification {
   value: Array<{
@@ -74,10 +71,11 @@ export async function POST(request: NextRequest) {
 
         // Find the integration by subscription ID
         const integrations = await sql`
-          SELECT * FROM provider_connections
-          WHERE provider = 'microsoft'
-          AND status = 'active'
-          AND metadata->>'subscriptionId' = ${notification.subscriptionId}
+          SELECT id, tenant_id, nango_connection_id, config
+          FROM integrations
+          WHERE type = 'o365'
+          AND status = 'connected'
+          AND config->>'subscriptionId' = ${notification.subscriptionId}
         `;
 
         if (integrations.length === 0) {
@@ -87,30 +85,15 @@ export async function POST(request: NextRequest) {
 
         const integration = integrations[0];
         const tenantId = integration.tenant_id as string;
+        const nangoConnectionId = integration.nango_connection_id as string | null;
 
-        // Get fresh access token
-        let accessToken = integration.access_token as string;
-        const tokenExpiresAt = new Date(integration.token_expires_at as string);
-
-        if (tokenExpiresAt <= new Date()) {
-          const newTokens = await refreshO365Token({
-            refreshToken: integration.refresh_token as string,
-            clientId: MICROSOFT_CLIENT_ID,
-            clientSecret: MICROSOFT_CLIENT_SECRET,
-          });
-
-          accessToken = newTokens.accessToken;
-
-          await sql`
-            UPDATE provider_connections
-            SET
-              access_token = ${newTokens.accessToken},
-              refresh_token = ${newTokens.refreshToken || integration.refresh_token},
-              token_expires_at = ${newTokens.expiresAt.toISOString()},
-              updated_at = NOW()
-            WHERE id = ${integration.id}
-          `;
+        // Get fresh access token from Nango
+        if (!nangoConnectionId) {
+          console.warn(`No Nango connection for integration ${integration.id}`);
+          continue;
         }
+
+        const accessToken = await getO365AccessToken(nangoConnectionId);
 
         // Only process 'created' changes for new emails
         if (notification.changeType !== 'created') {

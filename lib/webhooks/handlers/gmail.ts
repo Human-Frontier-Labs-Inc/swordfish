@@ -4,16 +4,13 @@
  */
 
 import { sql } from '@/lib/db';
-import { getGmailMessage, getGmailHistory, refreshGmailToken } from '@/lib/integrations/gmail';
+import { getGmailMessage, getGmailHistory, getGmailAccessToken } from '@/lib/integrations/gmail';
 import { parseGmailEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
 import { storeVerdict } from '@/lib/detection/storage';
 import { sendThreatNotification } from '@/lib/notifications/service';
 import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
-
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
 interface GmailNotification {
   emailAddress: string;
@@ -52,7 +49,7 @@ export async function processGmailWebhook(
 
     // Find the integration for this email
     const integrations = await sql`
-      SELECT id, tenant_id, config
+      SELECT id, tenant_id, config, nango_connection_id
       FROM integrations
       WHERE type = 'gmail'
       AND status = 'connected'
@@ -71,35 +68,23 @@ export async function processGmailWebhook(
 
     const integration = integrations[0];
     const tenantId = integration.tenant_id as string;
+    const nangoConnectionId = integration.nango_connection_id as string | null;
     const config = integration.config as {
-      accessToken: string;
-      refreshToken: string;
       historyId: string;
-      tokenExpiresAt: string;
     };
 
-    // Refresh token if needed
-    let accessToken = config.accessToken;
-    if (new Date(config.tokenExpiresAt) <= new Date()) {
-      console.log('[Gmail Webhook] Token expired, refreshing...');
-      const newTokens = await refreshGmailToken({
-        refreshToken: config.refreshToken,
-        clientId: GOOGLE_CLIENT_ID,
-        clientSecret: GOOGLE_CLIENT_SECRET,
-      });
-
-      accessToken = newTokens.accessToken;
-
-      await sql`
-        UPDATE integrations
-        SET config = config || ${JSON.stringify({
-          accessToken: newTokens.accessToken,
-          tokenExpiresAt: newTokens.expiresAt.toISOString(),
-        })}::jsonb,
-        updated_at = NOW()
-        WHERE id = ${integration.id}
-      `;
+    // Get fresh token from Nango
+    if (!nangoConnectionId) {
+      return {
+        success: false,
+        messagesProcessed: 0,
+        threatsFound: 0,
+        errors: ['No Nango connection configured'],
+        processingTimeMs: Date.now() - startTime,
+      };
     }
+
+    const accessToken = await getGmailAccessToken(nangoConnectionId);
 
     // Get history since last sync
     const startHistoryId = config.historyId || historyId;

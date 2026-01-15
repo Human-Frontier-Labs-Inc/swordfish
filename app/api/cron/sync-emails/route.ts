@@ -19,6 +19,7 @@ interface IntegrationRecord {
   tenant_id: string;
   type: string;
   config: Record<string, unknown>;
+  nango_connection_id: string | null;
   last_sync_at: Date | null;
   tenant_name: string;
 }
@@ -44,12 +45,14 @@ export async function GET(request: NextRequest) {
         i.tenant_id,
         i.type,
         i.config,
+        i.nango_connection_id,
         i.last_sync_at,
         COALESCE(t.name, i.tenant_id) as tenant_name
       FROM integrations i
       LEFT JOIN tenants t ON i.tenant_id = t.id
       WHERE i.status = 'connected'
       AND (i.config->>'syncEnabled')::boolean = true
+      AND i.nango_connection_id IS NOT NULL
       AND (i.last_sync_at IS NULL OR i.last_sync_at < NOW() - INTERVAL '5 minutes')
       ORDER BY i.last_sync_at NULLS FIRST
       LIMIT ${MAX_INTEGRATIONS_PER_RUN}
@@ -78,6 +81,7 @@ export async function GET(request: NextRequest) {
           tenant_id: integration.tenant_id,
           type: integration.type,
           config: integration.config,
+          nango_connection_id: integration.nango_connection_id,
           last_sync_at: integration.last_sync_at,
         });
 

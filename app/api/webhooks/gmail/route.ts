@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { getGmailMessage, getGmailHistory, refreshGmailToken } from '@/lib/integrations/gmail';
+import { getGmailMessage, getGmailHistory, getGmailAccessToken } from '@/lib/integrations/gmail';
 import { parseGmailEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
 import { storeVerdict } from '@/lib/detection/storage';
@@ -14,8 +14,6 @@ import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
 import { validateGooglePubSub, checkRateLimit } from '@/lib/webhooks/validation';
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 const WEBHOOK_AUDIENCE = process.env.GOOGLE_WEBHOOK_AUDIENCE;
 
 // Export for Vercel configuration
@@ -79,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     // Find the integration for this email
     const integrations = await sql`
-      SELECT id, tenant_id, config
+      SELECT id, tenant_id, config, nango_connection_id
       FROM integrations
       WHERE type = 'gmail'
       AND status = 'connected'
@@ -93,36 +91,18 @@ export async function POST(request: NextRequest) {
 
     const integration = integrations[0];
     const tenantId = integration.tenant_id as string;
+    const nangoConnectionId = integration.nango_connection_id as string | null;
     const config = integration.config as {
-      accessToken: string;
-      refreshToken: string;
       historyId: string;
-      tokenExpiresAt: string;
     };
 
-    // Check if token needs refresh
-    let accessToken = config.accessToken;
-    if (new Date(config.tokenExpiresAt) <= new Date()) {
-      console.log('Token expired, refreshing...');
-      const newTokens = await refreshGmailToken({
-        refreshToken: config.refreshToken,
-        clientId: GOOGLE_CLIENT_ID,
-        clientSecret: GOOGLE_CLIENT_SECRET,
-      });
-
-      accessToken = newTokens.accessToken;
-
-      // Update stored tokens
-      await sql`
-        UPDATE integrations
-        SET config = config || ${JSON.stringify({
-          accessToken: newTokens.accessToken,
-          tokenExpiresAt: newTokens.expiresAt.toISOString(),
-        })}::jsonb,
-        updated_at = NOW()
-        WHERE id = ${integration.id}
-      `;
+    // Get fresh token from Nango (handles refresh automatically)
+    if (!nangoConnectionId) {
+      console.warn(`No Nango connection for integration ${integration.id}`);
+      return NextResponse.json({ error: 'No Nango connection configured' }, { status: 500 });
     }
+
+    const accessToken = await getGmailAccessToken(nangoConnectionId);
 
     // Get history since last sync
     const startHistoryId = config.historyId || historyId;

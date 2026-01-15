@@ -1,13 +1,26 @@
 /**
  * Gmail / Google Workspace Integration
- * Handles OAuth flow and Gmail API interactions
+ * Handles Gmail API interactions
+ *
+ * Token management is handled by Nango - use getGmailAccessToken() to get a fresh token.
  */
 
-import type { GmailConfig, OAuthTokens } from './types';
+import type { OAuthTokens } from './types';
+import { getAccessToken } from '@/lib/nango/client';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GMAIL_API_URL = 'https://gmail.googleapis.com/gmail/v1';
+
+/**
+ * Get a fresh Gmail access token from Nango
+ * Use this instead of storing/refreshing tokens yourself
+ *
+ * @param nangoConnectionId - The Nango connection ID from the integrations table
+ */
+export async function getGmailAccessToken(nangoConnectionId: string): Promise<string> {
+  return getAccessToken('gmail', nangoConnectionId);
+}
 
 // Required scopes for email access
 const SCOPES = [

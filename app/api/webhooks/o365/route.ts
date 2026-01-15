@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { getO365Email, refreshO365Token } from '@/lib/integrations/o365';
+import { getO365Email, getO365AccessToken } from '@/lib/integrations/o365';
 import { parseGraphEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
 import { storeVerdict } from '@/lib/detection/storage';
@@ -14,8 +14,6 @@ import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
 import { validateMicrosoftGraph, checkRateLimit } from '@/lib/webhooks/validation';
 
-const O365_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
-const O365_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
 const MICROSOFT_WEBHOOK_SECRET = process.env.MICROSOFT_WEBHOOK_SECRET || '';
 
 // Export for Vercel configuration
@@ -113,7 +111,7 @@ async function processNotification(notification: GraphNotification['value'][0]) 
 
   // Find integration by subscription ID
   const integrations = await sql`
-    SELECT id, tenant_id, config
+    SELECT id, tenant_id, config, nango_connection_id
     FROM integrations
     WHERE type = 'o365'
     AND status = 'connected'
@@ -123,7 +121,7 @@ async function processNotification(notification: GraphNotification['value'][0]) 
   if (integrations.length === 0) {
     // Try finding by client state (tenant ID)
     const byState = await sql`
-      SELECT id, tenant_id, config
+      SELECT id, tenant_id, config, nango_connection_id
       FROM integrations
       WHERE type = 'o365'
       AND status = 'connected'
@@ -140,12 +138,7 @@ async function processNotification(notification: GraphNotification['value'][0]) 
 
   const integration = integrations[0];
   const tenantId = integration.tenant_id as string;
-  const config = integration.config as {
-    accessToken: string;
-    refreshToken: string;
-    tokenExpiresAt: string;
-    clientId: string;
-  };
+  const nangoConnectionId = integration.nango_connection_id as string | null;
 
   // Extract message ID from resource path
   // Resource format: "Users/{userId}/Messages/{messageId}"
@@ -156,30 +149,13 @@ async function processNotification(notification: GraphNotification['value'][0]) 
   }
   const messageId = messageIdMatch[1];
 
-  // Check if token needs refresh
-  let accessToken = config.accessToken;
-  if (new Date(config.tokenExpiresAt) <= new Date()) {
-    console.log('Token expired, refreshing...');
-    const newTokens = await refreshO365Token({
-      refreshToken: config.refreshToken,
-      clientId: O365_CLIENT_ID,
-      clientSecret: O365_CLIENT_SECRET,
-    });
-
-    accessToken = newTokens.accessToken;
-
-    // Update stored tokens
-    await sql`
-      UPDATE integrations
-      SET config = config || ${JSON.stringify({
-        accessToken: newTokens.accessToken,
-        refreshToken: newTokens.refreshToken || config.refreshToken,
-        tokenExpiresAt: newTokens.expiresAt.toISOString(),
-      })}::jsonb,
-      updated_at = NOW()
-      WHERE id = ${integration.id}
-    `;
+  // Get fresh token from Nango
+  if (!nangoConnectionId) {
+    console.warn(`No Nango connection for integration ${integration.id}`);
+    return;
   }
+
+  const accessToken = await getO365AccessToken(nangoConnectionId);
 
   // Get the email
   const message = await getO365Email({
