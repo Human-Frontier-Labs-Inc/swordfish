@@ -4,16 +4,13 @@
  */
 
 import { sql } from '@/lib/db';
-import { getO365Email, refreshO365Token } from '@/lib/integrations/o365';
+import { getO365Email, getO365AccessToken } from '@/lib/integrations/o365';
 import { parseGraphEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
 import { storeVerdict } from '@/lib/detection/storage';
 import { sendThreatNotification } from '@/lib/notifications/service';
 import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
-
-const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
-const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
 
 interface GraphNotification {
   subscriptionId: string;
@@ -100,7 +97,7 @@ async function processNotification(notification: GraphNotification): Promise<{
 
   // Find integration by subscription ID or client state (tenant ID)
   let integrations = await sql`
-    SELECT id, tenant_id, config
+    SELECT id, tenant_id, config, nango_connection_id
     FROM integrations
     WHERE type = 'o365'
     AND status = 'connected'
@@ -110,7 +107,7 @@ async function processNotification(notification: GraphNotification): Promise<{
   if (integrations.length === 0 && clientState) {
     // Try finding by client state (often contains tenant ID)
     integrations = await sql`
-      SELECT id, tenant_id, config
+      SELECT id, tenant_id, config, nango_connection_id
       FROM integrations
       WHERE type = 'o365'
       AND status = 'connected'
@@ -128,11 +125,7 @@ async function processNotification(notification: GraphNotification): Promise<{
 
   const integration = integrations[0];
   const tenantId = integration.tenant_id as string;
-  const config = integration.config as {
-    accessToken: string;
-    refreshToken: string;
-    tokenExpiresAt: string;
-  };
+  const nangoConnectionId = integration.nango_connection_id as string | null;
 
   // Extract message ID from resource path
   const messageIdMatch = resource.match(/Messages\/(.+)$/);
@@ -156,29 +149,16 @@ async function processNotification(notification: GraphNotification): Promise<{
     return { processed: false, threatFound: false };
   }
 
-  // Refresh token if needed
-  let accessToken = config.accessToken;
-  if (new Date(config.tokenExpiresAt) <= new Date()) {
-    console.log('[Microsoft Webhook] Token expired, refreshing...');
-    const newTokens = await refreshO365Token({
-      refreshToken: config.refreshToken,
-      clientId: MICROSOFT_CLIENT_ID,
-      clientSecret: MICROSOFT_CLIENT_SECRET,
-    });
-
-    accessToken = newTokens.accessToken;
-
-    await sql`
-      UPDATE integrations
-      SET config = config || ${JSON.stringify({
-        accessToken: newTokens.accessToken,
-        refreshToken: newTokens.refreshToken || config.refreshToken,
-        tokenExpiresAt: newTokens.expiresAt.toISOString(),
-      })}::jsonb,
-      updated_at = NOW()
-      WHERE id = ${integration.id}
-    `;
+  // Get fresh token from Nango
+  if (!nangoConnectionId) {
+    return {
+      processed: false,
+      threatFound: false,
+      error: 'No Nango connection configured',
+    };
   }
+
+  const accessToken = await getO365AccessToken(nangoConnectionId);
 
   // Get full email
   const fullEmail = await getO365Email({

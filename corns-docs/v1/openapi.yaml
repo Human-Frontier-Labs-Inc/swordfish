@@ -1,0 +1,672 @@
+openapi: 3.1.0
+info:
+  title: Swordfish API
+  description: |
+    REST API for Swordfish Email Security Platform.
+
+    ## Authentication
+
+    All API requests require an API key passed in the `X-API-Key` header:
+
+    ```
+    X-API-Key: sk_live_your_api_key_here
+    ```
+
+    API keys can be created in the Swordfish dashboard under Settings > API Keys.
+
+    ## Rate Limiting
+
+    Rate limits are enforced based on your plan:
+    - Starter: 100 requests/minute
+    - Pro: 500 requests/minute
+    - Enterprise: 2,000 requests/minute
+
+    Rate limit headers are included in all responses:
+    - `X-RateLimit-Limit`: Maximum requests per window
+    - `X-RateLimit-Remaining`: Requests remaining in current window
+    - `X-RateLimit-Reset`: Unix timestamp when the window resets
+
+    ## Pagination
+
+    List endpoints support pagination via query parameters:
+    - `page`: Page number (default: 1)
+    - `pageSize`: Items per page (default: 20, max: 100)
+
+    Paginated responses include metadata:
+    ```json
+    {
+      "data": [...],
+      "pagination": {
+        "page": 1,
+        "pageSize": 20,
+        "total": 150,
+        "totalPages": 8
+      }
+    }
+    ```
+
+  version: 1.0.0
+  contact:
+    name: Swordfish Support
+    email: support@swordfish.dev
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.swordfish.dev/v1
+    description: Production server
+  - url: http://localhost:3000/api/v1
+    description: Development server
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Threats
+    description: Email threat detection and management
+  - name: Quarantine
+    description: Quarantined email management
+  - name: Policies
+    description: Security policy configuration
+  - name: Webhooks
+    description: Webhook configuration and management
+  - name: Integrations
+    description: Third-party integrations (Splunk, etc.)
+
+paths:
+  /threats:
+    get:
+      summary: List threats
+      description: Retrieve a paginated list of detected email threats
+      operationId: listThreats
+      tags:
+        - Threats
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: verdict
+          in: query
+          description: Filter by verdict
+          schema:
+            type: string
+            enum: [pass, quarantine, block]
+        - name: severity
+          in: query
+          description: Filter by severity
+          schema:
+            type: string
+            enum: [low, medium, high, critical]
+        - name: startDate
+          in: query
+          description: Filter by start date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          description: Filter by end date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: search
+          in: query
+          description: Search in subject and sender
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threats:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Threat'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /threats/{id}:
+    get:
+      summary: Get threat details
+      description: Retrieve detailed information about a specific threat
+      operationId: getThreat
+      tags:
+        - Threats
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threat:
+                    $ref: '#/components/schemas/ThreatDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Take action on threat
+      description: Release, delete, or block a threat
+      operationId: updateThreat
+      tags:
+        - Threats
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - action
+              properties:
+                action:
+                  type: string
+                  enum: [release, delete, block]
+      responses:
+        '200':
+          description: Action taken successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  action:
+                    type: string
+                  success:
+                    type: boolean
+
+  /quarantine:
+    get:
+      summary: List quarantined items
+      description: Retrieve a paginated list of quarantined emails
+      operationId: listQuarantine
+      tags:
+        - Quarantine
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [pending, released, deleted]
+            default: pending
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuarantineItem'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      summary: Bulk quarantine action
+      description: Perform bulk actions on quarantined items
+      operationId: bulkQuarantineAction
+      tags:
+        - Quarantine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+                - action
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 100
+                action:
+                  type: string
+                  enum: [release, delete]
+      responses:
+        '200':
+          description: Bulk action completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  action:
+                    type: string
+                  processed:
+                    type: integer
+                  ids:
+                    type: array
+                    items:
+                      type: string
+
+  /policies:
+    get:
+      summary: List policies
+      description: Retrieve a paginated list of security policies
+      operationId: listPolicies
+      tags:
+        - Policies
+      parameters:
+        - name: type
+          in: query
+          description: Filter by policy type
+          schema:
+            type: string
+            enum: [allowlist, blocklist, rule]
+        - name: active
+          in: query
+          description: Filter by active status
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policies:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Policy'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      summary: Create policy
+      description: Create a new security policy
+      operationId: createPolicy
+      tags:
+        - Policies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - target
+                - value
+                - action
+              properties:
+                type:
+                  type: string
+                  enum: [allowlist, blocklist, rule]
+                target:
+                  type: string
+                  enum: [domain, email, ip, pattern]
+                value:
+                  type: string
+                action:
+                  type: string
+                  enum: [allow, block, quarantine]
+                priority:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                  default: 50
+                isActive:
+                  type: boolean
+                  default: true
+      responses:
+        '201':
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/Policy'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /policies/{id}:
+    get:
+      summary: Get policy
+      description: Retrieve a specific policy
+      operationId: getPolicy
+      tags:
+        - Policies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/Policy'
+
+    patch:
+      summary: Update policy
+      description: Update an existing policy
+      operationId: updatePolicy
+      tags:
+        - Policies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                value:
+                  type: string
+                action:
+                  type: string
+                  enum: [allow, block, quarantine]
+                priority:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Policy updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/Policy'
+
+    delete:
+      summary: Delete policy
+      description: Delete a policy
+      operationId: deletePolicy
+      tags:
+        - Policies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Policy deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  id:
+                    type: string
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+
+  schemas:
+    Threat:
+      type: object
+      properties:
+        id:
+          type: string
+        messageId:
+          type: string
+        subject:
+          type: string
+        from:
+          type: object
+          properties:
+            address:
+              type: string
+            displayName:
+              type: string
+        to:
+          type: array
+          items:
+            type: string
+        receivedAt:
+          type: string
+          format: date-time
+        verdict:
+          type: string
+          enum: [pass, quarantine, block]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 100
+        reason:
+          type: string
+        signals:
+          type: array
+          items:
+            type: string
+        classification:
+          type: string
+        action:
+          type: string
+        actionTakenAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    ThreatDetail:
+      allOf:
+        - $ref: '#/components/schemas/Threat'
+        - type: object
+          properties:
+            analysis:
+              type: object
+              properties:
+                deterministicScore:
+                  type: number
+                mlClassification:
+                  type: string
+                mlConfidence:
+                  type: number
+                llmRecommendation:
+                  type: string
+                llmExplanation:
+                  type: string
+            quarantine:
+              type: object
+              nullable: true
+              properties:
+                status:
+                  type: string
+                releasedAt:
+                  type: string
+                  format: date-time
+                releasedBy:
+                  type: string
+
+    QuarantineItem:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending, released, deleted]
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        releasedAt:
+          type: string
+          format: date-time
+        releasedBy:
+          type: string
+        threat:
+          $ref: '#/components/schemas/Threat'
+
+    Policy:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [allowlist, blocklist, rule]
+        target:
+          type: string
+          enum: [domain, email, ip, pattern]
+        value:
+          type: string
+        action:
+          type: string
+          enum: [allow, block, quarantine]
+        priority:
+          type: integer
+        isActive:
+          type: boolean
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Invalid or missing API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Unauthorized
+            message: Invalid API key
+            code: UNAUTHORIZED
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Not Found
+            message: Resource not found
+            code: NOT_FOUND
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until rate limit resets
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Rate limit exceeded
+            message: Too many requests. Please wait 30 seconds.
+            retryAfter: 30
+
+    Conflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Conflict
+            message: A policy with this type, target, and value already exists
+            code: CONFLICT

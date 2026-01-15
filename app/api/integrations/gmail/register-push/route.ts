@@ -6,11 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
-import { refreshGmailToken } from '@/lib/integrations/gmail';
+import { getGmailAccessToken } from '@/lib/integrations/gmail';
 import { createGmailSubscription } from '@/lib/webhooks/subscriptions';
-
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     // Get Gmail integration
     const integrations = await sql`
-      SELECT id, config
+      SELECT id, config, nango_connection_id
       FROM integrations
       WHERE tenant_id = ${tenantId}
       AND type = 'gmail'
@@ -47,10 +44,8 @@ export async function POST(request: NextRequest) {
     }
 
     const integration = integrations[0];
+    const nangoConnectionId = integration.nango_connection_id as string | null;
     const config = integration.config as {
-      accessToken: string;
-      refreshToken: string;
-      tokenExpiresAt: string;
       watchExpiration?: string;
     };
 
@@ -63,27 +58,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Refresh token if needed
-    let accessToken = config.accessToken;
-    if (new Date(config.tokenExpiresAt) <= new Date()) {
-      const newTokens = await refreshGmailToken({
-        refreshToken: config.refreshToken,
-        clientId: GOOGLE_CLIENT_ID,
-        clientSecret: GOOGLE_CLIENT_SECRET,
-      });
-      accessToken = newTokens.accessToken;
-
-      // Update tokens in database
-      await sql`
-        UPDATE integrations
-        SET config = config || ${JSON.stringify({
-          accessToken: newTokens.accessToken,
-          tokenExpiresAt: newTokens.expiresAt.toISOString(),
-        })}::jsonb,
-        updated_at = NOW()
-        WHERE id = ${integration.id}
-      `;
+    // Get fresh token from Nango
+    if (!nangoConnectionId) {
+      return NextResponse.json(
+        { error: 'No Nango connection configured' },
+        { status: 500 }
+      );
     }
+
+    const accessToken = await getGmailAccessToken(nangoConnectionId);
 
     // Register push notifications
     const subscription = await createGmailSubscription({

@@ -1,11 +1,15 @@
 /**
  * Quarantine Service
  * Handles moving, releasing, and deleting quarantined emails
+ *
+ * Token management is handled by Nango - we get fresh tokens via the integration modules.
  */
 
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 import type { EmailVerdict } from '@/lib/detection/types';
+import { getO365AccessToken } from '@/lib/integrations/o365';
+import { getGmailAccessToken } from '@/lib/integrations/gmail';
 
 export type QuarantineAction = 'quarantine' | 'release' | 'delete' | 'report_false_positive';
 
@@ -413,7 +417,11 @@ async function moveToMicrosoftQuarantine(
     throw new Error('Microsoft integration not configured');
   }
 
-  const accessToken = await refreshMicrosoftToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Microsoft integration');
+  }
+
+  const accessToken = await getO365AccessToken(integration.nango_connection_id);
 
   // Get or create quarantine folder
   const quarantineFolderId = await getOrCreateMicrosoftFolder(
@@ -454,7 +462,11 @@ async function releaseFromMicrosoftQuarantine(
     throw new Error('Microsoft integration not configured');
   }
 
-  const accessToken = await refreshMicrosoftToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Microsoft integration');
+  }
+
+  const accessToken = await getO365AccessToken(integration.nango_connection_id);
 
   // Move message back to inbox
   const response = await fetch(
@@ -489,7 +501,11 @@ async function deleteFromMicrosoft(
     throw new Error('Microsoft integration not configured');
   }
 
-  const accessToken = await refreshMicrosoftToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Microsoft integration');
+  }
+
+  const accessToken = await getO365AccessToken(integration.nango_connection_id);
 
   const response = await fetch(
     `https://graph.microsoft.com/v1.0/me/messages/${messageId}`,
@@ -519,7 +535,11 @@ async function moveToGmailQuarantine(
     throw new Error('Gmail integration not configured');
   }
 
-  const accessToken = await refreshGoogleToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Gmail integration');
+  }
+
+  const accessToken = await getGmailAccessToken(integration.nango_connection_id);
 
   // Get or create quarantine label
   const quarantineLabelId = await getOrCreateGmailLabel(
@@ -561,7 +581,11 @@ async function releaseFromGmailQuarantine(
     throw new Error('Gmail integration not configured');
   }
 
-  const accessToken = await refreshGoogleToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Gmail integration');
+  }
+
+  const accessToken = await getGmailAccessToken(integration.nango_connection_id);
 
   const quarantineLabelId = await getOrCreateGmailLabel(
     accessToken,
@@ -602,7 +626,11 @@ async function deleteFromGmail(
     throw new Error('Gmail integration not configured');
   }
 
-  const accessToken = await refreshGoogleToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Gmail integration');
+  }
+
+  const accessToken = await getGmailAccessToken(integration.nango_connection_id);
 
   const response = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
@@ -624,94 +652,23 @@ async function deleteFromGmail(
 // Helper functions
 // ============================================
 
-async function getIntegration(tenantId: string, provider: string) {
+interface IntegrationRecord {
+  id: string;
+  nango_connection_id: string | null;
+}
+
+async function getIntegration(tenantId: string, provider: 'microsoft' | 'google'): Promise<IntegrationRecord | null> {
+  // Map provider name to integration type
+  const integrationType = provider === 'microsoft' ? 'o365' : 'gmail';
+
   const integrations = await sql`
-    SELECT * FROM integrations
+    SELECT id, nango_connection_id FROM integrations
     WHERE tenant_id = ${tenantId}
-    AND provider = ${provider}
-    AND status = 'active'
+    AND type = ${integrationType}
+    AND status = 'connected'
     LIMIT 1
   `;
-  return integrations[0] || null;
-}
-
-async function refreshMicrosoftToken(
-  integration: Record<string, unknown>
-): Promise<string> {
-  // Check if token is still valid
-  const expiresAt = new Date(integration.token_expires_at as string);
-  if (expiresAt > new Date()) {
-    return integration.access_token as string;
-  }
-
-  // Refresh token
-  const response = await fetch(
-    'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: process.env.MICROSOFT_CLIENT_ID!,
-        client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
-        refresh_token: integration.refresh_token as string,
-        grant_type: 'refresh_token',
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error('Failed to refresh Microsoft token');
-  }
-
-  const tokens = await response.json();
-
-  // Update stored tokens
-  await sql`
-    UPDATE integrations
-    SET
-      access_token = ${tokens.access_token},
-      refresh_token = ${tokens.refresh_token || integration.refresh_token},
-      token_expires_at = ${new Date(Date.now() + tokens.expires_in * 1000).toISOString()}
-    WHERE id = ${integration.id}
-  `;
-
-  return tokens.access_token;
-}
-
-async function refreshGoogleToken(
-  integration: Record<string, unknown>
-): Promise<string> {
-  const expiresAt = new Date(integration.token_expires_at as string);
-  if (expiresAt > new Date()) {
-    return integration.access_token as string;
-  }
-
-  const response = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      refresh_token: integration.refresh_token as string,
-      grant_type: 'refresh_token',
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to refresh Google token');
-  }
-
-  const tokens = await response.json();
-
-  await sql`
-    UPDATE integrations
-    SET
-      access_token = ${tokens.access_token},
-      token_expires_at = ${new Date(Date.now() + tokens.expires_in * 1000).toISOString()}
-    WHERE id = ${integration.id}
-  `;
-
-  return tokens.access_token;
+  return integrations[0] as IntegrationRecord || null;
 }
 
 async function getOrCreateMicrosoftFolder(

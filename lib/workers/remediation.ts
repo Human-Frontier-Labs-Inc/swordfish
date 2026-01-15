@@ -7,23 +7,16 @@ import { sql } from '@/lib/db';
 import {
   moveO365Email,
   getOrCreateQuarantineFolder,
-  getO365Email,
-  refreshO365Token,
+  getO365AccessToken,
 } from '@/lib/integrations/o365';
 import {
   modifyGmailMessage,
   trashGmailMessage,
   getOrCreateQuarantineLabel,
-  getGmailMessage,
-  refreshGmailToken,
+  getGmailAccessToken,
 } from '@/lib/integrations/gmail';
 import { logAuditEvent } from '@/lib/db/audit';
 import { sendNotification } from '@/lib/notifications/service';
-
-const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
-const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
 export type RemediationAction = 'quarantine' | 'release' | 'delete' | 'block';
 
@@ -51,6 +44,7 @@ interface IntegrationRecord {
   tenant_id: string;
   type: string;
   config: Record<string, unknown>;
+  nango_connection_id: string | null;
 }
 
 /**
@@ -66,11 +60,11 @@ export async function quarantineEmail(params: {
 
   // Get threat details
   const threats = await sql`
-    SELECT t.*, i.type as integration_type, i.config as integration_config
+    SELECT t.*, i.type as integration_type, i.nango_connection_id
     FROM threats t
     JOIN integrations i ON t.integration_id = i.id
     WHERE t.id = ${threatId} AND t.tenant_id = ${tenantId}
-  ` as Array<ThreatRecord & { integration_config: Record<string, unknown> }>;
+  ` as Array<ThreatRecord & { nango_connection_id: string | null }>;
 
   if (threats.length === 0) {
     return {
@@ -86,11 +80,22 @@ export async function quarantineEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
+  if (!threat.nango_connection_id) {
+    return {
+      success: false,
+      action: 'quarantine',
+      messageId: threat.message_id,
+      integrationId: threat.integration_id,
+      integrationType: threat.integration_type,
+      error: 'No Nango connection configured',
+    };
+  }
+
   try {
     if (threat.integration_type === 'o365') {
-      await quarantineO365Email(threat.integration_id, externalMessageId, threat.integration_config);
+      await quarantineO365Email(threat.nango_connection_id, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
-      await quarantineGmailEmail(threat.integration_id, externalMessageId, threat.integration_config);
+      await quarantineGmailEmail(threat.nango_connection_id, externalMessageId);
     }
 
     // Update threat status
@@ -154,11 +159,11 @@ export async function releaseEmail(params: {
   const { tenantId, threatId, actorId, actorEmail } = params;
 
   const threats = await sql`
-    SELECT t.*, i.type as integration_type, i.config as integration_config
+    SELECT t.*, i.type as integration_type, i.nango_connection_id
     FROM threats t
     JOIN integrations i ON t.integration_id = i.id
     WHERE t.id = ${threatId} AND t.tenant_id = ${tenantId}
-  ` as Array<ThreatRecord & { integration_config: Record<string, unknown> }>;
+  ` as Array<ThreatRecord & { nango_connection_id: string | null }>;
 
   if (threats.length === 0) {
     return {
@@ -174,11 +179,22 @@ export async function releaseEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
+  if (!threat.nango_connection_id) {
+    return {
+      success: false,
+      action: 'release',
+      messageId: threat.message_id,
+      integrationId: threat.integration_id,
+      integrationType: threat.integration_type,
+      error: 'No Nango connection configured',
+    };
+  }
+
   try {
     if (threat.integration_type === 'o365') {
-      await releaseO365Email(threat.integration_id, externalMessageId, threat.integration_config);
+      await releaseO365Email(threat.nango_connection_id, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
-      await releaseGmailEmail(threat.integration_id, externalMessageId, threat.integration_config);
+      await releaseGmailEmail(threat.nango_connection_id, externalMessageId);
     }
 
     // Update threat status
@@ -241,11 +257,11 @@ export async function deleteEmail(params: {
   const { tenantId, threatId, actorId, actorEmail } = params;
 
   const threats = await sql`
-    SELECT t.*, i.type as integration_type, i.config as integration_config
+    SELECT t.*, i.type as integration_type, i.nango_connection_id
     FROM threats t
     JOIN integrations i ON t.integration_id = i.id
     WHERE t.id = ${threatId} AND t.tenant_id = ${tenantId}
-  ` as Array<ThreatRecord & { integration_config: Record<string, unknown> }>;
+  ` as Array<ThreatRecord & { nango_connection_id: string | null }>;
 
   if (threats.length === 0) {
     return {
@@ -261,11 +277,22 @@ export async function deleteEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
+  if (!threat.nango_connection_id) {
+    return {
+      success: false,
+      action: 'delete',
+      messageId: threat.message_id,
+      integrationId: threat.integration_id,
+      integrationType: threat.integration_type,
+      error: 'No Nango connection configured',
+    };
+  }
+
   try {
     if (threat.integration_type === 'o365') {
-      await deleteO365Email(threat.integration_id, externalMessageId, threat.integration_config);
+      await deleteO365Email(threat.nango_connection_id, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
-      await deleteGmailEmail(threat.integration_id, externalMessageId, threat.integration_config);
+      await deleteGmailEmail(threat.nango_connection_id, externalMessageId);
     }
 
     // Update threat status
@@ -353,46 +380,11 @@ export async function batchRemediate(params: {
 // O365-specific remediation functions
 // ============================================
 
-async function getO365AccessToken(
-  integrationId: string,
-  config: Record<string, unknown>
-): Promise<string> {
-  const accessToken = config.accessToken as string;
-  const refreshToken = config.refreshToken as string;
-  const tokenExpiresAt = config.tokenExpiresAt as string;
-
-  if (new Date(tokenExpiresAt) > new Date()) {
-    return accessToken;
-  }
-
-  // Refresh the token
-  const newTokens = await refreshO365Token({
-    refreshToken,
-    clientId: MICROSOFT_CLIENT_ID,
-    clientSecret: MICROSOFT_CLIENT_SECRET,
-  });
-
-  // Update stored tokens
-  await sql`
-    UPDATE integrations
-    SET config = config || ${JSON.stringify({
-      accessToken: newTokens.accessToken,
-      refreshToken: newTokens.refreshToken || refreshToken,
-      tokenExpiresAt: newTokens.expiresAt.toISOString(),
-    })}::jsonb,
-    updated_at = NOW()
-    WHERE id = ${integrationId}
-  `;
-
-  return newTokens.accessToken;
-}
-
 async function quarantineO365Email(
-  integrationId: string,
-  messageId: string,
-  config: Record<string, unknown>
+  nangoConnectionId: string,
+  messageId: string
 ): Promise<void> {
-  const accessToken = await getO365AccessToken(integrationId, config);
+  const accessToken = await getO365AccessToken(nangoConnectionId);
   const quarantineFolderId = await getOrCreateQuarantineFolder(accessToken);
 
   await moveO365Email({
@@ -403,11 +395,10 @@ async function quarantineO365Email(
 }
 
 async function releaseO365Email(
-  integrationId: string,
-  messageId: string,
-  config: Record<string, unknown>
+  nangoConnectionId: string,
+  messageId: string
 ): Promise<void> {
-  const accessToken = await getO365AccessToken(integrationId, config);
+  const accessToken = await getO365AccessToken(nangoConnectionId);
 
   // Move back to inbox
   await moveO365Email({
@@ -418,11 +409,10 @@ async function releaseO365Email(
 }
 
 async function deleteO365Email(
-  integrationId: string,
-  messageId: string,
-  config: Record<string, unknown>
+  nangoConnectionId: string,
+  messageId: string
 ): Promise<void> {
-  const accessToken = await getO365AccessToken(integrationId, config);
+  const accessToken = await getO365AccessToken(nangoConnectionId);
 
   // Move to deleted items (Graph API requires this before permanent delete)
   await moveO365Email({
@@ -436,45 +426,11 @@ async function deleteO365Email(
 // Gmail-specific remediation functions
 // ============================================
 
-async function getGmailAccessToken(
-  integrationId: string,
-  config: Record<string, unknown>
-): Promise<string> {
-  const accessToken = config.accessToken as string;
-  const refreshToken = config.refreshToken as string;
-  const tokenExpiresAt = config.tokenExpiresAt as string;
-
-  if (new Date(tokenExpiresAt) > new Date()) {
-    return accessToken;
-  }
-
-  // Refresh the token
-  const newTokens = await refreshGmailToken({
-    refreshToken,
-    clientId: GOOGLE_CLIENT_ID,
-    clientSecret: GOOGLE_CLIENT_SECRET,
-  });
-
-  // Update stored tokens
-  await sql`
-    UPDATE integrations
-    SET config = config || ${JSON.stringify({
-      accessToken: newTokens.accessToken,
-      tokenExpiresAt: newTokens.expiresAt.toISOString(),
-    })}::jsonb,
-    updated_at = NOW()
-    WHERE id = ${integrationId}
-  `;
-
-  return newTokens.accessToken;
-}
-
 async function quarantineGmailEmail(
-  integrationId: string,
-  messageId: string,
-  config: Record<string, unknown>
+  nangoConnectionId: string,
+  messageId: string
 ): Promise<void> {
-  const accessToken = await getGmailAccessToken(integrationId, config);
+  const accessToken = await getGmailAccessToken(nangoConnectionId);
   const quarantineLabelId = await getOrCreateQuarantineLabel(accessToken);
 
   // Add quarantine label and remove from INBOX
@@ -487,11 +443,10 @@ async function quarantineGmailEmail(
 }
 
 async function releaseGmailEmail(
-  integrationId: string,
-  messageId: string,
-  config: Record<string, unknown>
+  nangoConnectionId: string,
+  messageId: string
 ): Promise<void> {
-  const accessToken = await getGmailAccessToken(integrationId, config);
+  const accessToken = await getGmailAccessToken(nangoConnectionId);
   const quarantineLabelId = await getOrCreateQuarantineLabel(accessToken);
 
   // Remove quarantine label and add back to INBOX
@@ -504,11 +459,10 @@ async function releaseGmailEmail(
 }
 
 async function deleteGmailEmail(
-  integrationId: string,
-  messageId: string,
-  config: Record<string, unknown>
+  nangoConnectionId: string,
+  messageId: string
 ): Promise<void> {
-  const accessToken = await getGmailAccessToken(integrationId, config);
+  const accessToken = await getGmailAccessToken(nangoConnectionId);
 
   await trashGmailMessage({
     accessToken,
@@ -529,12 +483,12 @@ export async function autoRemediate(params: {
   verdict: 'quarantine' | 'block';
   score: number;
 }): Promise<RemediationResult> {
-  const { tenantId, messageId, externalMessageId, integrationId, integrationType, verdict } = params;
+  const { messageId, externalMessageId, integrationId, integrationType, verdict } = params;
 
-  // Get integration config
+  // Get integration nango_connection_id
   const integrations = await sql`
-    SELECT config FROM integrations WHERE id = ${integrationId}
-  ` as Array<{ config: Record<string, unknown> }>;
+    SELECT nango_connection_id FROM integrations WHERE id = ${integrationId}
+  ` as Array<{ nango_connection_id: string | null }>;
 
   if (integrations.length === 0) {
     return {
@@ -547,15 +501,26 @@ export async function autoRemediate(params: {
     };
   }
 
-  const config = integrations[0].config;
+  const nangoConnectionId = integrations[0].nango_connection_id;
+
+  if (!nangoConnectionId) {
+    return {
+      success: false,
+      action: verdict === 'block' ? 'block' : 'quarantine',
+      messageId,
+      integrationId,
+      integrationType,
+      error: 'No Nango connection configured',
+    };
+  }
 
   try {
     if (verdict === 'block') {
       // Delete immediately for blocked emails
       if (integrationType === 'o365') {
-        await deleteO365Email(integrationId, externalMessageId, config);
+        await deleteO365Email(nangoConnectionId, externalMessageId);
       } else {
-        await deleteGmailEmail(integrationId, externalMessageId, config);
+        await deleteGmailEmail(nangoConnectionId, externalMessageId);
       }
 
       return {
@@ -568,9 +533,9 @@ export async function autoRemediate(params: {
     } else {
       // Quarantine for suspicious emails
       if (integrationType === 'o365') {
-        await quarantineO365Email(integrationId, externalMessageId, config);
+        await quarantineO365Email(nangoConnectionId, externalMessageId);
       } else {
-        await quarantineGmailEmail(integrationId, externalMessageId, config);
+        await quarantineGmailEmail(nangoConnectionId, externalMessageId);
       }
 
       return {

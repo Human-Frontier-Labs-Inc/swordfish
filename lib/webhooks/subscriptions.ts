@@ -4,15 +4,11 @@
  */
 
 import { sql } from '@/lib/db';
-import { refreshO365Token } from '@/lib/integrations/o365';
-import { refreshGmailToken, watchGmailInbox, stopGmailWatch } from '@/lib/integrations/gmail';
+import { getO365AccessToken } from '@/lib/integrations/o365';
+import { getGmailAccessToken, watchGmailInbox, stopGmailWatch } from '@/lib/integrations/gmail';
 import { generateClientState } from './validation';
 import { logAuditEvent } from '@/lib/db/audit';
 
-const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
-const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 const GOOGLE_PUBSUB_TOPIC = process.env.GOOGLE_PUBSUB_TOPIC!;
 
 const GRAPH_API_URL = 'https://graph.microsoft.com/v1.0';
@@ -272,10 +268,11 @@ export async function renewExpiringSubscriptions(): Promise<{
   // 1. Subscriptions expiring in the next 24 hours
   // 2. Gmail integrations with sync enabled but no watchExpiration (never registered)
   const integrations = await sql`
-    SELECT id, tenant_id, type, config
+    SELECT id, tenant_id, type, config, nango_connection_id
     FROM integrations
     WHERE status = 'connected'
     AND (config->>'syncEnabled')::boolean = true
+    AND nango_connection_id IS NOT NULL
     AND (
       (type = 'o365' AND (config->>'subscriptionExpiresAt')::timestamp < NOW() + INTERVAL '24 hours')
       OR
@@ -289,29 +286,13 @@ export async function renewExpiringSubscriptions(): Promise<{
   for (const integration of integrations) {
     const config = integration.config as Record<string, unknown>;
     const type = integration.type as 'gmail' | 'o365';
+    const nangoConnectionId = integration.nango_connection_id as string;
 
     try {
-      // Get fresh access token
-      let accessToken = config.accessToken as string;
-      const tokenExpiresAt = new Date(config.tokenExpiresAt as string);
-
-      if (tokenExpiresAt <= new Date()) {
-        if (type === 'o365') {
-          const newTokens = await refreshO365Token({
-            refreshToken: config.refreshToken as string,
-            clientId: MICROSOFT_CLIENT_ID,
-            clientSecret: MICROSOFT_CLIENT_SECRET,
-          });
-          accessToken = newTokens.accessToken;
-        } else {
-          const newTokens = await refreshGmailToken({
-            refreshToken: config.refreshToken as string,
-            clientId: GOOGLE_CLIENT_ID,
-            clientSecret: GOOGLE_CLIENT_SECRET,
-          });
-          accessToken = newTokens.accessToken;
-        }
-      }
+      // Get fresh access token from Nango (handles refresh automatically)
+      const accessToken = type === 'o365'
+        ? await getO365AccessToken(nangoConnectionId)
+        : await getGmailAccessToken(nangoConnectionId);
 
       // Renew subscription
       if (type === 'o365' && config.subscriptionId) {
@@ -333,7 +314,7 @@ export async function renewExpiringSubscriptions(): Promise<{
       } else if (type === 'gmail') {
         // Gmail watch needs to be created or recreated
         const isNewRegistration = !config.watchExpiration;
-        const result = await createGmailSubscription({
+        await createGmailSubscription({
           integrationId: integration.id as string,
           tenantId: integration.tenant_id as string,
           accessToken,
