@@ -26,7 +26,7 @@ function getNangoClient(): Nango {
 // Proxy for backward compatibility - lazily initializes on first use
 export const nango = new Proxy({} as Nango, {
   get(_, prop) {
-    return (getNangoClient() as Record<string | symbol, unknown>)[prop];
+    return (getNangoClient() as unknown as Record<string | symbol, unknown>)[prop];
   },
 });
 
