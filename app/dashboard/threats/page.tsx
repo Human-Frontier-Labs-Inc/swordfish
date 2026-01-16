@@ -196,9 +196,12 @@ export default function ThreatsPage() {
                     {new Date(threat.quarantined_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button className="text-blue-600 hover:text-blue-900 mr-3">
+                    <Link
+                      href={`/dashboard/threats/${threat.id}`}
+                      className="text-blue-600 hover:text-blue-900 mr-3"
+                    >
                       View
-                    </button>
+                    </Link>
                     {threat.status === 'quarantined' && (
                       <>
                         <button className="text-green-600 hover:text-green-900 mr-3">
