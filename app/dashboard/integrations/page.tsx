@@ -57,9 +57,19 @@ export default function IntegrationsPage() {
   const successMessage = searchParams.get('success');
   const errorMessage = searchParams.get('error');
 
-  useEffect(() => {
-    fetchIntegrations();
+  // Sync Nango connections to database
+  const syncNangoConnections = useCallback(async () => {
+    try {
+      await fetch('/api/integrations/sync-nango', { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to sync Nango connections:', error);
+    }
   }, []);
+
+  useEffect(() => {
+    // Sync Nango connections first, then fetch integrations
+    syncNangoConnections().then(() => fetchIntegrations());
+  }, [syncNangoConnections]);
 
   async function fetchIntegrations() {
     try {
