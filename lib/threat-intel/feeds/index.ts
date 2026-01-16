@@ -51,13 +51,13 @@ const lastRefresh: Record<string, number> = {
 };
 
 // In-memory threat sets for fast lookup
-let phishtankUrls = new Set<string>();
-let urlhausUrls = new Set<string>();
-let openphishUrls = new Set<string>();
+const phishtankUrls = new Set<string>();
+const urlhausUrls = new Set<string>();
+const openphishUrls = new Set<string>();
 
 // Threat entries with metadata
-let phishtankEntries: Map<string, PhishTankEntry> = new Map();
-let urlhausEntries: Map<string, URLhausEntry> = new Map();
+const phishtankEntries: Map<string, PhishTankEntry> = new Map();
+const urlhausEntries: Map<string, URLhausEntry> = new Map();
 
 /**
  * Initialize and refresh all threat feeds

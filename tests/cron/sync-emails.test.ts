@@ -17,11 +17,13 @@ vi.mock('@/lib/workers/email-sync', () => ({
     tenantId: 'tenant-1',
     type: 'gmail',
     emailsProcessed: 5,
+    emailsSkipped: 0,
     threatsFound: 1,
     errors: [],
+    detailedErrors: [],
     duration: 2000,
+    timedOut: false,
   }),
-  SyncResult: {},
 }));
 
 // Set environment variable
@@ -177,9 +179,12 @@ describe('Sync Emails Cron Job', () => {
         tenantId: 'tenant-1',
         type: 'gmail',
         emailsProcessed: 10,
+        emailsSkipped: 0,
         threatsFound: 2,
         errors: [],
+        detailedErrors: [],
         duration: 3000,
+        timedOut: false,
       });
 
       const request = new NextRequest('http://localhost/api/cron/sync-emails', {
@@ -264,9 +269,12 @@ describe('Sync Emails Cron Job', () => {
           tenantId: 'tenant-2',
           type: 'o365',
           emailsProcessed: 5,
+          emailsSkipped: 0,
           threatsFound: 0,
           errors: [],
+          detailedErrors: [],
           duration: 1000,
+          timedOut: false,
         });
 
       const request = new NextRequest('http://localhost/api/cron/sync-emails', {

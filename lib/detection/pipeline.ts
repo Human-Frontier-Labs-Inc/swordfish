@@ -29,7 +29,7 @@ export async function analyzeEmail(
   const config: DetectionConfig = { ...DEFAULT_DETECTION_CONFIG, ...configOverrides };
   const startTime = performance.now();
   const layerResults: LayerResult[] = [];
-  let allSignals: Signal[] = [];
+  const allSignals: Signal[] = [];
   let llmTokensUsed = 0;
 
   // Layer 0: Policy Evaluation (allowlists/blocklists)
@@ -741,7 +741,7 @@ export async function quickCheck(email: ParsedEmail): Promise<EmailVerdict['verd
  * Extract URLs from text content
  */
 function extractURLs(text: string): string[] {
-  const urlPattern = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
+  const urlPattern = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
   const matches = text.match(urlPattern) || [];
 
   // Clean up URLs (remove trailing punctuation)

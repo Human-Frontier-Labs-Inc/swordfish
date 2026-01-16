@@ -252,6 +252,7 @@ function performHeuristicChecks(
   }
 
   // Check for homoglyph characters in hostname
+  // eslint-disable-next-line no-control-regex
   const homoglyphPattern = /[^\x00-\x7F]/;
   if (homoglyphPattern.test(hostname)) {
     score += 40;

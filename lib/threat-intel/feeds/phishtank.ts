@@ -213,7 +213,7 @@ function checkHomoglyphAttack(url: string): {
       // Check if domain looks like the brand
       const brandChars = brand.name.split('');
       let similarity = 0;
-      let domainWithoutTld = domain.split('.')[0];
+      const domainWithoutTld = domain.split('.')[0];
 
       // Simple Levenshtein-like check
       for (let i = 0; i < Math.min(brandChars.length, domainWithoutTld.length); i++) {

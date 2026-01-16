@@ -297,6 +297,7 @@ function checkUnicodeSpoof(displayName: string, email: string): {
   const textToCheck = `${displayName} ${email}`;
 
   // Check for non-ASCII characters that look like ASCII
+  // eslint-disable-next-line no-control-regex
   const nonAscii = textToCheck.match(/[^\x00-\x7F]/g);
 
   if (nonAscii) {
@@ -313,6 +314,7 @@ function checkUnicodeSpoof(displayName: string, email: string): {
 
     // Even unknown non-ASCII in email domain is suspicious
     const emailPart = email.toLowerCase();
+    // eslint-disable-next-line no-control-regex
     if (/[^\x00-\x7F]/.test(emailPart)) {
       return {
         hasSpoof: true,

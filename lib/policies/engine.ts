@@ -347,14 +347,16 @@ function getFieldValue(
     case 'has_attachments':
       return email.attachments.length > 0;
 
-    case 'has_links':
+    case 'has_links': {
       const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
       return urlRegex.test(email.body.text || '') || urlRegex.test(email.body.html || '');
+    }
 
-    case 'link_domain':
-      const linkRegex = /https?:\/\/([^\/\s<>"{}|\\^`[\]]+)/gi;
+    case 'link_domain': {
+      const linkRegex = /https?:\/\/([^/\s<>"{}|\\^`[\]]+)/gi;
       const matches = [...((email.body.text || '') + (email.body.html || '')).matchAll(linkRegex)];
       return matches.map((m) => m[1]).join(',');
+    }
 
     case 'spf_result':
       return email.headers['received-spf'] || email.headers['authentication-results'] || '';
@@ -362,11 +364,12 @@ function getFieldValue(
     case 'dkim_result':
       return email.headers['dkim-signature'] ? 'pass' : 'none';
 
-    case 'dmarc_result':
+    case 'dmarc_result': {
       const authResults = email.headers['authentication-results'] || '';
       if (authResults.includes('dmarc=pass')) return 'pass';
       if (authResults.includes('dmarc=fail')) return 'fail';
       return 'none';
+    }
 
     case 'threat_score':
       return threatScore ?? 0;
@@ -377,11 +380,12 @@ function getFieldValue(
       }
       return null;
 
-    case 'ip_address':
+    case 'ip_address': {
       // Extract from Received header
       const received = email.headers['received'] || '';
       const ipMatch = received.match(/\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]/);
       return ipMatch ? ipMatch[1] : null;
+    }
 
     case 'country':
       // Would need GeoIP lookup - return null for now

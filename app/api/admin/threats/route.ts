@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     const includeStats = searchParams.get('stats') === 'true';
 
     // Build dynamic WHERE clause
-    let whereConditions = [];
+    const whereConditions = [];
 
     if (status && status !== 'all') {
       whereConditions.push(`t.status = '${status}'`);

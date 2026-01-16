@@ -179,7 +179,7 @@ export function rewriteLinksInText(
   let rewrittenCount = 0;
 
   // Match URLs in plain text
-  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
+  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
 
   const newText = text.replace(urlRegex, (url) => {
     // Clean up trailing punctuation

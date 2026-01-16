@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     // Process each notification
     let processedCount = 0;
-    let threatCount = 0;
+    const threatCount = 0;
 
     for (const notification of payload.value) {
       try {
