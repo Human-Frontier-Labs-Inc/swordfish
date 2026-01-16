@@ -100,8 +100,12 @@ export async function createNangoSession(
     allowed_integrations: [providerConfigKey],
   });
 
+  // Build connect link from session token
+  const connectLink = `https://connect.nango.dev/?session_token=${session.data.token}`;
+
   return {
     sessionToken: session.data.token,
+    connectLink,
     expiresAt: session.data.expires_at,
   };
 }

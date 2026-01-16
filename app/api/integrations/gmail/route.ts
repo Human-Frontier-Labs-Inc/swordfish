@@ -31,6 +31,7 @@ export async function POST(_request: NextRequest) {
     const session = await createNangoSession(tenantId, 'gmail', userEmail);
 
     return NextResponse.json({
+      authUrl: session.connectLink,
       sessionToken: session.sessionToken,
       expiresAt: session.expiresAt,
     });
