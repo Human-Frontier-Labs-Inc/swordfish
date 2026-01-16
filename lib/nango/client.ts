@@ -35,7 +35,7 @@ export const nango = new Proxy({} as Nango, {
  * These must match the integration IDs configured in the Nango dashboard.
  */
 export const NANGO_INTEGRATIONS = {
-  gmail: 'google-mail',
+  gmail: 'google',
   o365: 'outlook',
   // SMTP doesn't use OAuth, so no Nango integration needed
 } as const satisfies Partial<Record<IntegrationType, string>>;

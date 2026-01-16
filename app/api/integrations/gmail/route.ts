@@ -71,7 +71,7 @@ export async function DELETE() {
     // Delete from Nango if we have a connection
     if (integration?.nango_connection_id) {
       try {
-        await nango.deleteConnection('google-mail', integration.nango_connection_id);
+        await nango.deleteConnection('google', integration.nango_connection_id);
       } catch (nangoError) {
         // Log but don't fail - connection might already be deleted
         console.warn('Nango delete warning:', nangoError);
