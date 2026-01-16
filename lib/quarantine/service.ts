@@ -33,6 +33,8 @@ export interface ThreatRecord {
   originalFolder?: string;
   provider: 'microsoft' | 'google' | 'smtp';
   providerMessageId?: string;
+  signals?: unknown[];
+  explanation?: string;
   quarantinedAt: Date;
   releasedAt?: Date;
   releasedBy?: string;
@@ -366,10 +368,12 @@ export async function getQuarantinedThreats(
     verdict: t.verdict as EmailVerdict['verdict'],
     score: t.score as number,
     status: t.status as ThreatRecord['status'],
-    originalFolder: t.original_folder as string | undefined,
-    provider: t.provider as ThreatRecord['provider'],
-    providerMessageId: t.provider_message_id as string | undefined,
-    quarantinedAt: new Date(t.quarantined_at as string),
+    originalFolder: t.original_location as string | undefined,
+    provider: (t.integration_type === 'o365' ? 'microsoft' : t.integration_type === 'gmail' ? 'google' : 'smtp') as ThreatRecord['provider'],
+    providerMessageId: t.external_message_id as string | undefined,
+    signals: t.signals as unknown[] | undefined,
+    explanation: t.explanation as string | undefined,
+    quarantinedAt: t.quarantined_at ? new Date(t.quarantined_at as string) : new Date(),
     releasedAt: t.released_at ? new Date(t.released_at as string) : undefined,
     releasedBy: t.released_by as string | undefined,
   }));

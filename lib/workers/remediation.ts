@@ -483,7 +483,7 @@ export async function autoRemediate(params: {
   verdict: 'quarantine' | 'block';
   score: number;
 }): Promise<RemediationResult> {
-  const { messageId, externalMessageId, integrationId, integrationType, verdict } = params;
+  const { tenantId, messageId, externalMessageId, integrationId, integrationType, verdict, score } = params;
 
   // Get integration nango_connection_id
   const integrations = await sql`
@@ -515,6 +515,33 @@ export async function autoRemediate(params: {
   }
 
   try {
+    // Get email details from email_verdicts for the threats record
+    const emailVerdicts = await sql`
+      SELECT subject, from_address, to_addresses, signals, explanation, recommendation
+      FROM email_verdicts
+      WHERE tenant_id = ${tenantId} AND message_id = ${messageId}
+      LIMIT 1
+    ` as Array<{
+      subject: string;
+      from_address: string;
+      to_addresses: string[];
+      signals: unknown;
+      explanation: string | null;
+      recommendation: string | null;
+    }>;
+
+    const emailDetails = emailVerdicts[0] || {
+      subject: '(Unknown)',
+      from_address: 'unknown@unknown.com',
+      to_addresses: [],
+      signals: null,
+      explanation: null,
+      recommendation: null,
+    };
+
+    const provider = integrationType === 'o365' ? 'microsoft' : 'google';
+    const status = verdict === 'block' ? 'deleted' : 'quarantined';
+
     if (verdict === 'block') {
       // Delete immediately for blocked emails
       if (integrationType === 'o365') {
@@ -522,14 +549,6 @@ export async function autoRemediate(params: {
       } else {
         await deleteGmailEmail(nangoConnectionId, externalMessageId);
       }
-
-      return {
-        success: true,
-        action: 'block',
-        messageId,
-        integrationId,
-        integrationType,
-      };
     } else {
       // Quarantine for suspicious emails
       if (integrationType === 'o365') {
@@ -537,15 +556,60 @@ export async function autoRemediate(params: {
       } else {
         await quarantineGmailEmail(nangoConnectionId, externalMessageId);
       }
-
-      return {
-        success: true,
-        action: 'quarantine',
-        messageId,
-        integrationId,
-        integrationType,
-      };
     }
+
+    // Write to threats table so it appears in Threats/Quarantine pages
+    // First check if threat already exists
+    const existingThreats = await sql`
+      SELECT id FROM threats WHERE tenant_id = ${tenantId} AND message_id = ${messageId}
+    `;
+
+    if (existingThreats.length > 0) {
+      // Update existing threat
+      await sql`
+        UPDATE threats SET
+          status = ${status},
+          verdict = ${verdict},
+          score = ${score},
+          signals = ${JSON.stringify(emailDetails.signals)}::jsonb,
+          explanation = ${emailDetails.explanation},
+          quarantined_at = NOW(),
+          updated_at = NOW()
+        WHERE tenant_id = ${tenantId} AND message_id = ${messageId}
+      `;
+    } else {
+      // Insert new threat
+      await sql`
+        INSERT INTO threats (
+          tenant_id, message_id, subject, sender_email, recipient_email,
+          verdict, score, status, integration_type, integration_id, external_message_id,
+          signals, explanation, quarantined_at
+        ) VALUES (
+          ${tenantId},
+          ${messageId},
+          ${emailDetails.subject},
+          ${emailDetails.from_address},
+          ${emailDetails.to_addresses?.[0] || ''},
+          ${verdict},
+          ${score},
+          ${status},
+          ${integrationType},
+          ${integrationId}::uuid,
+          ${externalMessageId},
+          ${JSON.stringify(emailDetails.signals)}::jsonb,
+          ${emailDetails.explanation},
+          NOW()
+        )
+      `;
+    }
+
+    return {
+      success: true,
+      action: verdict === 'block' ? 'block' : 'quarantine',
+      messageId,
+      integrationId,
+      integrationType,
+    };
   } catch (error) {
     console.error('Auto-remediation failed:', error);
     return {
