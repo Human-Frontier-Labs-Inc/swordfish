@@ -30,9 +30,8 @@ export default function ThreatsPage() {
 
       try {
         const params = new URLSearchParams();
-        if (filter !== 'all') {
-          params.set('status', filter);
-        }
+        // Always send status parameter - API needs explicit 'all' to show all statuses
+        params.set('status', filter);
 
         const response = await fetch(`/api/threats?${params}`);
         if (!response.ok) throw new Error('Failed to fetch threats');
