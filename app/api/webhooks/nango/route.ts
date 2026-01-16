@@ -109,20 +109,22 @@ async function handleAuthWebhook(webhook: NangoAuthWebhook) {
 
   if (operation === 'creation' && success) {
     // New connection created - store the nango_connection_id
+    // Note: tenant_id can be a UUID (org) or string (personal_xxx), so we handle both
     await sql`
       INSERT INTO integrations (tenant_id, type, nango_connection_id, status, config)
       VALUES (
-        ${tenantId}::uuid,
+        ${tenantId},
         ${integrationType},
         ${connectionId},
         'connected',
-        '{}'::jsonb
+        '{"syncEnabled": true}'::jsonb
       )
       ON CONFLICT (tenant_id, type)
       DO UPDATE SET
         nango_connection_id = ${connectionId},
         status = 'connected',
         error_message = NULL,
+        config = integrations.config || '{"syncEnabled": true}'::jsonb,
         updated_at = NOW()
     `;
 
@@ -143,7 +145,7 @@ async function handleAuthWebhook(webhook: NangoAuthWebhook) {
         status = 'error',
         error_message = ${error?.message || 'OAuth connection failed'},
         updated_at = NOW()
-      WHERE tenant_id = ${tenantId}::uuid AND type = ${integrationType}
+      WHERE tenant_id = ${tenantId} AND type = ${integrationType}
     `;
 
     await logAuditEvent({
@@ -162,7 +164,7 @@ async function handleAuthWebhook(webhook: NangoAuthWebhook) {
         nango_connection_id = NULL,
         status = 'disconnected',
         updated_at = NOW()
-      WHERE tenant_id = ${tenantId}::uuid AND type = ${integrationType}
+      WHERE tenant_id = ${tenantId} AND type = ${integrationType}
     `;
 
     await logAuditEvent({
@@ -184,7 +186,7 @@ async function handleAuthWebhook(webhook: NangoAuthWebhook) {
           status = 'connected',
           error_message = NULL,
           updated_at = NOW()
-        WHERE tenant_id = ${tenantId}::uuid AND type = ${integrationType}
+        WHERE tenant_id = ${tenantId} AND type = ${integrationType}
       `;
     }
   }
