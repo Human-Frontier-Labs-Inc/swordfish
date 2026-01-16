@@ -340,12 +340,13 @@ export async function getQuarantinedThreats(
 ): Promise<ThreatRecord[]> {
   const { status = 'quarantined', limit = 50, offset = 0 } = options;
 
+  // Use created_at for ordering since quarantined_at may not exist in all schemas
   let threats;
   if (status === 'all') {
     threats = await sql`
       SELECT * FROM threats
       WHERE tenant_id = ${tenantId}
-      ORDER BY quarantined_at DESC
+      ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
   } else {
@@ -353,7 +354,7 @@ export async function getQuarantinedThreats(
       SELECT * FROM threats
       WHERE tenant_id = ${tenantId}
       AND status = ${status}
-      ORDER BY quarantined_at DESC
+      ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
   }
@@ -362,18 +363,18 @@ export async function getQuarantinedThreats(
     id: t.id as string,
     tenantId: t.tenant_id as string,
     messageId: t.message_id as string,
-    subject: t.subject as string,
-    senderEmail: t.sender_email as string,
-    recipientEmail: t.recipient_email as string,
+    subject: (t.subject as string) || '(No subject)',
+    senderEmail: (t.sender_email as string) || 'unknown',
+    recipientEmail: (t.recipient_email as string) || '',
     verdict: t.verdict as EmailVerdict['verdict'],
-    score: t.score as number,
+    score: (t.score as number) || 0,
     status: t.status as ThreatRecord['status'],
     originalFolder: t.original_location as string | undefined,
     provider: (t.integration_type === 'o365' ? 'microsoft' : t.integration_type === 'gmail' ? 'google' : 'smtp') as ThreatRecord['provider'],
-    providerMessageId: t.external_message_id as string | undefined,
+    providerMessageId: undefined, // Column may not exist in original migration
     signals: t.signals as unknown[] | undefined,
-    explanation: t.explanation as string | undefined,
-    quarantinedAt: t.quarantined_at ? new Date(t.quarantined_at as string) : new Date(),
+    explanation: undefined, // Column may not exist in original migration
+    quarantinedAt: t.created_at ? new Date(t.created_at as string) : new Date(),
     releasedAt: t.released_at ? new Date(t.released_at as string) : undefined,
     releasedBy: t.released_by as string | undefined,
   }));
@@ -383,13 +384,14 @@ export async function getQuarantinedThreats(
  * Get threat statistics for dashboard
  */
 export async function getThreatStats(tenantId: string) {
+  // Use created_at instead of quarantined_at (which may not exist in all schemas)
   const stats = await sql`
     SELECT
       COUNT(*) FILTER (WHERE status = 'quarantined') as quarantined_count,
       COUNT(*) FILTER (WHERE status = 'released') as released_count,
       COUNT(*) FILTER (WHERE status = 'deleted') as deleted_count,
-      COUNT(*) FILTER (WHERE quarantined_at > NOW() - INTERVAL '24 hours') as last_24h,
-      COUNT(*) FILTER (WHERE quarantined_at > NOW() - INTERVAL '7 days') as last_7d,
+      COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as last_24h,
+      COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as last_7d,
       AVG(score) FILTER (WHERE status = 'quarantined') as avg_score
     FROM threats
     WHERE tenant_id = ${tenantId}

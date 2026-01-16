@@ -485,6 +485,12 @@ export async function autoRemediate(params: {
 }): Promise<RemediationResult> {
   const { tenantId, messageId, externalMessageId, integrationId, integrationType, verdict, score } = params;
 
+  // Helper to truncate strings for database column limits
+  const truncate = (str: string | null | undefined, maxLen: number): string | null => {
+    if (!str) return null;
+    return str.length > maxLen ? str.substring(0, maxLen - 3) + '...' : str;
+  };
+
   // Get integration nango_connection_id
   const integrations = await sql`
     SELECT nango_connection_id FROM integrations WHERE id = ${integrationId}
@@ -517,7 +523,7 @@ export async function autoRemediate(params: {
   try {
     // Get email details from email_verdicts for the threats record
     const emailVerdicts = await sql`
-      SELECT subject, from_address, to_addresses, signals, explanation, recommendation
+      SELECT subject, from_address, to_addresses, signals
       FROM email_verdicts
       WHERE tenant_id = ${tenantId} AND message_id = ${messageId}
       LIMIT 1
@@ -526,8 +532,6 @@ export async function autoRemediate(params: {
       from_address: string;
       to_addresses: string[];
       signals: unknown;
-      explanation: string | null;
-      recommendation: string | null;
     }>;
 
     const emailDetails = emailVerdicts[0] || {
@@ -535,12 +539,20 @@ export async function autoRemediate(params: {
       from_address: 'unknown@unknown.com',
       to_addresses: [],
       signals: null,
-      explanation: null,
-      recommendation: null,
     };
 
-    const provider = integrationType === 'o365' ? 'microsoft' : 'google';
     const status = verdict === 'block' ? 'deleted' : 'quarantined';
+
+    // Truncate values to fit database column constraints
+    const safeMessageId = truncate(messageId, 490);
+    const safeSubject = truncate(emailDetails.subject, 250);
+    const safeSenderEmail = truncate(emailDetails.from_address, 250);
+    const safeRecipientEmail = truncate(
+      Array.isArray(emailDetails.to_addresses)
+        ? emailDetails.to_addresses[0]
+        : emailDetails.to_addresses,
+      250
+    );
 
     if (verdict === 'block') {
       // Delete immediately for blocked emails
@@ -559,9 +571,10 @@ export async function autoRemediate(params: {
     }
 
     // Write to threats table so it appears in Threats/Quarantine pages
+    // Use only columns that exist in the original migration (002_policies_and_threats.sql)
     // First check if threat already exists
     const existingThreats = await sql`
-      SELECT id FROM threats WHERE tenant_id = ${tenantId} AND message_id = ${messageId}
+      SELECT id FROM threats WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
     `;
 
     if (existingThreats.length > 0) {
@@ -571,33 +584,27 @@ export async function autoRemediate(params: {
           status = ${status},
           verdict = ${verdict},
           score = ${score},
-          signals = ${JSON.stringify(emailDetails.signals)}::jsonb,
-          explanation = ${emailDetails.explanation},
-          quarantined_at = NOW(),
+          signals = ${JSON.stringify(emailDetails.signals || [])}::jsonb,
           updated_at = NOW()
-        WHERE tenant_id = ${tenantId} AND message_id = ${messageId}
+        WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
       `;
     } else {
-      // Insert new threat
+      // Insert new threat - only use columns from migration 002
       await sql`
         INSERT INTO threats (
           tenant_id, message_id, subject, sender_email, recipient_email,
-          verdict, score, status, integration_type, integration_id, external_message_id,
-          signals, explanation, quarantined_at
+          verdict, score, status, integration_type, signals, created_at
         ) VALUES (
           ${tenantId},
-          ${messageId},
-          ${emailDetails.subject},
-          ${emailDetails.from_address},
-          ${emailDetails.to_addresses?.[0] || ''},
+          ${safeMessageId},
+          ${safeSubject},
+          ${safeSenderEmail},
+          ${safeRecipientEmail || ''},
           ${verdict},
           ${score},
           ${status},
           ${integrationType},
-          ${integrationId}::uuid,
-          ${externalMessageId},
-          ${JSON.stringify(emailDetails.signals)}::jsonb,
-          ${emailDetails.explanation},
+          ${JSON.stringify(emailDetails.signals || [])}::jsonb,
           NOW()
         )
       `;

@@ -10,6 +10,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
 
+// Helper to truncate strings
+const truncate = (str: string | null | undefined, maxLen: number): string | null => {
+  if (!str) return null;
+  return str.length > maxLen ? str.substring(0, maxLen - 3) + '...' : str;
+};
+
 export async function POST(request: NextRequest) {
   try {
     const { userId, orgId } = await auth();
@@ -22,6 +28,20 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Backfill] Starting threats backfill for tenant: ${tenantId}`);
 
+    // First, try to run migration to fix table schema if needed
+    try {
+      // Check if threats table exists and has correct column types
+      const tableCheck = await sql`
+        SELECT column_name, data_type, character_maximum_length
+        FROM information_schema.columns
+        WHERE table_name = 'threats'
+        ORDER BY ordinal_position
+      `;
+      console.log(`[Backfill] Threats table has ${tableCheck.length} columns`);
+    } catch (schemaError) {
+      console.error('[Backfill] Schema check failed:', schemaError);
+    }
+
     // Find quarantine/block verdicts in email_verdicts that don't have a threats record
     const missingThreats = await sql`
       SELECT
@@ -33,9 +53,7 @@ export async function POST(request: NextRequest) {
         ev.verdict,
         ev.score,
         ev.signals,
-        ev.explanation,
         ev.created_at,
-        i.id as integration_id,
         i.type as integration_type
       FROM email_verdicts ev
       LEFT JOIN integrations i ON i.tenant_id = ev.tenant_id AND i.status = 'connected'
@@ -52,6 +70,7 @@ export async function POST(request: NextRequest) {
 
     let inserted = 0;
     let errors = 0;
+    const errorDetails: string[] = [];
 
     for (const email of missingThreats) {
       try {
@@ -72,6 +91,13 @@ export async function POST(request: NextRequest) {
 
         const status = email.verdict === 'block' ? 'deleted' : 'quarantined';
 
+        // Truncate values to fit database constraints
+        const safeMessageId = truncate(email.message_id, 490);
+        const safeSubject = truncate(email.subject, 250);
+        const safeSenderEmail = truncate(email.from_address, 250);
+        const safeRecipientEmail = truncate(recipientEmail, 250);
+
+        // Use only columns that exist in the original migration 002
         await sql`
           INSERT INTO threats (
             tenant_id,
@@ -83,34 +109,30 @@ export async function POST(request: NextRequest) {
             score,
             status,
             integration_type,
-            integration_id,
             signals,
-            explanation,
-            quarantined_at,
             created_at
           ) VALUES (
             ${email.tenant_id},
-            ${email.message_id},
-            ${email.subject || '(No subject)'},
-            ${email.from_address || 'unknown@unknown.com'},
-            ${recipientEmail},
+            ${safeMessageId},
+            ${safeSubject || '(No subject)'},
+            ${safeSenderEmail || 'unknown@unknown.com'},
+            ${safeRecipientEmail || ''},
             ${email.verdict},
             ${email.score || 0},
             ${status},
             ${email.integration_type || 'gmail'},
-            ${email.integration_id || null},
             ${JSON.stringify(email.signals || [])}::jsonb,
-            ${email.explanation || null},
-            ${email.created_at || new Date()},
-            NOW()
+            ${email.created_at || new Date()}
           )
         `;
 
         inserted++;
-        console.log(`[Backfill] Inserted threat for message: ${email.message_id}`);
+        console.log(`[Backfill] Inserted threat for message: ${safeMessageId?.substring(0, 30)}...`);
       } catch (insertError) {
         errors++;
-        console.error(`[Backfill] Failed to insert threat for ${email.message_id}:`, insertError);
+        const errorMsg = insertError instanceof Error ? insertError.message : 'Unknown error';
+        errorDetails.push(`${email.message_id?.substring(0, 20)}: ${errorMsg}`);
+        console.error(`[Backfill] Failed to insert:`, errorMsg);
       }
     }
 
@@ -121,6 +143,7 @@ export async function POST(request: NextRequest) {
       found: missingThreats.length,
       inserted,
       errors,
+      errorDetails: errorDetails.slice(0, 5), // Show first 5 errors
       message: `Backfilled ${inserted} threats from email_verdicts`
     });
 
