@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import clsx from 'clsx';
 
 interface Signal {
@@ -54,19 +54,20 @@ const verdictConfig = {
   },
 };
 
+const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
+
 export default function ScannedEmailsPage() {
   const [emails, setEmails] = useState<ScannedEmail[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [selectedEmail, setSelectedEmail] = useState<ScannedEmail | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    fetchEmails();
-  }, [filter]);
-
-  async function fetchEmails() {
-    setIsLoading(true);
+  const fetchEmails = useCallback(async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     try {
       const params = new URLSearchParams({ limit: '100' });
       if (filter !== 'all') {
@@ -78,13 +79,34 @@ export default function ScannedEmailsPage() {
         const data = await res.json();
         setEmails(data.emails);
         setTotal(data.total);
+        setLastUpdated(new Date());
       }
     } catch (error) {
       console.error('Failed to fetch emails:', error);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
-  }
+  }, [filter]);
+
+  // Initial fetch and filter changes
+  useEffect(() => {
+    fetchEmails();
+  }, [fetchEmails]);
+
+  // Auto-refresh interval
+  useEffect(() => {
+    if (autoRefresh) {
+      intervalRef.current = setInterval(() => {
+        fetchEmails(false); // Silent refresh (no loading spinner)
+      }, AUTO_REFRESH_INTERVAL);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [autoRefresh, fetchEmails]);
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return 'N/A';
@@ -106,15 +128,49 @@ export default function ScannedEmailsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Scanned Emails</h1>
           <p className="mt-1 text-sm text-gray-500">
             All emails analyzed by Swordfish ({total} total)
+            {lastUpdated && (
+              <span className="ml-2 text-xs text-gray-400">
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </span>
+            )}
           </p>
         </div>
-        <button
-          onClick={fetchEmails}
-          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <RefreshIcon className="h-4 w-4" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Auto-refresh toggle */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <div className="relative">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                className="sr-only"
+              />
+              <div className={clsx(
+                'block w-10 h-6 rounded-full transition-colors',
+                autoRefresh ? 'bg-green-500' : 'bg-gray-300'
+              )} />
+              <div className={clsx(
+                'absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform',
+                autoRefresh ? 'translate-x-4' : 'translate-x-0'
+              )} />
+            </div>
+            <span className="text-sm text-gray-600">
+              {autoRefresh ? (
+                <span className="flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  Live
+                </span>
+              ) : 'Auto-refresh'}
+            </span>
+          </label>
+          <button
+            onClick={() => fetchEmails()}
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            <RefreshIcon className="h-4 w-4" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Filter Tabs */}
