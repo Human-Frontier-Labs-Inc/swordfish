@@ -140,7 +140,8 @@ export function compareFingerprints(
   let totalScore = 0;
 
   // Core fields comparison
-  const coreFields: (keyof DeviceFingerprint)[] = [
+  type CoreField = 'userAgent' | 'screenResolution' | 'timezone' | 'language' | 'platform';
+  const coreFields: CoreField[] = [
     'userAgent',
     'screenResolution',
     'timezone',

@@ -122,10 +122,10 @@ export class UrlScanClient {
     });
 
     return {
-      uuid: response.uuid,
-      resultUrl: response.result,
-      apiUrl: response.api,
-      visibility: response.visibility,
+      uuid: response.uuid as string,
+      resultUrl: response.result as string,
+      apiUrl: response.api as string,
+      visibility: response.visibility as string,
     };
   }
 
@@ -178,12 +178,12 @@ export class UrlScanClient {
     const response = await this.makeRequest(`/search/?q=${encodedQuery}`);
 
     return {
-      results: (response.results || []).map((r: Record<string, unknown>) => ({
+      results: ((response.results || []) as Record<string, unknown>[]).map((r: Record<string, unknown>) => ({
         uuid: (r.task as Record<string, unknown>)?.uuid as string,
         url: (r.task as Record<string, unknown>)?.url as string,
         domain: (r.page as Record<string, unknown>)?.domain as string,
       })),
-      total: response.total || 0,
+      total: (response.total as number) || 0,
     };
   }
 

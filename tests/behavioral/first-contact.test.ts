@@ -22,8 +22,8 @@ vi.mock('@/lib/db', () => ({
 }));
 
 // Mock domain age service
-vi.mock('@/lib/threat-intel/domain-age', () => ({
-  getDomainAge: vi.fn().mockImplementation(async (domain: string) => {
+vi.mock('@/lib/threat-intel/domain/age', () => ({
+  checkDomainAge: vi.fn().mockImplementation(async (domain: string) => {
     const ages: Record<string, number> = {
       'old-company.com': 3650, // 10 years
       'established-partner.com': 1825, // 5 years
@@ -33,7 +33,14 @@ vi.mock('@/lib/threat-intel/domain-age', () => ({
       'company.com': 5000,
       'trusted.com': 3000,
     };
-    return ages[domain] ?? 365;
+    return {
+      domain,
+      ageInDays: ages[domain] ?? 365,
+      createdDate: null,
+      riskLevel: (ages[domain] ?? 365) <= 7 ? 'critical' : (ages[domain] ?? 365) <= 30 ? 'high' : 'low',
+      riskScore: 0,
+      indicators: [],
+    };
   }),
 }));
 

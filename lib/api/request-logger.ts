@@ -103,17 +103,17 @@ function maskSensitiveData<T extends Record<string, unknown>>(data: T): T {
     return data;
   }
 
-  const masked = { ...data };
+  const masked = { ...data } as Record<string, unknown>;
 
   for (const key of Object.keys(masked)) {
     if (SENSITIVE_FIELDS.some((field) => key.toLowerCase().includes(field.toLowerCase()))) {
-      masked[key] = '[REDACTED]' as T[keyof T];
+      masked[key] = '[REDACTED]';
     } else if (typeof masked[key] === 'object' && masked[key] !== null) {
-      masked[key] = maskSensitiveData(masked[key] as Record<string, unknown>) as T[keyof T];
+      masked[key] = maskSensitiveData(masked[key] as Record<string, unknown>);
     }
   }
 
-  return masked;
+  return masked as T;
 }
 
 /**

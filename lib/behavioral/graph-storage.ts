@@ -124,33 +124,22 @@ export class GraphStorage {
    */
   async updateContact(email: string, updates: Partial<StoredContact>): Promise<void> {
     try {
-      const setClauses: string[] = [];
-      const values: unknown[] = [];
+      // Update all provided fields using COALESCE to keep existing values
+      const displayName = updates.displayName ?? null;
+      const lastSeen = updates.lastSeen ?? null;
+      const totalEmails = updates.totalEmails ?? null;
+      const metadata = updates.metadata ? JSON.stringify(updates.metadata) : null;
 
-      if (updates.displayName !== undefined) {
-        setClauses.push('display_name = $1');
-        values.push(updates.displayName);
-      }
-      if (updates.lastSeen !== undefined) {
-        setClauses.push(`last_seen = $${values.length + 1}`);
-        values.push(updates.lastSeen);
-      }
-      if (updates.totalEmails !== undefined) {
-        setClauses.push(`total_emails = $${values.length + 1}`);
-        values.push(updates.totalEmails);
-      }
-      if (updates.metadata !== undefined) {
-        setClauses.push(`metadata = $${values.length + 1}`);
-        values.push(JSON.stringify(updates.metadata));
-      }
-
-      if (setClauses.length > 0) {
-        await sql`
-          UPDATE contact_graph
-          SET ${sql(setClauses.join(', '))}, updated_at = NOW()
-          WHERE tenant_id = ${this.tenantId} AND email = ${email}
-        `;
-      }
+      await sql`
+        UPDATE contact_graph
+        SET
+          display_name = COALESCE(${displayName}, display_name),
+          last_seen = COALESCE(${lastSeen}, last_seen),
+          total_emails = COALESCE(${totalEmails}, total_emails),
+          metadata = COALESCE(${metadata}::jsonb, metadata),
+          updated_at = NOW()
+        WHERE tenant_id = ${this.tenantId} AND email = ${email}
+      `;
     } catch (error) {
       console.error('Failed to update contact:', error);
     }

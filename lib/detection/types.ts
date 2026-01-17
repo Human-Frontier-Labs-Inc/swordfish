@@ -171,7 +171,17 @@ export type SignalType =
   | 'ml_known_bad_sender'
   | 'ml_known_bad_domain'
   | 'ml_known_bad_ip'
-  | 'ml_llm_suspicious';
+  | 'ml_llm_suspicious'
+  // Behavioral analysis
+  | 'first_contact'
+  | 'first_contact_vip_impersonation'
+  | 'vip_impersonation'
+  | 'new_domain'
+  | 'vendor_lookalike'
+  | 'domain_age_risk'
+  | 'behavioral_anomaly'
+  | 'anomaly_detected'
+  | 'lookalike_detected';
 
 // Analysis result from each layer
 export interface LayerResult {

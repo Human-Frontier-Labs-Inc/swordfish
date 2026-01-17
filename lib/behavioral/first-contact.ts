@@ -418,8 +418,9 @@ export class FirstContactDetector {
 
     try {
       // Dynamic import to allow mocking
-      const { getDomainAge } = await import('@/lib/threat-intel/domain-age');
-      return await getDomainAge(domain);
+      const { checkDomainAge } = await import('@/lib/threat-intel/domain/age');
+      const result = await checkDomainAge(domain);
+      return result.ageInDays ?? undefined;
     } catch {
       return undefined;
     }

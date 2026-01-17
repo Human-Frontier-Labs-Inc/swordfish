@@ -169,51 +169,51 @@ export class EventTracker {
   }
 
   trackThreatDetected(data: ThreatEvent): void {
-    this.track(this.createEvent(EventType.THREAT_DETECTED, data.tenantId, data));
+    this.track(this.createEvent(EventType.THREAT_DETECTED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackThreatQuarantined(data: ThreatEvent): void {
-    this.track(this.createEvent(EventType.THREAT_QUARANTINED, data.tenantId, data));
+    this.track(this.createEvent(EventType.THREAT_QUARANTINED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackThreatReleased(data: ThreatEvent): void {
-    this.track(this.createEvent(EventType.THREAT_RELEASED, data.tenantId, data));
+    this.track(this.createEvent(EventType.THREAT_RELEASED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackThreatDeleted(data: ThreatEvent): void {
-    this.track(this.createEvent(EventType.THREAT_DELETED, data.tenantId, data));
+    this.track(this.createEvent(EventType.THREAT_DELETED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackEmailScanned(data: EmailEvent): void {
-    this.track(this.createEvent(EventType.EMAIL_SCANNED, data.tenantId, data));
+    this.track(this.createEvent(EventType.EMAIL_SCANNED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackEmailsSynced(data: EmailEvent): void {
-    this.track(this.createEvent(EventType.EMAIL_SYNCED, data.tenantId, data));
+    this.track(this.createEvent(EventType.EMAIL_SYNCED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackIntegrationConnected(data: IntegrationEvent): void {
-    this.track(this.createEvent(EventType.INTEGRATION_CONNECTED, data.tenantId, data));
+    this.track(this.createEvent(EventType.INTEGRATION_CONNECTED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackIntegrationDisconnected(data: IntegrationEvent): void {
-    this.track(this.createEvent(EventType.INTEGRATION_DISCONNECTED, data.tenantId, data));
+    this.track(this.createEvent(EventType.INTEGRATION_DISCONNECTED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackIntegrationError(data: IntegrationEvent): void {
-    this.track(this.createEvent(EventType.INTEGRATION_ERROR, data.tenantId, data));
+    this.track(this.createEvent(EventType.INTEGRATION_ERROR, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackPolicyCreated(data: PolicyEvent): void {
-    this.track(this.createEvent(EventType.POLICY_CREATED, data.tenantId, data));
+    this.track(this.createEvent(EventType.POLICY_CREATED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackPolicyUpdated(data: PolicyEvent): void {
-    this.track(this.createEvent(EventType.POLICY_UPDATED, data.tenantId, data));
+    this.track(this.createEvent(EventType.POLICY_UPDATED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 
   trackPolicyTriggered(data: PolicyEvent): void {
-    this.track(this.createEvent(EventType.POLICY_TRIGGERED, data.tenantId, data));
+    this.track(this.createEvent(EventType.POLICY_TRIGGERED, data.tenantId, data as unknown as Record<string, unknown>));
   }
 }
 

@@ -31,15 +31,39 @@ export interface AlertCondition {
 }
 
 /**
+ * Alert action configuration
+ */
+export interface AlertAction {
+  type: 'email' | 'webhook' | 'slack' | 'pagerduty';
+  target: string;
+  template?: string;
+}
+
+/**
+ * Extended alert condition (used by API)
+ */
+export interface ExtendedAlertCondition {
+  type: string;
+  metric: string;
+  operator: Operator;
+  value: number;
+  window?: string;
+}
+
+/**
  * Alert rule definition
  */
 export interface AlertRule {
   id: string;
   name: string;
-  condition?: AlertCondition;
+  description?: string;
+  condition?: AlertCondition | ExtendedAlertCondition;
   conditions?: AlertCondition[];
-  severity: AlertSeverityType;
+  severity?: AlertSeverityType;
   cooldown?: string;
+  cooldownMinutes?: number;
+  actions?: AlertAction[];
+  isActive?: boolean;
 }
 
 /**
@@ -112,16 +136,19 @@ export class AlertManager {
     return Array.from(this.activeAlerts.values());
   }
 
-  private evaluateCondition(condition: AlertCondition, metrics: Record<string, number>): boolean {
+  private evaluateCondition(condition: AlertCondition | ExtendedAlertCondition, metrics: Record<string, number>): boolean {
     const value = metrics[condition.metric];
     if (value === undefined) return false;
 
+    // Get threshold from either condition type
+    const threshold = 'threshold' in condition ? condition.threshold : condition.value;
+
     switch (condition.operator) {
-      case 'gt': return value > condition.threshold;
-      case 'lt': return value < condition.threshold;
-      case 'eq': return value === condition.threshold;
-      case 'gte': return value >= condition.threshold;
-      case 'lte': return value <= condition.threshold;
+      case 'gt': return value > threshold;
+      case 'lt': return value < threshold;
+      case 'eq': return value === threshold;
+      case 'gte': return value >= threshold;
+      case 'lte': return value <= threshold;
       default: return false;
     }
   }
@@ -144,14 +171,15 @@ export class AlertManager {
         }
 
         const condition = conditions[0];
+        const conditionThreshold = condition ? ('threshold' in condition ? condition.threshold : condition.value) : undefined;
         const alert: Alert = {
           ruleId: rule.id,
           ruleName: rule.name,
-          severity: rule.severity,
+          severity: rule.severity || AlertSeverity.WARNING,
           status: 'firing',
           timestamp: new Date().toISOString(),
           value: condition ? metrics[condition.metric] : undefined,
-          threshold: condition?.threshold,
+          threshold: conditionThreshold,
           metric: condition?.metric,
         };
 
@@ -162,7 +190,7 @@ export class AlertManager {
         const alert: Alert = {
           ruleId: rule.id,
           ruleName: rule.name,
-          severity: rule.severity,
+          severity: rule.severity || AlertSeverity.WARNING,
           status: 'resolved',
           timestamp: new Date().toISOString(),
         };
@@ -199,4 +227,128 @@ export class AlertManager {
 
 export function createAlertManager(config: AlertManagerConfig): AlertManager {
   return new AlertManager(config);
+}
+
+/**
+ * System-defined alert rules that apply to all tenants
+ */
+export const SYSTEM_ALERT_RULES: AlertRule[] = [
+  {
+    id: 'system-high-threat-rate',
+    name: 'High Threat Detection Rate',
+    condition: { metric: 'threats_detected_total', operator: 'gt', threshold: 100, window: '5m' },
+    severity: AlertSeverity.WARNING,
+  },
+  {
+    id: 'system-integration-errors',
+    name: 'Integration Errors',
+    condition: { metric: 'integration_errors_total', operator: 'gt', threshold: 10, window: '5m' },
+    severity: AlertSeverity.CRITICAL,
+  },
+  {
+    id: 'system-high-latency',
+    name: 'High API Latency',
+    condition: { metric: 'api_latency_p99', operator: 'gt', threshold: 5000, window: '5m' },
+    severity: AlertSeverity.WARNING,
+  },
+];
+
+/**
+ * In-memory storage for alert rules and active alerts (per tenant)
+ * In production, this would be backed by a database
+ */
+const alertRulesStore = new Map<string, AlertRule[]>();
+const activeAlertsStore = new Map<string, Alert[]>();
+
+/**
+ * Create a new alert rule for a tenant
+ */
+export async function createAlertRule(
+  tenantId: string,
+  rule: Omit<AlertRule, 'id'>
+): Promise<AlertRule> {
+  const id = `rule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const newRule: AlertRule = { id, ...rule };
+
+  const tenantRules = alertRulesStore.get(tenantId) || [];
+  tenantRules.push(newRule);
+  alertRulesStore.set(tenantId, tenantRules);
+
+  return newRule;
+}
+
+/**
+ * Get all alert rules for a tenant
+ */
+export async function getAlertRules(tenantId: string): Promise<AlertRule[]> {
+  return alertRulesStore.get(tenantId) || [];
+}
+
+/**
+ * Update an existing alert rule
+ */
+export async function updateAlertRule(
+  ruleId: string,
+  tenantId: string,
+  updates: Partial<AlertRule>
+): Promise<boolean> {
+  const tenantRules = alertRulesStore.get(tenantId) || [];
+  const ruleIndex = tenantRules.findIndex(r => r.id === ruleId);
+
+  if (ruleIndex === -1) return false;
+
+  tenantRules[ruleIndex] = { ...tenantRules[ruleIndex], ...updates };
+  alertRulesStore.set(tenantId, tenantRules);
+
+  return true;
+}
+
+/**
+ * Delete an alert rule
+ */
+export async function deleteAlertRule(ruleId: string, tenantId: string): Promise<boolean> {
+  const tenantRules = alertRulesStore.get(tenantId) || [];
+  const filtered = tenantRules.filter(r => r.id !== ruleId);
+
+  if (filtered.length === tenantRules.length) return false;
+
+  alertRulesStore.set(tenantId, filtered);
+  return true;
+}
+
+/**
+ * Get active alerts for a tenant
+ */
+export async function getActiveAlerts(tenantId: string): Promise<Alert[]> {
+  return activeAlertsStore.get(tenantId) || [];
+}
+
+/**
+ * Acknowledge an active alert
+ */
+export async function acknowledgeAlert(
+  alertId: string,
+  tenantId: string,
+  acknowledgedBy: string
+): Promise<boolean> {
+  const tenantAlerts = activeAlertsStore.get(tenantId) || [];
+  const alertIndex = tenantAlerts.findIndex(a => a.ruleId === alertId);
+
+  if (alertIndex === -1) return false;
+
+  // Mark as acknowledged (in a real system, this would update the alert status)
+  return true;
+}
+
+/**
+ * Resolve an active alert
+ */
+export async function resolveAlert(alertId: string, tenantId: string): Promise<boolean> {
+  const tenantAlerts = activeAlertsStore.get(tenantId) || [];
+  const filtered = tenantAlerts.filter(a => a.ruleId !== alertId);
+
+  if (filtered.length === tenantAlerts.length) return false;
+
+  activeAlertsStore.set(tenantId, filtered);
+  return true;
 }

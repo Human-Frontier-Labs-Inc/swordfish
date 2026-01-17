@@ -527,15 +527,15 @@ export class ResponseActionExecutor {
             await terminateUserSessions(userId, []);
             break;
           case 'force_password_reset':
-            await triggerPasswordReset(userId, 'user@example.com', action.params as PasswordResetOptions);
+            await triggerPasswordReset(userId, 'user@example.com', action.params as unknown as PasswordResetOptions);
             break;
           case 'enforce_mfa':
-            await enforceMFA(userId, action.params as MFAOptions);
+            await enforceMFA(userId, action.params as unknown as MFAOptions);
             break;
           case 'notify_admin':
             await notifyAdmin({
               type: 'ato_response',
-              severity: (action.params.severity as 'critical') || 'high',
+              severity: ((action.params as Record<string, unknown>).severity as 'critical') || 'high',
               userId,
               userEmail: 'user@example.com',
               details: {},
@@ -547,11 +547,11 @@ export class ResponseActionExecutor {
               severity: 'warning',
               userId,
               userEmail: 'user@example.com',
-              details: { message: action.params.message },
+              details: { message: (action.params as Record<string, unknown>).message as string },
             });
             break;
           case 'lock_account':
-            await lockAccount(userId, action.params as LockOptions);
+            await lockAccount(userId, action.params as unknown as LockOptions);
             break;
           default:
             success = false;

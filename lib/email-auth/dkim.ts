@@ -540,7 +540,7 @@ export class DKIMValidator {
 
         const key = await crypto.subtle.importKey(
           'spki',
-          keyData,
+          keyData.buffer.slice(keyData.byteOffset, keyData.byteOffset + keyData.byteLength) as ArrayBuffer,
           cryptoAlgorithm,
           false,
           ['verify']
@@ -557,8 +557,8 @@ export class DKIMValidator {
         return await crypto.subtle.verify(
           signAlgorithm,
           key,
-          sigData,
-          dataBuffer
+          sigData.buffer.slice(sigData.byteOffset, sigData.byteOffset + sigData.byteLength) as ArrayBuffer,
+          dataBuffer.buffer.slice(dataBuffer.byteOffset, dataBuffer.byteOffset + dataBuffer.byteLength) as ArrayBuffer
         );
       } catch {
         // Crypto verification failed

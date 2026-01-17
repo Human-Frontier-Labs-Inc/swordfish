@@ -131,19 +131,47 @@ export async function verifyResourceAccess(
   try {
     const tenantId = await getTenantId();
 
-    // Query the resource to check its tenant_id
-    // Note: Using parameterized query for safety
-    const result = await sql`
-      SELECT tenant_id FROM ${sql(table)}
-      WHERE id = ${resourceId}
-      LIMIT 1
-    `;
+    // Query the resource based on table type
+    // Table name is validated by TypeScript against the TenantScopedTable type
+    let result: Array<Record<string, unknown>>;
+
+    switch (table) {
+      case 'email_verdicts':
+        result = await sql`SELECT tenant_id FROM email_verdicts WHERE id = ${resourceId} LIMIT 1`;
+        break;
+      case 'quarantine':
+        result = await sql`SELECT tenant_id FROM quarantine WHERE id = ${resourceId} LIMIT 1`;
+        break;
+      case 'policies':
+        result = await sql`SELECT tenant_id FROM policies WHERE id = ${resourceId} LIMIT 1`;
+        break;
+      case 'integrations':
+        result = await sql`SELECT tenant_id FROM integrations WHERE id = ${resourceId} LIMIT 1`;
+        break;
+      case 'threats':
+        result = await sql`SELECT tenant_id FROM threats WHERE id = ${resourceId} LIMIT 1`;
+        break;
+      case 'notifications':
+        result = await sql`SELECT tenant_id FROM notifications WHERE id = ${resourceId} LIMIT 1`;
+        break;
+      case 'webhooks':
+        result = await sql`SELECT tenant_id FROM webhooks WHERE id = ${resourceId} LIMIT 1`;
+        break;
+      case 'feedback':
+        result = await sql`SELECT tenant_id FROM feedback WHERE id = ${resourceId} LIMIT 1`;
+        break;
+      case 'audit_log':
+        result = await sql`SELECT tenant_id FROM audit_log WHERE id = ${resourceId} LIMIT 1`;
+        break;
+      default:
+        return false;
+    }
 
     if (result.length === 0) {
       return false; // Resource doesn't exist
     }
 
-    return result[0].tenant_id === tenantId;
+    return result[0].tenant_id as string === tenantId;
   } catch {
     return false;
   }
@@ -247,7 +275,7 @@ export async function createTenantContext(): Promise<TenantContext> {
     tenantId,
     userId,
     requestId,
-    orgId,
+    orgId: orgId ?? null,
   };
 }
 

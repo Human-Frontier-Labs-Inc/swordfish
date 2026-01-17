@@ -135,20 +135,26 @@ export class VirusTotalClient {
   async getUrlAnalysis(analysisId: string): Promise<UrlScanResult> {
     const response = await this.makeRequest(`/analyses/${analysisId}`);
 
-    const attrs = response.data?.attributes;
+    const attrs = response.data?.attributes as Record<string, unknown> | undefined;
     if (!attrs) {
       throw new Error('Invalid response format');
     }
 
-    const stats = attrs.stats || { malicious: 0, suspicious: 0, harmless: 0, undetected: 0 };
-    const status = this.mapStatus(attrs.status);
+    const rawStats = (attrs.stats as Record<string, number>) || {};
+    const stats: AnalysisStats = {
+      malicious: rawStats.malicious ?? 0,
+      suspicious: rawStats.suspicious ?? 0,
+      harmless: rawStats.harmless ?? 0,
+      undetected: rawStats.undetected ?? 0,
+    };
+    const status = this.mapStatus(attrs.status as string);
 
     return {
       status,
       stats,
       threatScore: this.calculateThreatScore(stats),
       isMalicious: stats.malicious > 0 || stats.suspicious > 2,
-      categories: this.extractCategories(attrs.results || {}),
+      categories: this.extractCategories((attrs.results as Record<string, { category?: string; result?: string }>) || {}),
     };
   }
 
@@ -197,22 +203,28 @@ export class VirusTotalClient {
     try {
       const response = await this.makeRequest(`/files/${hash}`);
 
-      const attrs = response.data?.attributes;
+      const attrs = response.data?.attributes as Record<string, unknown> | undefined;
       if (!attrs) {
         throw new Error('Invalid response format');
       }
 
-      const stats = attrs.last_analysis_stats || { malicious: 0, suspicious: 0, harmless: 0, undetected: 0 };
+      const rawStats = (attrs.last_analysis_stats as Record<string, number>) || {};
+      const stats: AnalysisStats = {
+        malicious: rawStats.malicious ?? 0,
+        suspicious: rawStats.suspicious ?? 0,
+        harmless: rawStats.harmless ?? 0,
+        undetected: rawStats.undetected ?? 0,
+      };
 
       const result: FileScanResult = {
         found: true,
-        sha256: attrs.sha256,
-        md5: attrs.md5,
+        sha256: attrs.sha256 as string | undefined,
+        md5: attrs.md5 as string | undefined,
         stats,
         threatScore: this.calculateThreatScore(stats),
         isMalicious: stats.malicious > 0,
         categories: this.extractFileCategories(attrs),
-        typeDescription: attrs.type_description,
+        typeDescription: attrs.type_description as string | undefined,
       };
 
       // Cache the result
