@@ -28,10 +28,22 @@ vi.mock('@/lib/workers/email-sync', () => ({
 
 // Set environment variable
 process.env.CRON_SECRET = 'test-cron-secret';
+process.env.NANGO_SECRET_KEY = 'test-nango-secret';
+
+// Mock global fetch for Nango API calls
+const mockFetch = vi.fn().mockResolvedValue({
+  ok: true,
+  json: () => Promise.resolve({ connections: [] }),
+});
+global.fetch = mockFetch;
 
 describe('Sync Emails Cron Job', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ connections: [] }),
+    });
   });
 
   afterEach(() => {
@@ -169,6 +181,7 @@ describe('Sync Emails Cron Job', () => {
           tenant_id: 'tenant-1',
           type: 'gmail',
           config: { syncEnabled: true },
+          nango_connection_id: 'nango-conn-1',
           last_sync_at: null,
           tenant_name: 'Test Tenant',
         },
@@ -214,6 +227,7 @@ describe('Sync Emails Cron Job', () => {
             tenant_id: 'tenant-1',
             type: 'gmail',
             config: { syncEnabled: true },
+            nango_connection_id: 'nango-conn-1',
             last_sync_at: null,
             tenant_name: 'Test Tenant',
           },
@@ -248,6 +262,7 @@ describe('Sync Emails Cron Job', () => {
             tenant_id: 'tenant-1',
             type: 'gmail',
             config: { syncEnabled: true },
+            nango_connection_id: 'nango-conn-1',
             last_sync_at: null,
             tenant_name: 'Test Tenant 1',
           },
@@ -256,6 +271,7 @@ describe('Sync Emails Cron Job', () => {
             tenant_id: 'tenant-2',
             type: 'o365',
             config: { syncEnabled: true },
+            nango_connection_id: 'nango-conn-2',
             last_sync_at: null,
             tenant_name: 'Test Tenant 2',
           },

@@ -97,12 +97,56 @@ export async function POST(request: NextRequest) {
     };
 
     // Get fresh token from Nango (handles refresh automatically)
-    if (!nangoConnectionId) {
-      console.warn(`No Nango connection for integration ${integration.id}`);
-      return NextResponse.json({ error: 'No Nango connection configured' }, { status: 500 });
+    let activeNangoConnectionId = nangoConnectionId;
+
+    if (!activeNangoConnectionId) {
+      // Auto-healing: Try to find and link the Nango connection by email
+      console.log(`[Gmail Webhook] No Nango connection for integration ${integration.id}, attempting auto-heal...`);
+
+      try {
+        const nangoResponse = await fetch('https://api.nango.dev/connections', {
+          headers: {
+            'Authorization': `Bearer ${process.env.NANGO_SECRET_KEY}`,
+          },
+        });
+
+        if (nangoResponse.ok) {
+          const { connections } = await nangoResponse.json() as {
+            connections: Array<{
+              connection_id: string;
+              provider_config_key: string;
+              end_user?: { id: string; email?: string };
+            }>
+          };
+
+          // Find connection for this tenant with gmail provider
+          const gmailConnection = connections.find(
+            c => c.end_user?.id === tenantId && c.provider_config_key === 'google-mail'
+          );
+
+          if (gmailConnection) {
+            // Update integration with the found connection ID
+            await sql`
+              UPDATE integrations
+              SET nango_connection_id = ${gmailConnection.connection_id},
+                  updated_at = NOW()
+              WHERE id = ${integration.id}
+            `;
+            activeNangoConnectionId = gmailConnection.connection_id;
+            console.log(`[Gmail Webhook] Auto-healed: linked Nango connection ${activeNangoConnectionId}`);
+          }
+        }
+      } catch (healError) {
+        console.error('[Gmail Webhook] Auto-heal failed:', healError);
+      }
+
+      if (!activeNangoConnectionId) {
+        console.warn(`[Gmail Webhook] No Nango connection for integration ${integration.id} and auto-heal failed`);
+        return NextResponse.json({ error: 'No Nango connection configured' }, { status: 500 });
+      }
     }
 
-    const accessToken = await getGmailAccessToken(nangoConnectionId);
+    const accessToken = await getGmailAccessToken(activeNangoConnectionId);
 
     // Get history since last sync
     const startHistoryId = config.historyId || historyId;
