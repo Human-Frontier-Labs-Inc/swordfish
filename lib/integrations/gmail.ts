@@ -13,6 +13,92 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GMAIL_API_URL = 'https://gmail.googleapis.com/gmail/v1';
 
 /**
+ * Retry configuration for Gmail API calls
+ */
+interface RetryConfig {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+}
+
+const DEFAULT_RETRY_CONFIG: Required<RetryConfig> = {
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 30000,
+};
+
+/**
+ * Sleep for a given number of milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Fetch wrapper with retry logic for rate limiting (429) and server errors (5xx)
+ */
+async function gmailFetchWithRetry(
+  url: string,
+  options: RequestInit,
+  config: RetryConfig = {}
+): Promise<Response> {
+  const { maxRetries, baseDelayMs, maxDelayMs } = { ...DEFAULT_RETRY_CONFIG, ...config };
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Success or client error (not retryable)
+      if (response.ok || (response.status >= 400 && response.status < 429)) {
+        return response;
+      }
+
+      // Rate limiting - respect Retry-After header if present
+      if (response.status === 429) {
+        if (attempt >= maxRetries) {
+          return response; // Return the 429 after max retries
+        }
+
+        const retryAfter = response.headers.get('Retry-After');
+        const delayMs = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+
+        await sleep(delayMs);
+        continue;
+      }
+
+      // Server errors (5xx) - retry with exponential backoff
+      if (response.status >= 500) {
+        if (attempt >= maxRetries) {
+          return response;
+        }
+
+        const delayMs = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+        await sleep(delayMs);
+        continue;
+      }
+
+      // Other errors (401, 403, etc.) - don't retry
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Network errors - retry with backoff
+      if (attempt >= maxRetries) {
+        throw lastError;
+      }
+
+      const delayMs = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError || new Error('Max retries exceeded');
+}
+
+/**
  * Get a fresh Gmail access token from Nango
  * Use this instead of storing/refreshing tokens yourself
  *
@@ -223,6 +309,7 @@ export async function getGmailMessage(params: {
 
 /**
  * Modify message labels (for quarantine)
+ * Includes retry logic for rate limiting and transient errors
  */
 export async function modifyGmailMessage(params: {
   accessToken: string;
@@ -232,7 +319,7 @@ export async function modifyGmailMessage(params: {
 }): Promise<void> {
   const { accessToken, messageId, addLabelIds = [], removeLabelIds = [] } = params;
 
-  const response = await fetch(
+  const response = await gmailFetchWithRetry(
     `${GMAIL_API_URL}/users/me/messages/${messageId}/modify`,
     {
       method: 'POST',
@@ -251,6 +338,7 @@ export async function modifyGmailMessage(params: {
 
 /**
  * Trash a message
+ * Includes retry logic for rate limiting and transient errors
  */
 export async function trashGmailMessage(params: {
   accessToken: string;
@@ -258,7 +346,7 @@ export async function trashGmailMessage(params: {
 }): Promise<void> {
   const { accessToken, messageId } = params;
 
-  const response = await fetch(
+  const response = await gmailFetchWithRetry(
     `${GMAIL_API_URL}/users/me/messages/${messageId}/trash`,
     {
       method: 'POST',
@@ -273,6 +361,7 @@ export async function trashGmailMessage(params: {
 
 /**
  * Create a label (for quarantine)
+ * Includes retry logic for rate limiting and transient errors
  */
 export async function createGmailLabel(params: {
   accessToken: string;
@@ -287,7 +376,7 @@ export async function createGmailLabel(params: {
     messageListVisibility = 'show',
   } = params;
 
-  const response = await fetch(`${GMAIL_API_URL}/users/me/labels`, {
+  const response = await gmailFetchWithRetry(`${GMAIL_API_URL}/users/me/labels`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -309,10 +398,11 @@ export async function createGmailLabel(params: {
 
 /**
  * Get or create quarantine label
+ * Includes retry logic for rate limiting and transient errors
  */
 export async function getOrCreateQuarantineLabel(accessToken: string): Promise<string> {
-  // List existing labels
-  const listResponse = await fetch(`${GMAIL_API_URL}/users/me/labels`, {
+  // List existing labels with retry
+  const listResponse = await gmailFetchWithRetry(`${GMAIL_API_URL}/users/me/labels`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 

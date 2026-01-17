@@ -456,3 +456,93 @@ export function createMetricsCollector(): MetricsCollector {
  * Default metrics collector
  */
 export const defaultMetrics = createMetricsCollector();
+
+/**
+ * System metrics interface
+ */
+export interface SystemMetrics {
+  system: {
+    uptime: number;
+    memoryUsage: {
+      heapUsed: number;
+      heapTotal: number;
+      external: number;
+      rss: number;
+    };
+    cpuUsage: {
+      user: number;
+      system: number;
+    };
+  };
+  application?: {
+    emailsProcessed?: number;
+    threatsDetected?: number;
+    activeIntegrations?: number;
+    queueDepth?: number;
+  };
+  timestamp: string;
+}
+
+/**
+ * Collect system and application metrics
+ */
+export async function collectMetrics(tenantId?: string): Promise<SystemMetrics> {
+  const memUsage = process.memoryUsage();
+  const cpuUsage = process.cpuUsage();
+
+  const metrics: SystemMetrics = {
+    system: {
+      uptime: process.uptime(),
+      memoryUsage: {
+        heapUsed: memUsage.heapUsed,
+        heapTotal: memUsage.heapTotal,
+        external: memUsage.external,
+        rss: memUsage.rss,
+      },
+      cpuUsage: {
+        user: cpuUsage.user / 1e6,
+        system: cpuUsage.system / 1e6,
+      },
+    },
+    timestamp: new Date().toISOString(),
+  };
+
+  // Application-specific metrics would be collected here
+  // For now, return system metrics
+  return metrics;
+}
+
+/**
+ * Format metrics in Prometheus exposition format
+ */
+export function formatPrometheusMetrics(metrics: SystemMetrics): string {
+  const lines: string[] = [];
+
+  // System metrics
+  lines.push('# HELP process_uptime_seconds Process uptime in seconds');
+  lines.push('# TYPE process_uptime_seconds gauge');
+  lines.push(`process_uptime_seconds ${metrics.system.uptime}`);
+
+  lines.push('# HELP process_heap_bytes Process heap memory in bytes');
+  lines.push('# TYPE process_heap_bytes gauge');
+  lines.push(`process_heap_bytes{type="used"} ${metrics.system.memoryUsage.heapUsed}`);
+  lines.push(`process_heap_bytes{type="total"} ${metrics.system.memoryUsage.heapTotal}`);
+
+  lines.push('# HELP process_memory_rss_bytes Process resident set size in bytes');
+  lines.push('# TYPE process_memory_rss_bytes gauge');
+  lines.push(`process_memory_rss_bytes ${metrics.system.memoryUsage.rss}`);
+
+  lines.push('# HELP process_cpu_seconds_total Total CPU time');
+  lines.push('# TYPE process_cpu_seconds_total counter');
+  lines.push(`process_cpu_seconds_total{type="user"} ${metrics.system.cpuUsage.user}`);
+  lines.push(`process_cpu_seconds_total{type="system"} ${metrics.system.cpuUsage.system}`);
+
+  // Add registry metrics if available
+  const registryMetrics = defaultMetrics.getRegistry().toPrometheusFormat();
+  if (registryMetrics) {
+    lines.push('');
+    lines.push(registryMetrics);
+  }
+
+  return lines.join('\n');
+}
