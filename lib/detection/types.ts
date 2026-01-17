@@ -181,7 +181,9 @@ export type SignalType =
   | 'domain_age_risk'
   | 'behavioral_anomaly'
   | 'anomaly_detected'
-  | 'lookalike_detected';
+  | 'lookalike_detected'
+  // Email classification
+  | 'classification';
 
 // Analysis result from each layer
 export interface LayerResult {
@@ -193,6 +195,19 @@ export interface LayerResult {
   skipped?: boolean;
   skipReason?: string;
   metadata?: Record<string, unknown>;
+}
+
+// Email classification result (from classifier module)
+export interface EmailClassificationResult {
+  type: 'marketing' | 'transactional' | 'automated' | 'personal' | 'unknown';
+  confidence: number;
+  isKnownSender: boolean;
+  senderName?: string;
+  senderCategory?: string;
+  threatScoreModifier: number;
+  skipBECDetection: boolean;
+  skipGiftCardDetection: boolean;
+  signals: string[];
 }
 
 // Final verdict
@@ -214,6 +229,8 @@ export interface EmailVerdict {
     policyName?: string;
     action?: string;
   };
+  // Email classification (runs before threat detection)
+  emailClassification?: EmailClassificationResult;
 }
 
 // Detection pipeline configuration

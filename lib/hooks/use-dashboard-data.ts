@@ -62,8 +62,8 @@ export function useDashboardData(): UseDashboardDataReturn {
       // Fetch all data in parallel
       const [statsRes, threatsRes, quarantineRes] = await Promise.all([
         fetch('/api/dashboard/stats'),
-        fetch('/api/dashboard/threats?limit=10'),
-        fetch('/api/dashboard/quarantine?limit=10'),
+        fetch('/api/dashboard/threats?limit=50'),
+        fetch('/api/dashboard/quarantine?limit=50'),
       ]);
 
       if (statsRes.ok) {
