@@ -100,13 +100,19 @@ export async function POST(request: NextRequest) {
     let activeNangoConnectionId = nangoConnectionId;
 
     if (!activeNangoConnectionId) {
-      // Auto-healing: Try to find and link the Nango connection by email
+      // Auto-healing: Try to find and link the Nango connection
       console.log(`[Gmail Webhook] No Nango connection for integration ${integration.id}, attempting auto-heal...`);
+
+      const nangoSecretKey = process.env.NANGO_SECRET_KEY;
+      if (!nangoSecretKey) {
+        console.error('[Gmail Webhook] Auto-heal failed: NANGO_SECRET_KEY not configured');
+        return NextResponse.json({ error: 'No Nango connection configured' }, { status: 500 });
+      }
 
       try {
         const nangoResponse = await fetch('https://api.nango.dev/connections', {
           headers: {
-            'Authorization': `Bearer ${process.env.NANGO_SECRET_KEY}`,
+            'Authorization': `Bearer ${nangoSecretKey}`,
           },
         });
 
@@ -116,13 +122,27 @@ export async function POST(request: NextRequest) {
               connection_id: string;
               provider_config_key: string;
               end_user?: { id: string; email?: string };
+              metadata?: { email?: string };
             }>
           };
 
-          // Find connection for this tenant with gmail provider
-          const gmailConnection = connections.find(
-            c => c.end_user?.id === tenantId && c.provider_config_key === 'google-mail'
+          console.log(`[Gmail Webhook] Found ${connections.length} Nango connections, looking for tenant ${tenantId} or email ${emailAddress}`);
+
+          // Find connection for this tenant with google provider (Nango key is 'google' not 'google-mail')
+          let gmailConnection = connections.find(
+            c => c.end_user?.id === tenantId && c.provider_config_key === 'google'
           );
+
+          // Fallback: try matching by email address in metadata or end_user
+          if (!gmailConnection) {
+            gmailConnection = connections.find(
+              c => c.provider_config_key === 'google' &&
+                   (c.end_user?.email === emailAddress || c.metadata?.email === emailAddress)
+            );
+            if (gmailConnection) {
+              console.log(`[Gmail Webhook] Found connection by email fallback`);
+            }
+          }
 
           if (gmailConnection) {
             // Update integration with the found connection ID
@@ -134,7 +154,11 @@ export async function POST(request: NextRequest) {
             `;
             activeNangoConnectionId = gmailConnection.connection_id;
             console.log(`[Gmail Webhook] Auto-healed: linked Nango connection ${activeNangoConnectionId}`);
+          } else {
+            console.warn(`[Gmail Webhook] No matching Nango connection found. Available: ${JSON.stringify(connections.map(c => ({ id: c.connection_id, key: c.provider_config_key, endUserId: c.end_user?.id })))}`);
           }
+        } else {
+          console.error(`[Gmail Webhook] Nango API error: ${nangoResponse.status} ${nangoResponse.statusText}`);
         }
       } catch (healError) {
         console.error('[Gmail Webhook] Auto-heal failed:', healError);
