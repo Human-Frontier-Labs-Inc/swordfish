@@ -13,6 +13,8 @@ import { sendThreatNotification } from '@/lib/notifications/service';
 import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
 import { validateGooglePubSub, checkRateLimit } from '@/lib/webhooks/validation';
+import { processGmailHistoryForUser, getGmailTokenForUser } from '@/lib/integrations/domain-wide/google-workspace';
+import { getDomainUserByEmail, incrementDomainUserStats, getActiveDomainConfigs } from '@/lib/integrations/domain-wide/storage';
 
 const WEBHOOK_AUDIENCE = process.env.GOOGLE_WEBHOOK_AUDIENCE;
 
@@ -75,7 +77,20 @@ export async function POST(request: NextRequest) {
 
     console.log(`Gmail notification for ${emailAddress}, history: ${historyId}`);
 
-    // Find the integration for this email
+    // First, check if this email is from a domain-wide monitoring config
+    const domainConfigs = await getActiveDomainConfigs();
+    for (const domainConfig of domainConfigs) {
+      if (domainConfig.provider !== 'google_workspace') continue;
+
+      const domainUser = await getDomainUserByEmail(domainConfig.id, emailAddress);
+      if (domainUser && domainUser.isMonitored) {
+        // Process via domain-wide path
+        console.log(`Processing domain-wide Gmail notification for ${emailAddress}`);
+        return await processDomainWideGmail(domainConfig.id, domainConfig.tenantId, emailAddress, historyId);
+      }
+    }
+
+    // Fall back to individual integration
     const integrations = await sql`
       SELECT id, tenant_id, config, nango_connection_id
       FROM integrations
@@ -290,4 +305,72 @@ export async function GET() {
     service: 'gmail-webhook',
     timestamp: new Date().toISOString(),
   });
+}
+
+/**
+ * Process Gmail notification for domain-wide monitored user
+ */
+async function processDomainWideGmail(
+  configId: string,
+  tenantId: string,
+  userEmail: string,
+  historyId: string
+) {
+  try {
+    // Get new messages from history
+    const { messageIds, newHistoryId } = await processGmailHistoryForUser(configId, userEmail, historyId);
+
+    console.log(`Domain-wide: Found ${messageIds.length} new messages for ${userEmail}`);
+
+    const accessToken = await getGmailTokenForUser(configId, userEmail);
+    let processedCount = 0;
+
+    for (const messageId of messageIds) {
+      try {
+        const message = await getGmailMessage({ accessToken, messageId, format: 'full' });
+        const parsedEmail = parseGmailEmail(message);
+
+        const verdict = await analyzeEmail(parsedEmail, tenantId);
+        await storeVerdict(tenantId, parsedEmail.messageId, verdict);
+
+        if (verdict.verdict === 'quarantine' || verdict.verdict === 'block') {
+          await sendThreatNotification(tenantId, {
+            type: verdict.verdict === 'block' ? 'threat_blocked' : 'threat_quarantined',
+            severity: verdict.overallScore >= 80 ? 'critical' : 'warning',
+            title: `Email ${verdict.verdict === 'block' ? 'Blocked' : 'Quarantined'}: ${parsedEmail.subject}`,
+            message: verdict.explanation || `Threat detected from ${parsedEmail.from.address}`,
+            metadata: {
+              messageId: parsedEmail.messageId,
+              from: parsedEmail.from.address,
+              to: userEmail,
+              score: verdict.overallScore,
+              domainWide: true,
+            },
+          });
+        }
+
+        processedCount++;
+      } catch (msgError) {
+        console.error(`Failed to process domain-wide message ${messageId}:`, msgError);
+      }
+    }
+
+    // Update domain user stats
+    const domainUser = await getDomainUserByEmail(configId, userEmail);
+    if (domainUser) {
+      await incrementDomainUserStats(domainUser.id, {
+        emailsScanned: processedCount,
+        threatsDetected: 0, // Would need to track this properly
+      });
+    }
+
+    return NextResponse.json({
+      status: 'processed',
+      messagesProcessed: processedCount,
+      domainWide: true,
+    });
+  } catch (error) {
+    console.error('Domain-wide Gmail processing error:', error);
+    return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
+  }
 }
