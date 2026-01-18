@@ -55,7 +55,7 @@ export async function createScheduledReport(params: {
       ${name},
       ${type},
       ${frequency},
-      ${recipients},
+      ${JSON.stringify(recipients)},
       true,
       ${nextRunAt.toISOString()},
       ${JSON.stringify(config || {})},
@@ -115,7 +115,7 @@ export async function updateScheduledReport(
     SET
       name = COALESCE(${name || null}, name),
       frequency = COALESCE(${frequency || null}, frequency),
-      recipients = COALESCE(${recipients || null}, recipients),
+      recipients = COALESCE(${recipients ? JSON.stringify(recipients) : null}, recipients),
       enabled = COALESCE(${enabled ?? null}, enabled),
       config = COALESCE(${config ? JSON.stringify(config) : null}, config),
       next_run_at = COALESCE(${nextRunAt?.toISOString() || null}, next_run_at)
