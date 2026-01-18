@@ -192,7 +192,7 @@ export default function ThreatsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(threat.quarantined_at).toLocaleDateString()}
+                    {threat.quarantined_at ? new Date(threat.quarantined_at).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <Link
