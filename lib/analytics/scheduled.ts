@@ -48,12 +48,13 @@ export async function createScheduledReport(params: {
 
   const result = await sql`
     INSERT INTO scheduled_reports (
-      tenant_id, name, type, frequency, recipients, enabled,
+      tenant_id, name, type, frequency, schedule, recipients, enabled,
       next_run_at, config, created_by, created_at
     ) VALUES (
       ${tenantId},
       ${name},
       ${type},
+      ${frequency},
       ${frequency},
       ${JSON.stringify(recipients)},
       true,
@@ -115,6 +116,7 @@ export async function updateScheduledReport(
     SET
       name = COALESCE(${name || null}, name),
       frequency = COALESCE(${frequency || null}, frequency),
+      schedule = COALESCE(${frequency || null}, schedule),
       recipients = COALESCE(${recipients ? JSON.stringify(recipients) : null}, recipients),
       enabled = COALESCE(${enabled ?? null}, enabled),
       config = COALESCE(${config ? JSON.stringify(config) : null}, config),
