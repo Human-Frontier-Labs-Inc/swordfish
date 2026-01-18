@@ -171,8 +171,8 @@ async function runMigration012() {
     }
 
     // Check for frequency column specifically
-    const hasFrequency = results.some((r: { column_name: string }) => r.column_name === 'frequency');
-    const hasEnabled = results.some((r: { column_name: string }) => r.column_name === 'enabled');
+    const hasFrequency = results.some((r) => r.column_name === 'frequency');
+    const hasEnabled = results.some((r) => r.column_name === 'enabled');
 
     console.log('\n📋 Summary:');
     console.log(`  - frequency column: ${hasFrequency ? '✅ Present' : '❌ Missing'}`);
