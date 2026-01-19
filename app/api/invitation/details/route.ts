@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         i.invited_by,
         t.name as tenant_name
       FROM user_invitations i
-      JOIN tenants t ON i.tenant_id = t.id
+      JOIN tenants t ON i.tenant_id::uuid = t.id
       WHERE i.id = ${token}::uuid
       LIMIT 1
     `;

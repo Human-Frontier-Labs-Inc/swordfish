@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         t.name as tenant_name,
         t.clerk_org_id
       FROM user_invitations i
-      JOIN tenants t ON i.tenant_id = t.id
+      JOIN tenants t ON i.tenant_id::uuid = t.id
       WHERE i.id = ${token}::uuid
       LIMIT 1
     `;

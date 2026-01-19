@@ -33,7 +33,7 @@ export async function GET() {
         t.domain,
         t.plan
       FROM users u
-      LEFT JOIN tenants t ON u.tenant_id = t.id
+      LEFT JOIN tenants t ON u.tenant_id IS NOT NULL AND u.tenant_id::uuid = t.id
       WHERE u.clerk_user_id = ${userId}
       LIMIT 1
     `;

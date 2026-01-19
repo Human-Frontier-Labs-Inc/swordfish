@@ -158,7 +158,7 @@ async function handleUserCreated(event: ClerkUserEvent) {
       i.accepted_at,
       t.clerk_org_id
     FROM user_invitations i
-    JOIN tenants t ON i.tenant_id = t.id
+    JOIN tenants t ON i.tenant_id::uuid = t.id
     WHERE LOWER(i.email) = LOWER(${primaryEmail})
       AND i.accepted_at IS NULL
       AND i.expires_at > NOW()

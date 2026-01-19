@@ -47,7 +47,9 @@ export async function GET(request: NextRequest) {
         i.last_sync_at,
         COALESCE(t.name, i.tenant_id) as tenant_name
       FROM integrations i
-      LEFT JOIN tenants t ON i.tenant_id = t.id
+      LEFT JOIN tenants t ON i.tenant_id IS NOT NULL
+        AND i.tenant_id NOT LIKE 'personal_%'
+        AND i.tenant_id::uuid = t.id
       WHERE i.status = 'connected'
       AND (i.config->>'syncEnabled')::boolean = true
       AND (i.last_sync_at IS NULL OR i.last_sync_at < NOW() - INTERVAL '5 minutes')

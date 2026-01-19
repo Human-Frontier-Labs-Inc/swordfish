@@ -233,7 +233,7 @@ Tiered by plan to prevent abuse:
 
 ## Contact
 
-**[Your Name]**
+**Cornelius George**
 Founder, Swordphish
-[Email]
-[Phone]
+cornelius@chuqlab.com
+215-868-7239
