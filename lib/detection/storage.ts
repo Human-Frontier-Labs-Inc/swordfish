@@ -247,6 +247,9 @@ export async function getTopThreats(
   const results = await sql`
     SELECT
       message_id,
+      subject,
+      from_address,
+      from_display_name,
       signals,
       verdict,
       score,
@@ -260,8 +263,8 @@ export async function getTopThreats(
 
   return results.map((r) => ({
     messageId: r.message_id as string,
-    subject: 'Unknown', // Would need to join with emails table
-    sender: 'Unknown',
+    subject: (r.subject as string) || 'No Subject',
+    sender: (r.from_display_name as string) || (r.from_address as string) || 'Unknown Sender',
     verdict: r.verdict as string,
     score: r.score as number,
     signals: r.signals as Signal[],

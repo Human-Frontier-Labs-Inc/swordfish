@@ -24,7 +24,7 @@ const adminNavigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { currentTenant, canManageTenant } = useTenant();
+  const { currentTenant, canManageTenant, isMspUser, isLoadingRole } = useTenant();
 
   return (
     <div className="flex h-full w-64 flex-col bg-gray-900">
@@ -35,6 +35,23 @@ export function Sidebar() {
           <span className="text-xl font-bold text-white">Swordfish</span>
         </Link>
       </div>
+
+      {/* MSP Admin Portal Link - only show after role is loaded */}
+      {!isLoadingRole && isMspUser && (
+        <div className="mx-4 mb-4">
+          <Link
+            href="/admin"
+            className="flex items-center gap-3 rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-3 py-2.5 text-sm font-medium text-white shadow-sm hover:from-red-700 hover:to-red-800 transition-all"
+          >
+            <CommandIcon className="h-5 w-5" />
+            <div className="flex-1">
+              <div className="font-semibold">MSP Portal</div>
+              <div className="text-xs text-red-200">Manage all tenants</div>
+            </div>
+            <ArrowRightIcon className="h-4 w-4 text-red-200" />
+          </Link>
+        </div>
+      )}
 
       {/* Current Tenant */}
       {currentTenant && (
@@ -222,6 +239,22 @@ function HelpIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+    </svg>
+  );
+}
+
+function CommandIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
     </svg>
   );
 }

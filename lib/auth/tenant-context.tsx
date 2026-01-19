@@ -41,6 +41,7 @@ interface TenantContextValue {
   // User role
   userRole: UserRole;
   isMspUser: boolean;
+  isLoadingRole: boolean;
 
   // Database user info
   databaseUser: DatabaseUser | null;
@@ -231,6 +232,7 @@ export function TenantProvider({ children }: TenantProviderProps) {
     isLoadingTenants,
     userRole,
     isMspUser,
+    isLoadingRole: isLoadingDbUser,
     databaseUser,
     needsSetup,
     canManageTenant,
