@@ -7,7 +7,7 @@ interface User {
   clerkUserId: string;
   email: string;
   name: string | null;
-  role: 'admin' | 'analyst' | 'viewer' | 'msp_admin';
+  role: 'tenant_admin' | 'analyst' | 'viewer' | 'msp_admin';
   tenantId: string;
   tenantName: string | null;
   isMspUser: boolean;
@@ -131,7 +131,7 @@ export default function UsersPage() {
           >
             <option value="">All Roles</option>
             <option value="msp_admin">MSP Admin</option>
-            <option value="admin">Admin</option>
+            <option value="tenant_admin">Tenant Admin</option>
             <option value="analyst">Analyst</option>
             <option value="viewer">Viewer</option>
           </select>
@@ -283,7 +283,7 @@ export default function UsersPage() {
 function RoleBadge({ role, isMsp }: { role: string; isMsp: boolean }) {
   const colors: Record<string, string> = {
     msp_admin: 'bg-purple-100 text-purple-700',
-    admin: 'bg-blue-100 text-blue-700',
+    tenant_admin: 'bg-blue-100 text-blue-700',
     analyst: 'bg-green-100 text-green-700',
     viewer: 'bg-gray-100 text-gray-700',
   };
@@ -324,7 +324,7 @@ function InviteUserModal({
   onSuccess: () => void;
 }) {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'admin' | 'analyst' | 'viewer'>('viewer');
+  const [role, setRole] = useState<'tenant_admin' | 'analyst' | 'viewer'>('viewer');
   const [tenantId, setTenantId] = useState('');
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -417,7 +417,7 @@ function InviteUserModal({
             >
               <option value="viewer">Viewer</option>
               <option value="analyst">Analyst</option>
-              <option value="admin">Admin</option>
+              <option value="tenant_admin">Tenant Admin</option>
             </select>
           </div>
 

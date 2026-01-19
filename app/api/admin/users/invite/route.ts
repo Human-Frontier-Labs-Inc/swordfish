@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate role
-    const validRoles = ['admin', 'analyst', 'viewer'];
+    // Validate role - use canonical role names
+    const validRoles = ['tenant_admin', 'analyst', 'viewer'];
     if (role && !validRoles.includes(role)) {
       return NextResponse.json(
         { error: 'Invalid role' },

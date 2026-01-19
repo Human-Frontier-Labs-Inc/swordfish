@@ -44,7 +44,7 @@ describe('MSP Tenant API', () => {
           plan: 'pro',
           status: 'active',
           userCount: 50,
-          role: 'owner',
+          role: 'msp_admin',
         },
         {
           id: 'tenant-2',
@@ -53,7 +53,7 @@ describe('MSP Tenant API', () => {
           plan: 'starter',
           status: 'active',
           userCount: 10,
-          role: 'admin',
+          role: 'tenant_admin',
         },
       ];
 
@@ -65,7 +65,7 @@ describe('MSP Tenant API', () => {
 
       expect(response.tenants).toHaveLength(2);
       expect(response.defaultTenantId).toBe('tenant-1');
-      expect(response.tenants[0].role).toBe('owner');
+      expect(response.tenants[0].role).toBe('msp_admin');
     });
 
     it('should filter by plan type', async () => {
@@ -258,7 +258,7 @@ describe('MSP Tenant API', () => {
 
     it('should reject update from non-admin', async () => {
       const userRole = 'viewer';
-      const canUpdate = ['owner', 'admin'].includes(userRole);
+      const canUpdate = ['msp_admin', 'tenant_admin'].includes(userRole);
 
       expect(canUpdate).toBe(false);
     });
@@ -283,9 +283,9 @@ describe('MSP Tenant API', () => {
       expect(deleted.settings.deleted).toBe(true);
     });
 
-    it('should only allow owner to delete', async () => {
-      const userRole = 'admin';
-      const canDelete = userRole === 'owner';
+    it('should only allow msp_admin to delete', async () => {
+      const userRole = 'tenant_admin';
+      const canDelete = userRole === 'msp_admin';
 
       expect(canDelete).toBe(false);
     });

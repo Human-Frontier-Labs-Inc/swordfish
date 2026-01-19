@@ -26,7 +26,7 @@ export interface TenantOption {
   name: string;
   domain: string | null;
   plan: 'starter' | 'pro' | 'enterprise';
-  role: 'owner' | 'admin' | 'analyst' | 'viewer';
+  role: 'msp_admin' | 'tenant_admin' | 'analyst' | 'viewer';
 }
 
 interface TenantSwitcherProps {

@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
       status: t.status,
       createdAt: t.created_at,
       userCount: t.user_count || 0,
-      role: user.is_msp_user ? 'owner' : 'admin',
+      role: user.is_msp_user ? 'msp_admin' : 'tenant_admin',
     }));
 
     return NextResponse.json({

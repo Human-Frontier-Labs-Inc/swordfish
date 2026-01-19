@@ -14,6 +14,21 @@ interface TenantInfo {
   plan: 'starter' | 'pro' | 'enterprise';
 }
 
+// Database user info from /api/user/me
+interface DatabaseUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: UserRole;
+  tenantId: string | null;
+  tenantName: string | null;
+  clerkOrgId: string | null;
+  domain: string | null;
+  plan: 'starter' | 'pro' | 'enterprise' | null;
+  isMspUser: boolean;
+  status: string;
+}
+
 interface TenantContextValue {
   // Current tenant
   currentTenant: TenantInfo | null;
@@ -26,6 +41,10 @@ interface TenantContextValue {
   // User role
   userRole: UserRole;
   isMspUser: boolean;
+
+  // Database user info
+  databaseUser: DatabaseUser | null;
+  needsSetup: boolean;
 
   // Permissions
   canManageTenant: boolean;
@@ -51,8 +70,48 @@ export function TenantProvider({ children }: TenantProviderProps) {
   const [availableTenants, setAvailableTenants] = useState<TenantInfo[]>([]);
   const [isLoadingTenants, setIsLoadingTenants] = useState(true);
 
-  // Derive user role from Clerk organization membership
+  // Database user state - fetched from /api/user/me
+  const [databaseUser, setDatabaseUser] = useState<DatabaseUser | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [isLoadingDbUser, setIsLoadingDbUser] = useState(true);
+
+  // Fetch user from database to get their authoritative role
+  useEffect(() => {
+    if (!user) {
+      setDatabaseUser(null);
+      setNeedsSetup(false);
+      setIsLoadingDbUser(false);
+      return;
+    }
+
+    const fetchDatabaseUser = async () => {
+      setIsLoadingDbUser(true);
+      try {
+        const response = await fetch('/api/user/me');
+        if (response.ok) {
+          const data = await response.json();
+          setDatabaseUser(data.user);
+          setNeedsSetup(data.needsSetup);
+        }
+      } catch (error) {
+        console.error('Failed to fetch database user:', error);
+      } finally {
+        setIsLoadingDbUser(false);
+      }
+    };
+
+    fetchDatabaseUser();
+  }, [user]);
+
+  // User role: PREFER database role over Clerk-derived role
+  // This ensures invitation roles take precedence
   const userRole: UserRole = (() => {
+    // If we have a database user with a role, use that
+    if (databaseUser?.role) {
+      return databaseUser.role;
+    }
+
+    // Fallback: Derive from Clerk organization membership (for new users)
     const clerkRole = membership?.role;
 
     // Map Clerk roles to our internal roles
@@ -172,6 +231,8 @@ export function TenantProvider({ children }: TenantProviderProps) {
     isLoadingTenants,
     userRole,
     isMspUser,
+    databaseUser,
+    needsSetup,
     canManageTenant,
     canViewAllTenants,
     canManagePolicies,

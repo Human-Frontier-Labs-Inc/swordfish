@@ -187,14 +187,14 @@ describe('TenantSwitcher Component', () => {
       name: 'Acme Corp',
       domain: 'acme.com',
       plan: 'pro' as const,
-      role: 'owner' as const,
+      role: 'msp_admin' as const,
     },
     {
       id: 'tenant-2',
       name: 'Beta Inc',
       domain: 'beta.io',
       plan: 'starter' as const,
-      role: 'admin' as const,
+      role: 'tenant_admin' as const,
     },
   ];
 
