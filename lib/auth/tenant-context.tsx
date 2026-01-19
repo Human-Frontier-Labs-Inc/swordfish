@@ -91,8 +91,13 @@ export function TenantProvider({ children }: TenantProviderProps) {
         const response = await fetch('/api/user/me');
         if (response.ok) {
           const data = await response.json();
+          console.log('[TenantContext] API /api/user/me response:', data);
+          console.log('[TenantContext] databaseUser role:', data.user?.role);
+          console.log('[TenantContext] databaseUser isMspUser:', data.user?.isMspUser);
           setDatabaseUser(data.user);
           setNeedsSetup(data.needsSetup);
+        } else {
+          console.error('[TenantContext] API error:', response.status, response.statusText);
         }
       } catch (error) {
         console.error('Failed to fetch database user:', error);
@@ -129,6 +134,11 @@ export function TenantProvider({ children }: TenantProviderProps) {
   })();
 
   const isMspUser = userRole === 'msp_admin';
+
+  // Debug logging
+  console.log('[TenantContext] Computed userRole:', userRole);
+  console.log('[TenantContext] Computed isMspUser:', isMspUser);
+  console.log('[TenantContext] isLoadingDbUser:', isLoadingDbUser);
 
   // Load available tenants
   useEffect(() => {
