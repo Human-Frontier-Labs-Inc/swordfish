@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth, useUser, SignIn, SignUp } from '@clerk/nextjs';
 import Link from 'next/link';
@@ -17,7 +17,29 @@ interface InvitationDetails {
 
 type ViewState = 'loading' | 'sign-in' | 'sign-up' | 'processing' | 'success' | 'error';
 
+// Loading fallback for Suspense
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
+        <p className="mt-4 text-gray-600">Loading invitation...</p>
+      </div>
+    </div>
+  );
+}
+
+// Main page component wrapped in Suspense
 export default function AcceptInvitationPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <AcceptInvitationContent />
+    </Suspense>
+  );
+}
+
+// Inner component that uses useSearchParams
+function AcceptInvitationContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { isSignedIn, isLoaded: authLoaded } = useAuth();
@@ -107,14 +129,7 @@ export default function AcceptInvitationPage() {
 
   // Loading state
   if (viewState === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
-          <p className="mt-4 text-gray-600">Loading invitation...</p>
-        </div>
-      </div>
-    );
+    return <LoadingFallback />;
   }
 
   // Error state
