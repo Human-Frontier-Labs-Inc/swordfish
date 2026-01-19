@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     // Find active integrations that need sync
     // Only get integrations where syncEnabled is true in config
     // Use LEFT JOIN since personal users (personal_xxx) don't have tenants table entries
-    // Use regex to validate UUID format before casting - prevents cast errors on personal tenant IDs
+    // CASE expression returns NULL for non-UUID tenant IDs, preventing cast errors
     const integrations = await sql`
       SELECT
         i.id,
@@ -48,9 +48,13 @@ export async function GET(request: NextRequest) {
         i.last_sync_at,
         COALESCE(t.name, i.tenant_id) as tenant_name
       FROM integrations i
-      LEFT JOIN tenants t ON
-        i.tenant_id ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
-        AND i.tenant_id::uuid = t.id
+      LEFT JOIN tenants t ON t.id = (
+        CASE
+          WHEN i.tenant_id ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+          THEN i.tenant_id::uuid
+          ELSE NULL
+        END
+      )
       WHERE i.status = 'connected'
       AND (i.config->>'syncEnabled')::boolean = true
       AND (i.last_sync_at IS NULL OR i.last_sync_at < NOW() - INTERVAL '5 minutes')
