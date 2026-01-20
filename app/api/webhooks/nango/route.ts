@@ -119,8 +119,8 @@ async function handleAuthWebhook(webhook: NangoAuthWebhook) {
       try {
         const connection = await nango.getConnection(providerConfigKey, connectionId);
         // Google stores email in connection metadata
-        userEmail = connection.connectionConfig?.email as string ||
-                   connection.endUser?.email as string;
+        userEmail = connection.connection_config?.email as string ||
+                   connection.end_user?.email as string;
         console.log(`[Nango Webhook] Fetched email from connection: ${userEmail}`);
       } catch (e) {
         console.warn(`[Nango Webhook] Could not fetch connection email:`, e);
