@@ -50,8 +50,7 @@ export async function POST(request: NextRequest) {
 
       // Try multiple ways to get the email
       const email = connection.connection_config?.email ||
-                   connection.end_user?.email ||
-                   connection.credentials?.raw?.email;
+                   connection.end_user?.email;
 
       if (!email) {
         return NextResponse.json({
