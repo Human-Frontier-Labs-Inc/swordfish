@@ -38,6 +38,10 @@ interface GmailNotification {
   historyId: string;
 }
 
+// To avoid Vercel timeouts and Neon overload, cap work per invocation
+const MAX_MESSAGES_PER_WEBHOOK = 10;
+const WEBHOOK_TIME_BUDGET_MS = 45_000;
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
@@ -264,7 +268,7 @@ export async function POST(request: NextRequest) {
       historyTypes: ['messageAdded'],
     });
 
-    // Process new messages
+    // Process new messages (bounded by time and count)
     const newMessageIds = new Set<string>();
     for (const entry of historyResult.history) {
       if (entry.messagesAdded) {
@@ -279,6 +283,20 @@ export async function POST(request: NextRequest) {
     // Analyze each new message
     let processedCount = 0;
     for (const messageId of newMessageIds) {
+      // Stop early if we're close to Vercel's timeout
+      if (Date.now() - startTime > WEBHOOK_TIME_BUDGET_MS) {
+        console.log('[Gmail Webhook] Time budget reached, stopping early');
+        break;
+      }
+
+      // Hard cap per invocation to avoid massive batches
+      if (processedCount >= MAX_MESSAGES_PER_WEBHOOK) {
+        console.log(
+          `[Gmail Webhook] Message limit reached (${MAX_MESSAGES_PER_WEBHOOK}), stopping early`
+        );
+        break;
+      }
+
       try {
         // Get full message
         const message = await getGmailMessage({
