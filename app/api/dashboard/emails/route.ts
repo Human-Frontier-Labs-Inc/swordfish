@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
         FROM email_verdicts
         WHERE tenant_id = ${tenantId}
         AND verdict = ${verdictFilter}
-        ORDER BY created_at DESC
+        ORDER BY received_at DESC
         LIMIT ${limit}
         OFFSET ${offset}
       `;
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
           created_at
         FROM email_verdicts
         WHERE tenant_id = ${tenantId}
-        ORDER BY created_at DESC
+        ORDER BY received_at DESC
         LIMIT ${limit}
         OFFSET ${offset}
       `;
