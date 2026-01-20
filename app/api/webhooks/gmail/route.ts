@@ -91,13 +91,72 @@ export async function POST(request: NextRequest) {
     }
 
     // Fall back to individual integration
-    const integrations = await sql`
+    let integrations = await sql`
       SELECT id, tenant_id, config, nango_connection_id
       FROM integrations
       WHERE type = 'gmail'
       AND status = 'connected'
       AND config->>'email' = ${emailAddress}
     `;
+
+    // If no match by email, try to find via Nango connection lookup and auto-heal
+    if (integrations.length === 0) {
+      console.log(`[Gmail Webhook] No integration found by email, checking Nango connections...`);
+
+      const nangoSecretKey = process.env.NANGO_SECRET_KEY;
+      if (nangoSecretKey) {
+        try {
+          const nangoResponse = await fetch('https://api.nango.dev/connections', {
+            headers: { 'Authorization': `Bearer ${nangoSecretKey}` },
+          });
+
+          if (nangoResponse.ok) {
+            const { connections } = await nangoResponse.json() as {
+              connections: Array<{
+                connection_id: string;
+                provider_config_key: string;
+                end_user?: { id: string; email?: string };
+                connection_config?: { email?: string };
+              }>;
+            };
+
+            // Find Nango connection matching this email
+            const matchingConnection = connections.find(
+              c => c.provider_config_key === 'google-mail' &&
+                   (c.end_user?.email === emailAddress || c.connection_config?.email === emailAddress)
+            );
+
+            if (matchingConnection) {
+              console.log(`[Gmail Webhook] Found Nango connection ${matchingConnection.connection_id} for ${emailAddress}`);
+
+              // Update the integration with the email for future lookups
+              await sql`
+                UPDATE integrations
+                SET config = config || ${JSON.stringify({ email: emailAddress })}::jsonb,
+                    updated_at = NOW()
+                WHERE nango_connection_id = ${matchingConnection.connection_id}
+                AND type = 'gmail'
+              `;
+
+              // Re-fetch the integration
+              integrations = await sql`
+                SELECT id, tenant_id, config, nango_connection_id
+                FROM integrations
+                WHERE type = 'gmail'
+                AND status = 'connected'
+                AND nango_connection_id = ${matchingConnection.connection_id}
+              `;
+
+              if (integrations.length > 0) {
+                console.log(`[Gmail Webhook] Auto-healed integration for ${emailAddress}`);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[Gmail Webhook] Nango lookup failed:`, e);
+        }
+      }
+    }
 
     if (integrations.length === 0) {
       console.log(`No active integration found for ${emailAddress}`);

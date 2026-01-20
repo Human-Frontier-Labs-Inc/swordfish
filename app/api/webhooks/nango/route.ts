@@ -110,6 +110,27 @@ async function handleAuthWebhook(webhook: NangoAuthWebhook) {
   if (operation === 'creation' && success) {
     // New connection created - store the nango_connection_id
     // Note: tenant_id can be a UUID (org) or string (personal_xxx), so we handle both
+
+    // Build config with email if available (needed for webhook matching)
+    let userEmail = endUser?.email;
+
+    // If email not in webhook, try to fetch from Nango connection
+    if (!userEmail && (integrationType === 'gmail' || integrationType === 'outlook')) {
+      try {
+        const connection = await nango.getConnection(providerConfigKey, connectionId);
+        // Google stores email in connection metadata
+        userEmail = connection.connectionConfig?.email as string ||
+                   connection.endUser?.email as string;
+        console.log(`[Nango Webhook] Fetched email from connection: ${userEmail}`);
+      } catch (e) {
+        console.warn(`[Nango Webhook] Could not fetch connection email:`, e);
+      }
+    }
+
+    const configJson = userEmail
+      ? { syncEnabled: true, email: userEmail }
+      : { syncEnabled: true };
+
     await sql`
       INSERT INTO integrations (tenant_id, type, nango_connection_id, status, config)
       VALUES (
@@ -117,14 +138,14 @@ async function handleAuthWebhook(webhook: NangoAuthWebhook) {
         ${integrationType},
         ${connectionId},
         'connected',
-        '{"syncEnabled": true}'::jsonb
+        ${JSON.stringify(configJson)}::jsonb
       )
       ON CONFLICT (tenant_id, type)
       DO UPDATE SET
         nango_connection_id = ${connectionId},
         status = 'connected',
         error_message = NULL,
-        config = integrations.config || '{"syncEnabled": true}'::jsonb,
+        config = integrations.config || ${JSON.stringify(configJson)}::jsonb,
         updated_at = NOW()
     `;
 
