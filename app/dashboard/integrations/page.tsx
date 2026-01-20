@@ -52,6 +52,7 @@ export default function IntegrationsPage() {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [gmailSyncEnsured, setGmailSyncEnsured] = useState(false);
   const searchParams = useSearchParams();
 
   const successMessage = searchParams.get('success');
@@ -75,7 +76,22 @@ export default function IntegrationsPage() {
     try {
       const response = await fetch('/api/integrations');
       const data = await response.json();
-      setIntegrations(data.integrations || []);
+      const list: Integration[] = data.integrations || [];
+      setIntegrations(list);
+
+      // Ensure Gmail sync/watch is enabled once when a Gmail integration exists
+      if (
+        !gmailSyncEnsured &&
+        list.some((integration) => integration.type === 'gmail' && integration.status === 'connected')
+      ) {
+        try {
+          await fetch('/api/integrations/gmail/enable-sync', { method: 'PATCH' });
+        } catch (error) {
+          console.error('Failed to enable Gmail sync:', error);
+        } finally {
+          setGmailSyncEnsured(true);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch integrations:', error);
     } finally {
