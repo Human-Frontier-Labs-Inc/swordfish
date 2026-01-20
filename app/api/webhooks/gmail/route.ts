@@ -360,6 +360,24 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Gmail webhook error:', error);
+
+    // If Neon is saturated with connection attempts, don't keep failing
+    // the webhook and triggering aggressive retries from Gmail. Instead,
+    // log and return a soft success so that cron/manual sync can catch up.
+    if (
+      error instanceof Error &&
+      (error.message.includes('Too many connections attempts') ||
+        error.message.includes('Failed to acquire permit to connect to the database'))
+    ) {
+      return NextResponse.json(
+        {
+          status: 'db_backpressure',
+          message: 'Neon connection limit reached; skipping webhook processing',
+        },
+        { status: 200 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Processing failed' },
       { status: 500 }
