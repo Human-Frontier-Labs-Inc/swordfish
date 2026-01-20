@@ -25,6 +25,8 @@ export async function GET() {
       ORDER BY created_at DESC
     `;
 
+    const problems: string[] = [];
+
     const result = {
       timestamp: new Date().toISOString(),
       total_gmail_integrations: integrations.length,
@@ -41,10 +43,11 @@ export async function GET() {
         last_sync_at: int.last_sync_at,
         updated_at: int.updated_at,
       })),
+      problems: problems as string[],
+      diagnosis: '' as string,
     };
 
     // Add diagnosis
-    const problems: string[] = [];
 
     integrations.forEach((int, i) => {
       if (!int.nango_connection_id) {
@@ -58,12 +61,12 @@ export async function GET() {
       }
     });
 
-    result['problems'] = problems;
+    result.problems = problems;
 
     if (problems.length === 0) {
-      result['diagnosis'] = 'All integrations look OK. If webhooks still failing, check Vercel logs for errors.';
+      result.diagnosis = 'All integrations look OK. If webhooks still failing, check Vercel logs for errors.';
     } else {
-      result['diagnosis'] = `Found ${problems.length} issue(s). Primary issue: email not in config.`;
+      result.diagnosis = `Found ${problems.length} issue(s). Primary issue: email not in config.`;
     }
 
     return NextResponse.json(result, { status: 200 });
