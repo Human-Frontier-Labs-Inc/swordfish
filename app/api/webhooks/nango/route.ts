@@ -115,7 +115,7 @@ async function handleAuthWebhook(webhook: NangoAuthWebhook) {
     let userEmail = endUser?.email;
 
     // If email not in webhook, try to fetch from Nango connection
-    if (!userEmail && (integrationType === 'gmail' || integrationType === 'outlook')) {
+    if (!userEmail && (integrationType === 'gmail' || integrationType === 'o365')) {
       try {
         const connection = await nango.getConnection(providerConfigKey, connectionId);
         // Google stores email in connection metadata
