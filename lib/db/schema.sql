@@ -215,8 +215,9 @@ CREATE TABLE integrations (
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     type VARCHAR(50) NOT NULL, -- o365, gmail, smtp
     status VARCHAR(50) DEFAULT 'pending', -- pending, connected, error, disconnected
-    credentials_encrypted BYTEA, -- encrypted OAuth tokens or credentials
-    config JSONB DEFAULT '{}',
+    credentials_encrypted BYTEA, -- encrypted OAuth tokens (deprecated, use nango_connection_id)
+    nango_connection_id TEXT, -- Nango connection ID for OAuth token management
+    config JSONB DEFAULT '{}', -- non-token settings (syncEnabled, webhookSubscriptionId, etc)
     last_sync_at TIMESTAMPTZ,
     error_message TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),

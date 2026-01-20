@@ -48,7 +48,7 @@ export function CodeSwitcher() {
       </div>
       <div className="relative h-[calc(100%-42px)]">
         <div className="mask h-full">
-          {/* @ts-expect-error */}
+          {/* @ts-expect-error - SyntaxHighlighter types are incomplete */}
           <SyntaxHighlighter language="javascript" style={theme}>
             {selectedCode}
           </SyntaxHighlighter>

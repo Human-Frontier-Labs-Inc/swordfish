@@ -1,23 +1,19 @@
 /**
  * Microsoft 365 Integration API
- * GET - Get auth URL
- * POST - Complete OAuth flow
+ * POST - Create Nango session for OAuth flow
  * DELETE - Disconnect integration
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { getO365AuthUrl } from '@/lib/integrations/o365';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
-import crypto from 'crypto';
-
-const O365_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
-const O365_REDIRECT_URI = process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:3000/api/integrations/o365/callback';
+import { createNangoSession, nango } from '@/lib/nango/client';
 
 /**
- * GET - Generate OAuth URL
+ * POST - Create Nango session for O365 OAuth
+ * Returns a session token that the frontend uses to open Nango's Connect UI
  */
-export async function GET(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     const { userId, orgId } = await auth();
 
@@ -27,34 +23,37 @@ export async function GET(request: NextRequest) {
 
     const tenantId = orgId || `personal_${userId}`;
 
-    // Generate state token for CSRF protection
-    const state = crypto.randomBytes(32).toString('hex');
+    // Get user email for display in Nango UI (optional but nice)
+    const user = await currentUser();
+    const userEmail = user?.emailAddresses?.[0]?.emailAddress;
 
-    // Store state in database for verification
-    await sql`
-      INSERT INTO integration_states (tenant_id, state, provider, expires_at)
-      VALUES (${tenantId}, ${state}, 'o365', NOW() + INTERVAL '15 minutes')
-      ON CONFLICT (tenant_id, provider)
-      DO UPDATE SET state = ${state}, expires_at = NOW() + INTERVAL '15 minutes'
-    `;
+    // Create Nango session - this handles CSRF, state, etc.
+    const session = await createNangoSession(tenantId, 'o365', userEmail);
 
-    const authUrl = getO365AuthUrl({
-      clientId: O365_CLIENT_ID,
-      redirectUri: O365_REDIRECT_URI,
-      state,
+    return NextResponse.json({
+      authUrl: session.connectLink,
+      sessionToken: session.sessionToken,
+      expiresAt: session.expiresAt,
     });
-
-    return NextResponse.json({ authUrl });
   } catch (error) {
-    console.error('O365 auth URL error:', error);
-    return NextResponse.json({ error: 'Failed to generate auth URL' }, { status: 500 });
+    console.error('O365 Nango session error:', error);
+    return NextResponse.json({ error: 'Failed to create session' }, { status: 500 });
   }
+}
+
+/**
+ * GET - Legacy auth URL endpoint (deprecated, use POST for Nango)
+ * Kept for backwards compatibility during migration
+ */
+export async function GET(request: NextRequest) {
+  // Redirect to POST behavior by returning Nango session
+  return POST(request);
 }
 
 /**
  * DELETE - Disconnect integration
  */
-export async function DELETE(request: NextRequest) {
+export async function DELETE() {
   try {
     const { userId, orgId } = await auth();
 
@@ -64,10 +63,26 @@ export async function DELETE(request: NextRequest) {
 
     const tenantId = orgId || `personal_${userId}`;
 
-    // Update integration status
+    // Get the Nango connection ID to delete
+    const [integration] = await sql`
+      SELECT nango_connection_id FROM integrations
+      WHERE tenant_id = ${tenantId} AND type = 'o365'
+    `;
+
+    // Delete from Nango if we have a connection
+    if (integration?.nango_connection_id) {
+      try {
+        await nango.deleteConnection('outlook', integration.nango_connection_id);
+      } catch (nangoError) {
+        // Log but don't fail - connection might already be deleted
+        console.warn('Nango delete warning:', nangoError);
+      }
+    }
+
+    // Update local integration status
     await sql`
       UPDATE integrations
-      SET status = 'disconnected', config = config || '{"accessToken": null, "refreshToken": null}'::jsonb, updated_at = NOW()
+      SET status = 'disconnected', nango_connection_id = NULL, updated_at = NOW()
       WHERE tenant_id = ${tenantId} AND type = 'o365'
     `;
 

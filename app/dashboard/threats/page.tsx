@@ -30,9 +30,8 @@ export default function ThreatsPage() {
 
       try {
         const params = new URLSearchParams();
-        if (filter !== 'all') {
-          params.set('status', filter);
-        }
+        // Always send status parameter - API needs explicit 'all' to show all statuses
+        params.set('status', filter);
 
         const response = await fetch(`/api/threats?${params}`);
         if (!response.ok) throw new Error('Failed to fetch threats');
@@ -193,12 +192,15 @@ export default function ThreatsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(threat.quarantined_at).toLocaleDateString()}
+                    {threat.quarantined_at ? new Date(threat.quarantined_at).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button className="text-blue-600 hover:text-blue-900 mr-3">
+                    <Link
+                      href={`/dashboard/threats/${threat.id}`}
+                      className="text-blue-600 hover:text-blue-900 mr-3"
+                    >
                       View
-                    </button>
+                    </Link>
                     {threat.status === 'quarantined' && (
                       <>
                         <button className="text-green-600 hover:text-green-900 mr-3">

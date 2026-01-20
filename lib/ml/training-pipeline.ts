@@ -479,7 +479,7 @@ export class ModelEvaluator {
 
     // Calculate metrics
     let correct = 0;
-    let total = predictions.length;
+    const total = predictions.length;
 
     for (const pred of predictions) {
       if (pred.actual === pred.predicted) correct++;

@@ -105,7 +105,7 @@ export class GmailSyncWorker {
   async performHistorySync(): Promise<HistorySyncResult> {
     const emails: GmailEmailContent[] = [];
     let newHistoryId = this.historyId || '';
-    let fullSyncRequired = false;
+    const fullSyncRequired = false;
     let page = 1;
 
     // If no history ID, do full sync

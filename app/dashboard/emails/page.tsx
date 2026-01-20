@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import clsx from 'clsx';
 
 interface Signal {
@@ -26,8 +26,6 @@ interface ScannedEmail {
   processingTimeMs: number;
   scannedAt: string;
 }
-
-const LIVE_POLL_INTERVAL = 10000; // 10 seconds
 
 const verdictConfig = {
   pass: {
@@ -56,15 +54,17 @@ const verdictConfig = {
   },
 };
 
+const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
+
 export default function ScannedEmailsPage() {
   const [emails, setEmails] = useState<ScannedEmail[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [selectedEmail, setSelectedEmail] = useState<ScannedEmail | null>(null);
-  const [isLive, setIsLive] = useState(false);
-  const [lastPolled, setLastPolled] = useState<Date | null>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchEmails = useCallback(async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
@@ -79,7 +79,7 @@ export default function ScannedEmailsPage() {
         const data = await res.json();
         setEmails(data.emails);
         setTotal(data.total);
-        setLastPolled(new Date());
+        setLastUpdated(new Date());
       }
     } catch (error) {
       console.error('Failed to fetch emails:', error);
@@ -88,33 +88,25 @@ export default function ScannedEmailsPage() {
     }
   }, [filter]);
 
-  // Initial fetch and filter change
+  // Initial fetch and filter changes
   useEffect(() => {
     fetchEmails();
   }, [fetchEmails]);
 
-  // Live polling effect
+  // Auto-refresh interval
   useEffect(() => {
-    if (isLive) {
-      // Start polling
-      pollIntervalRef.current = setInterval(() => {
-        fetchEmails(false); // Don't show loading spinner during live updates
-      }, LIVE_POLL_INTERVAL);
-    } else {
-      // Stop polling
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
+    if (autoRefresh) {
+      intervalRef.current = setInterval(() => {
+        fetchEmails(false); // Silent refresh (no loading spinner)
+      }, AUTO_REFRESH_INTERVAL);
     }
 
-    // Cleanup on unmount
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
       }
     };
-  }, [isLive, fetchEmails]);
+  }, [autoRefresh, fetchEmails]);
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return 'N/A';
@@ -136,39 +128,46 @@ export default function ScannedEmailsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Scanned Emails</h1>
           <p className="mt-1 text-sm text-gray-500">
             All emails analyzed by Swordfish ({total} total)
-            {lastPolled && isLive && (
+            {lastUpdated && (
               <span className="ml-2 text-xs text-gray-400">
-                Last updated: {lastPolled.toLocaleTimeString()}
+                Last updated: {lastUpdated.toLocaleTimeString()}
               </span>
             )}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Live Toggle */}
-          <button
-            onClick={() => setIsLive(!isLive)}
-            className={clsx(
-              'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all',
-              isLive
-                ? 'bg-green-100 text-green-800 ring-2 ring-green-500 ring-offset-1'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            )}
-          >
-            <span
-              className={clsx(
-                'h-2 w-2 rounded-full',
-                isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
-              )}
-            />
-            {isLive ? 'Live' : 'Live'}
-          </button>
-          {/* Refresh Button */}
+          {/* Auto-refresh toggle */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <div className="relative">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                className="sr-only"
+              />
+              <div className={clsx(
+                'block w-10 h-6 rounded-full transition-colors',
+                autoRefresh ? 'bg-green-500' : 'bg-gray-300'
+              )} />
+              <div className={clsx(
+                'absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform',
+                autoRefresh ? 'translate-x-4' : 'translate-x-0'
+              )} />
+            </div>
+            <span className="text-sm text-gray-600">
+              {autoRefresh ? (
+                <span className="flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  Live
+                </span>
+              ) : 'Auto-refresh'}
+            </span>
+          </label>
           <button
             onClick={() => fetchEmails()}
-            disabled={isLoading}
-            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
-            <RefreshIcon className={clsx('h-4 w-4', isLoading && 'animate-spin')} />
+            <RefreshIcon className="h-4 w-4" />
             Refresh
           </button>
         </div>

@@ -33,10 +33,14 @@ vi.mock('@/lib/integrations/gmail', () => ({
       },
     ],
     historyId: '12345',
+    nextPageToken: null,
   }),
+  getGmailAccessToken: vi.fn().mockResolvedValue('test-access-token'),
   refreshGmailToken: vi.fn().mockResolvedValue({
     accessToken: 'new-access-token',
+    refreshToken: 'new-refresh-token',
     expiresAt: new Date(Date.now() + 3600000),
+    scope: 'https://www.googleapis.com/auth/gmail.readonly',
   }),
 }));
 
@@ -124,10 +128,13 @@ describe('Gmail Webhook Handler', () => {
         },
       ],
       historyId: '12345',
+      nextPageToken: null,
     });
     vi.mocked(refreshGmailToken).mockResolvedValue({
       accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
       expiresAt: new Date(Date.now() + 3600000),
+      scope: 'https://www.googleapis.com/auth/gmail.readonly',
     });
 
     // Reset parser mock
@@ -168,16 +175,14 @@ describe('Gmail Webhook Handler', () => {
       const { POST } = await import('@/app/api/webhooks/gmail/route');
       const { sql } = await import('@/lib/db');
 
-      // Mock finding integration
+      // Mock finding integration (with nango_connection_id)
       vi.mocked(sql)
         .mockResolvedValueOnce([
           {
             id: 'int-1',
             tenant_id: 'tenant-1',
+            nango_connection_id: 'nango-conn-1',
             config: {
-              accessToken: 'valid-token',
-              refreshToken: 'refresh-token',
-              tokenExpiresAt: new Date(Date.now() + 3600000).toISOString(),
               historyId: '11111',
               email: 'test@gmail.com',
             },
@@ -294,16 +299,14 @@ describe('Gmail Webhook Handler', () => {
         resetAt: new Date(),
       });
 
-      // Mock finding integration
+      // Mock finding integration (with nango_connection_id)
       vi.mocked(sql)
         .mockResolvedValueOnce([
           {
             id: 'int-1',
             tenant_id: 'tenant-1',
+            nango_connection_id: 'nango-conn-1',
             config: {
-              accessToken: 'valid-token',
-              refreshToken: 'refresh-token',
-              tokenExpiresAt: new Date(Date.now() + 3600000).toISOString(),
               historyId: '11111',
               email: 'test@gmail.com',
             },
@@ -318,7 +321,7 @@ describe('Gmail Webhook Handler', () => {
         verdict: 'quarantine',
         overallScore: 75,
         confidence: 0.95,
-        signals: [{ type: 'phishing', score: 75, description: 'Suspicious link' }],
+        signals: [{ type: 'suspicious_url', severity: 'critical', score: 75, detail: 'Suspicious link' }],
         layerResults: [],
         processingTimeMs: 150,
         analyzedAt: new Date(),

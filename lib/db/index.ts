@@ -1,10 +1,27 @@
-import { neon, neonConfig } from '@neondatabase/serverless';
+import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
 
-// Configure Neon for serverless
-neonConfig.fetchConnectionCache = true;
+// Lazy-initialized SQL client to prevent build-time initialization errors
+let _sql: NeonQueryFunction<false, false> | null = null;
 
-// Create SQL query function
-export const sql = neon(process.env.DATABASE_URL!);
+function getSqlClient(): NeonQueryFunction<false, false> {
+  if (!_sql) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL is not configured');
+    }
+    _sql = neon(process.env.DATABASE_URL);
+  }
+  return _sql;
+}
+
+// Proxy for backward compatibility - lazily initializes on first use
+export const sql = new Proxy((() => {}) as unknown as NeonQueryFunction<false, false>, {
+  apply(_target, _thisArg, args: [TemplateStringsArray, ...unknown[]]) {
+    return getSqlClient()(args[0], ...args.slice(1));
+  },
+  get(_, prop) {
+    return (getSqlClient() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+});
 
 // Types for our database entities
 export interface Tenant {

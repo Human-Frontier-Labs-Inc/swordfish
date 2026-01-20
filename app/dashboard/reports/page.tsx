@@ -61,6 +61,8 @@ export default function ReportsPage() {
     frequency: 'weekly' as ScheduledReport['frequency'],
     recipients: '',
   });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   const fetchReports = useCallback(async () => {
     try {
@@ -92,8 +94,18 @@ export default function ReportsPage() {
   }, [fetchReports, fetchPerformance]);
 
   async function createReport() {
-    if (!newReport.name.trim() || !newReport.recipients.trim()) return;
+    setCreateError('');
 
+    if (!newReport.name.trim()) {
+      setCreateError('Please enter a report name');
+      return;
+    }
+    if (!newReport.recipients.trim()) {
+      setCreateError('Please enter at least one recipient email');
+      return;
+    }
+
+    setCreating(true);
     try {
       const response = await fetch('/api/reports/scheduled', {
         method: 'POST',
@@ -102,7 +114,7 @@ export default function ReportsPage() {
           name: newReport.name,
           type: newReport.type,
           frequency: newReport.frequency,
-          recipients: newReport.recipients.split(',').map((r) => r.trim()),
+          recipients: newReport.recipients.split(',').map((r) => r.trim()).filter(Boolean),
         }),
       });
 
@@ -110,9 +122,15 @@ export default function ReportsPage() {
         setNewReport({ name: '', type: 'executive_summary', frequency: 'weekly', recipients: '' });
         setShowCreateForm(false);
         fetchReports();
+      } else {
+        const data = await response.json();
+        setCreateError(data.error || 'Failed to create report');
       }
     } catch (error) {
       console.error('Failed to create report:', error);
+      setCreateError('Failed to create report. Please try again.');
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -341,6 +359,11 @@ export default function ReportsPage() {
             {/* Create Form */}
             {showCreateForm && (
               <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+                {createError && (
+                  <div className="bg-red-50 text-red-700 px-4 py-3 rounded text-sm">
+                    {createError}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <Input
                     placeholder="Report name"
@@ -374,7 +397,9 @@ export default function ReportsPage() {
                   </select>
                 </div>
                 <div className="flex justify-end">
-                  <Button onClick={createReport}>Create</Button>
+                  <Button onClick={createReport} disabled={creating}>
+                    {creating ? 'Creating...' : 'Create'}
+                  </Button>
                 </div>
               </div>
             )}

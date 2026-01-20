@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 
 type ListType = 'allowlist' | 'blocklist';
 type EntryType = 'email' | 'domain' | 'ip' | 'url';
+type PolicyType = 'detection' | 'response' | 'notification';
+type PolicyPriority = 'low' | 'medium' | 'high' | 'critical';
 
 interface Policy {
   id: string;
@@ -36,6 +38,16 @@ export default function PoliciesPage() {
   const [listEntries, setListEntries] = useState<ListEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showPolicyForm, setShowPolicyForm] = useState(false);
+  const [savingPolicy, setSavingPolicy] = useState(false);
+
+  // Policy form state
+  const [newPolicy, setNewPolicy] = useState({
+    name: '',
+    description: '',
+    type: 'detection' as PolicyType,
+    priority: 'medium' as PolicyPriority,
+  });
 
   // Form state
   const [newEntry, setNewEntry] = useState({
@@ -125,6 +137,36 @@ export default function PoliciesPage() {
       fetchPolicies();
     } catch (error) {
       console.error('Failed to toggle policy:', error);
+    }
+  }
+
+  async function createPolicy() {
+    if (!newPolicy.name.trim()) return;
+
+    setSavingPolicy(true);
+    try {
+      const response = await fetch('/api/policies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newPolicy.name,
+          description: newPolicy.description || undefined,
+          type: newPolicy.type,
+          priority: newPolicy.priority,
+          status: 'draft',
+          rules: [],
+        }),
+      });
+
+      if (response.ok) {
+        setNewPolicy({ name: '', description: '', type: 'detection', priority: 'medium' });
+        setShowPolicyForm(false);
+        fetchPolicies();
+      }
+    } catch (error) {
+      console.error('Failed to create policy:', error);
+    } finally {
+      setSavingPolicy(false);
     }
   }
 
@@ -221,10 +263,83 @@ export default function PoliciesPage() {
                 Rules that control how emails are analyzed and what actions are taken
               </CardDescription>
             </div>
-            <Button>Create Policy</Button>
+            <Button onClick={() => setShowPolicyForm(!showPolicyForm)}>
+              {showPolicyForm ? 'Cancel' : 'Create Policy'}
+            </Button>
           </CardHeader>
           <CardContent>
-            {policies.length === 0 ? (
+            {/* Policy Creation Form */}
+            {showPolicyForm && (
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label htmlFor="policy-name" className="text-sm font-medium">
+                      Policy Name *
+                    </label>
+                    <Input
+                      id="policy-name"
+                      placeholder="e.g., Block Suspicious Domains"
+                      value={newPolicy.name}
+                      onChange={(e) => setNewPolicy({ ...newPolicy, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="policy-type" className="text-sm font-medium">
+                      Type
+                    </label>
+                    <select
+                      id="policy-type"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      value={newPolicy.type}
+                      onChange={(e) => setNewPolicy({ ...newPolicy, type: e.target.value as PolicyType })}
+                    >
+                      <option value="detection">Detection</option>
+                      <option value="response">Response</option>
+                      <option value="notification">Notification</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label htmlFor="policy-priority" className="text-sm font-medium">
+                      Priority
+                    </label>
+                    <select
+                      id="policy-priority"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      value={newPolicy.priority}
+                      onChange={(e) => setNewPolicy({ ...newPolicy, priority: e.target.value as PolicyPriority })}
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="policy-description" className="text-sm font-medium">
+                      Description
+                    </label>
+                    <Input
+                      id="policy-description"
+                      placeholder="Brief description of the policy"
+                      value={newPolicy.description}
+                      onChange={(e) => setNewPolicy({ ...newPolicy, description: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowPolicyForm(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={createPolicy} disabled={!newPolicy.name.trim() || savingPolicy}>
+                    {savingPolicy ? 'Creating...' : 'Create Policy'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {policies.length === 0 && !showPolicyForm ? (
               <div className="text-center py-12 text-muted-foreground">
                 <div className="text-4xl mb-4">📋</div>
                 <p>No policies configured</p>
@@ -232,7 +347,7 @@ export default function PoliciesPage() {
                   Create policies to customize threat detection behavior
                 </p>
               </div>
-            ) : (
+            ) : policies.length > 0 ? (
               <div className="space-y-4">
                 {policies.map((policy) => (
                   <div
@@ -264,7 +379,7 @@ export default function PoliciesPage() {
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       ) : (

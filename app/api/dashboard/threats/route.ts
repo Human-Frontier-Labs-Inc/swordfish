@@ -20,9 +20,9 @@ export async function GET(request: NextRequest) {
 
     const tenantId = orgId || `personal_${userId}`;
 
-    // Get limit parameter from query (default 10)
+    // Get limit parameter from query (default 50)
     const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
 
     const threats = await getTopThreats(tenantId, limit);
 

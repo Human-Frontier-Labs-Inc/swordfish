@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getVerdictStats } from '@/lib/detection/storage';
+import { sql } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,6 +27,15 @@ export async function GET(request: NextRequest) {
 
     const stats = await getVerdictStats(tenantId, days);
 
+    // Get actual pending quarantine count from threats table (not verdicts)
+    const pendingResult = await sql`
+      SELECT COUNT(*)::int as pending
+      FROM threats
+      WHERE tenant_id = ${tenantId}
+      AND status = 'quarantined'
+    `;
+    const pendingQuarantine = pendingResult[0]?.pending || 0;
+
     // Calculate detection rate
     const threatCount = stats.suspicious + stats.quarantined + stats.blocked;
     const detectionRate = stats.total > 0 ? (threatCount / stats.total) * 100 : 0;
@@ -33,7 +43,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       emailsScanned: stats.total,
       threatsBlocked: threatCount,
-      quarantined: stats.quarantined,
+      quarantined: pendingQuarantine, // Use actual pending count from threats table
       detectionRate: Math.round(detectionRate * 10) / 10,
       avgProcessingTimeMs: Math.round(stats.avgProcessingTime),
       breakdown: {

@@ -17,19 +17,33 @@ vi.mock('@/lib/workers/email-sync', () => ({
     tenantId: 'tenant-1',
     type: 'gmail',
     emailsProcessed: 5,
+    emailsSkipped: 0,
     threatsFound: 1,
     errors: [],
+    detailedErrors: [],
     duration: 2000,
+    timedOut: false,
   }),
-  SyncResult: {},
 }));
 
 // Set environment variable
 process.env.CRON_SECRET = 'test-cron-secret';
+process.env.NANGO_SECRET_KEY = 'test-nango-secret';
+
+// Mock global fetch for Nango API calls
+const mockFetch = vi.fn().mockResolvedValue({
+  ok: true,
+  json: () => Promise.resolve({ connections: [] }),
+});
+global.fetch = mockFetch;
 
 describe('Sync Emails Cron Job', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ connections: [] }),
+    });
   });
 
   afterEach(() => {
@@ -167,6 +181,7 @@ describe('Sync Emails Cron Job', () => {
           tenant_id: 'tenant-1',
           type: 'gmail',
           config: { syncEnabled: true },
+          nango_connection_id: 'nango-conn-1',
           last_sync_at: null,
           tenant_name: 'Test Tenant',
         },
@@ -177,9 +192,12 @@ describe('Sync Emails Cron Job', () => {
         tenantId: 'tenant-1',
         type: 'gmail',
         emailsProcessed: 10,
+        emailsSkipped: 0,
         threatsFound: 2,
         errors: [],
+        detailedErrors: [],
         duration: 3000,
+        timedOut: false,
       });
 
       const request = new NextRequest('http://localhost/api/cron/sync-emails', {
@@ -209,6 +227,7 @@ describe('Sync Emails Cron Job', () => {
             tenant_id: 'tenant-1',
             type: 'gmail',
             config: { syncEnabled: true },
+            nango_connection_id: 'nango-conn-1',
             last_sync_at: null,
             tenant_name: 'Test Tenant',
           },
@@ -243,6 +262,7 @@ describe('Sync Emails Cron Job', () => {
             tenant_id: 'tenant-1',
             type: 'gmail',
             config: { syncEnabled: true },
+            nango_connection_id: 'nango-conn-1',
             last_sync_at: null,
             tenant_name: 'Test Tenant 1',
           },
@@ -251,6 +271,7 @@ describe('Sync Emails Cron Job', () => {
             tenant_id: 'tenant-2',
             type: 'o365',
             config: { syncEnabled: true },
+            nango_connection_id: 'nango-conn-2',
             last_sync_at: null,
             tenant_name: 'Test Tenant 2',
           },
@@ -264,9 +285,12 @@ describe('Sync Emails Cron Job', () => {
           tenantId: 'tenant-2',
           type: 'o365',
           emailsProcessed: 5,
+          emailsSkipped: 0,
           threatsFound: 0,
           errors: [],
+          detailedErrors: [],
           duration: 1000,
+          timedOut: false,
         });
 
       const request = new NextRequest('http://localhost/api/cron/sync-emails', {

@@ -48,14 +48,15 @@ export async function createScheduledReport(params: {
 
   const result = await sql`
     INSERT INTO scheduled_reports (
-      tenant_id, name, type, frequency, recipients, enabled,
+      tenant_id, name, type, frequency, schedule, recipients, enabled,
       next_run_at, config, created_by, created_at
     ) VALUES (
       ${tenantId},
       ${name},
       ${type},
       ${frequency},
-      ${recipients},
+      ${frequency},
+      ${JSON.stringify(recipients)},
       true,
       ${nextRunAt.toISOString()},
       ${JSON.stringify(config || {})},
@@ -115,7 +116,8 @@ export async function updateScheduledReport(
     SET
       name = COALESCE(${name || null}, name),
       frequency = COALESCE(${frequency || null}, frequency),
-      recipients = COALESCE(${recipients || null}, recipients),
+      schedule = COALESCE(${frequency || null}, schedule),
+      recipients = COALESCE(${recipients ? JSON.stringify(recipients) : null}, recipients),
       enabled = COALESCE(${enabled ?? null}, enabled),
       config = COALESCE(${config ? JSON.stringify(config) : null}, config),
       next_run_at = COALESCE(${nextRunAt?.toISOString() || null}, next_run_at)
@@ -155,10 +157,11 @@ export async function runScheduledReport(report: ScheduledReport): Promise<void>
       }
       case 'threat_report':
       case 'audit_report':
-      default:
+      default: {
         // Use executive summary for now
         const summaryData = await generateExecutiveSummary(report.tenantId, daysBack);
         reportContent = await exportExecutiveSummary(summaryData, report.config.format || 'csv');
+      }
     }
 
     // Send to recipients
@@ -250,11 +253,12 @@ function calculateNextRunTime(frequency: ReportFrequency): Date {
       // Tomorrow at 8 AM
       next.setDate(next.getDate() + 1);
       break;
-    case 'weekly':
+    case 'weekly': {
       // Next Monday at 8 AM
       const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
       next.setDate(next.getDate() + daysUntilMonday);
       break;
+    }
     case 'monthly':
       // First of next month at 8 AM
       next.setMonth(next.getMonth() + 1, 1);

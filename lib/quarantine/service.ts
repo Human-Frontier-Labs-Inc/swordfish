@@ -1,11 +1,15 @@
 /**
  * Quarantine Service
  * Handles moving, releasing, and deleting quarantined emails
+ *
+ * Token management is handled by Nango - we get fresh tokens via the integration modules.
  */
 
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 import type { EmailVerdict } from '@/lib/detection/types';
+import { getO365AccessToken } from '@/lib/integrations/o365';
+import { getGmailAccessToken } from '@/lib/integrations/gmail';
 
 export type QuarantineAction = 'quarantine' | 'release' | 'delete' | 'report_false_positive';
 
@@ -29,6 +33,8 @@ export interface ThreatRecord {
   originalFolder?: string;
   provider: 'microsoft' | 'google' | 'smtp';
   providerMessageId?: string;
+  signals?: unknown[];
+  explanation?: string;
   quarantinedAt: Date;
   releasedAt?: Date;
   releasedBy?: string;
@@ -334,12 +340,13 @@ export async function getQuarantinedThreats(
 ): Promise<ThreatRecord[]> {
   const { status = 'quarantined', limit = 50, offset = 0 } = options;
 
+  // Use created_at for ordering since quarantined_at may not exist in all schemas
   let threats;
   if (status === 'all') {
     threats = await sql`
       SELECT * FROM threats
       WHERE tenant_id = ${tenantId}
-      ORDER BY quarantined_at DESC
+      ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
   } else {
@@ -347,7 +354,7 @@ export async function getQuarantinedThreats(
       SELECT * FROM threats
       WHERE tenant_id = ${tenantId}
       AND status = ${status}
-      ORDER BY quarantined_at DESC
+      ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
   }
@@ -356,16 +363,18 @@ export async function getQuarantinedThreats(
     id: t.id as string,
     tenantId: t.tenant_id as string,
     messageId: t.message_id as string,
-    subject: t.subject as string,
-    senderEmail: t.sender_email as string,
-    recipientEmail: t.recipient_email as string,
+    subject: (t.subject as string) || '(No subject)',
+    senderEmail: (t.sender_email as string) || 'unknown',
+    recipientEmail: (t.recipient_email as string) || '',
     verdict: t.verdict as EmailVerdict['verdict'],
-    score: t.score as number,
+    score: (t.score as number) || 0,
     status: t.status as ThreatRecord['status'],
-    originalFolder: t.original_folder as string | undefined,
-    provider: t.provider as ThreatRecord['provider'],
-    providerMessageId: t.provider_message_id as string | undefined,
-    quarantinedAt: new Date(t.quarantined_at as string),
+    originalFolder: t.original_location as string | undefined,
+    provider: (t.integration_type === 'o365' ? 'microsoft' : t.integration_type === 'gmail' ? 'google' : 'smtp') as ThreatRecord['provider'],
+    providerMessageId: undefined, // Column may not exist in original migration
+    signals: t.signals as unknown[] | undefined,
+    explanation: undefined, // Column may not exist in original migration
+    quarantinedAt: t.created_at ? new Date(t.created_at as string) : new Date(),
     releasedAt: t.released_at ? new Date(t.released_at as string) : undefined,
     releasedBy: t.released_by as string | undefined,
   }));
@@ -375,13 +384,14 @@ export async function getQuarantinedThreats(
  * Get threat statistics for dashboard
  */
 export async function getThreatStats(tenantId: string) {
+  // Use created_at instead of quarantined_at (which may not exist in all schemas)
   const stats = await sql`
     SELECT
       COUNT(*) FILTER (WHERE status = 'quarantined') as quarantined_count,
       COUNT(*) FILTER (WHERE status = 'released') as released_count,
       COUNT(*) FILTER (WHERE status = 'deleted') as deleted_count,
-      COUNT(*) FILTER (WHERE quarantined_at > NOW() - INTERVAL '24 hours') as last_24h,
-      COUNT(*) FILTER (WHERE quarantined_at > NOW() - INTERVAL '7 days') as last_7d,
+      COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as last_24h,
+      COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as last_7d,
       AVG(score) FILTER (WHERE status = 'quarantined') as avg_score
     FROM threats
     WHERE tenant_id = ${tenantId}
@@ -413,7 +423,11 @@ async function moveToMicrosoftQuarantine(
     throw new Error('Microsoft integration not configured');
   }
 
-  const accessToken = await refreshMicrosoftToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Microsoft integration');
+  }
+
+  const accessToken = await getO365AccessToken(integration.nango_connection_id);
 
   // Get or create quarantine folder
   const quarantineFolderId = await getOrCreateMicrosoftFolder(
@@ -454,7 +468,11 @@ async function releaseFromMicrosoftQuarantine(
     throw new Error('Microsoft integration not configured');
   }
 
-  const accessToken = await refreshMicrosoftToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Microsoft integration');
+  }
+
+  const accessToken = await getO365AccessToken(integration.nango_connection_id);
 
   // Move message back to inbox
   const response = await fetch(
@@ -489,7 +507,11 @@ async function deleteFromMicrosoft(
     throw new Error('Microsoft integration not configured');
   }
 
-  const accessToken = await refreshMicrosoftToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Microsoft integration');
+  }
+
+  const accessToken = await getO365AccessToken(integration.nango_connection_id);
 
   const response = await fetch(
     `https://graph.microsoft.com/v1.0/me/messages/${messageId}`,
@@ -519,7 +541,11 @@ async function moveToGmailQuarantine(
     throw new Error('Gmail integration not configured');
   }
 
-  const accessToken = await refreshGoogleToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Gmail integration');
+  }
+
+  const accessToken = await getGmailAccessToken(integration.nango_connection_id);
 
   // Get or create quarantine label
   const quarantineLabelId = await getOrCreateGmailLabel(
@@ -561,7 +587,11 @@ async function releaseFromGmailQuarantine(
     throw new Error('Gmail integration not configured');
   }
 
-  const accessToken = await refreshGoogleToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Gmail integration');
+  }
+
+  const accessToken = await getGmailAccessToken(integration.nango_connection_id);
 
   const quarantineLabelId = await getOrCreateGmailLabel(
     accessToken,
@@ -602,7 +632,11 @@ async function deleteFromGmail(
     throw new Error('Gmail integration not configured');
   }
 
-  const accessToken = await refreshGoogleToken(integration);
+  if (!integration.nango_connection_id) {
+    throw new Error('No Nango connection configured for Gmail integration');
+  }
+
+  const accessToken = await getGmailAccessToken(integration.nango_connection_id);
 
   const response = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
@@ -624,94 +658,23 @@ async function deleteFromGmail(
 // Helper functions
 // ============================================
 
-async function getIntegration(tenantId: string, provider: string) {
+interface IntegrationRecord {
+  id: string;
+  nango_connection_id: string | null;
+}
+
+async function getIntegration(tenantId: string, provider: 'microsoft' | 'google'): Promise<IntegrationRecord | null> {
+  // Map provider name to integration type
+  const integrationType = provider === 'microsoft' ? 'o365' : 'gmail';
+
   const integrations = await sql`
-    SELECT * FROM integrations
+    SELECT id, nango_connection_id FROM integrations
     WHERE tenant_id = ${tenantId}
-    AND provider = ${provider}
-    AND status = 'active'
+    AND type = ${integrationType}
+    AND status = 'connected'
     LIMIT 1
   `;
-  return integrations[0] || null;
-}
-
-async function refreshMicrosoftToken(
-  integration: Record<string, unknown>
-): Promise<string> {
-  // Check if token is still valid
-  const expiresAt = new Date(integration.token_expires_at as string);
-  if (expiresAt > new Date()) {
-    return integration.access_token as string;
-  }
-
-  // Refresh token
-  const response = await fetch(
-    'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: process.env.MICROSOFT_CLIENT_ID!,
-        client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
-        refresh_token: integration.refresh_token as string,
-        grant_type: 'refresh_token',
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error('Failed to refresh Microsoft token');
-  }
-
-  const tokens = await response.json();
-
-  // Update stored tokens
-  await sql`
-    UPDATE integrations
-    SET
-      access_token = ${tokens.access_token},
-      refresh_token = ${tokens.refresh_token || integration.refresh_token},
-      token_expires_at = ${new Date(Date.now() + tokens.expires_in * 1000).toISOString()}
-    WHERE id = ${integration.id}
-  `;
-
-  return tokens.access_token;
-}
-
-async function refreshGoogleToken(
-  integration: Record<string, unknown>
-): Promise<string> {
-  const expiresAt = new Date(integration.token_expires_at as string);
-  if (expiresAt > new Date()) {
-    return integration.access_token as string;
-  }
-
-  const response = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      refresh_token: integration.refresh_token as string,
-      grant_type: 'refresh_token',
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to refresh Google token');
-  }
-
-  const tokens = await response.json();
-
-  await sql`
-    UPDATE integrations
-    SET
-      access_token = ${tokens.access_token},
-      token_expires_at = ${new Date(Date.now() + tokens.expires_in * 1000).toISOString()}
-    WHERE id = ${integration.id}
-  `;
-
-  return tokens.access_token;
+  return integrations[0] as IntegrationRecord || null;
 }
 
 async function getOrCreateMicrosoftFolder(

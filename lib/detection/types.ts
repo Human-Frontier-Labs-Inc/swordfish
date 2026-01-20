@@ -171,7 +171,19 @@ export type SignalType =
   | 'ml_known_bad_sender'
   | 'ml_known_bad_domain'
   | 'ml_known_bad_ip'
-  | 'ml_llm_suspicious';
+  | 'ml_llm_suspicious'
+  // Behavioral analysis
+  | 'first_contact'
+  | 'first_contact_vip_impersonation'
+  | 'vip_impersonation'
+  | 'new_domain'
+  | 'vendor_lookalike'
+  | 'domain_age_risk'
+  | 'behavioral_anomaly'
+  | 'anomaly_detected'
+  | 'lookalike_detected'
+  // Email classification
+  | 'classification';
 
 // Analysis result from each layer
 export interface LayerResult {
@@ -183,6 +195,19 @@ export interface LayerResult {
   skipped?: boolean;
   skipReason?: string;
   metadata?: Record<string, unknown>;
+}
+
+// Email classification result (from classifier module)
+export interface EmailClassificationResult {
+  type: 'marketing' | 'transactional' | 'automated' | 'personal' | 'unknown';
+  confidence: number;
+  isKnownSender: boolean;
+  senderName?: string;
+  senderCategory?: string;
+  threatScoreModifier: number;
+  skipBECDetection: boolean;
+  skipGiftCardDetection: boolean;
+  signals: string[];
 }
 
 // Final verdict
@@ -204,6 +229,8 @@ export interface EmailVerdict {
     policyName?: string;
     action?: string;
   };
+  // Email classification (runs before threat detection)
+  emailClassification?: EmailClassificationResult;
 }
 
 // Detection pipeline configuration

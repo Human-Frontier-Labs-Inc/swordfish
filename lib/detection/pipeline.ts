@@ -17,6 +17,11 @@ import { evaluatePolicies } from '@/lib/policies/engine';
 import { classifyEmail } from './ml/classifier';
 import { checkReputation } from './reputation/service';
 import { detectBEC, quickBECCheck, type BECSignal } from './bec';
+import {
+  classifyEmailType,
+  isLegitimateReplyTo,
+  type EmailClassification,
+} from './classifier';
 
 /**
  * Main detection pipeline - analyzes an email through all layers
@@ -29,10 +34,37 @@ export async function analyzeEmail(
   const config: DetectionConfig = { ...DEFAULT_DETECTION_CONFIG, ...configOverrides };
   const startTime = performance.now();
   const layerResults: LayerResult[] = [];
-  let allSignals: Signal[] = [];
+  const allSignals: Signal[] = [];
   let llmTokensUsed = 0;
 
-  // Layer 0: Policy Evaluation (allowlists/blocklists)
+  // Layer 0: Email Type Classification (NEW - runs first)
+  // This classifies the email type BEFORE threat detection
+  let emailClassification: EmailClassification | null = null;
+  try {
+    emailClassification = await classifyEmailType(email);
+
+    // Add classification signal for transparency
+    if (emailClassification.isKnownSender) {
+      allSignals.push({
+        type: 'classification',
+        severity: 'info',
+        score: 0,
+        detail: `Known sender: ${emailClassification.senderInfo?.name} (${emailClassification.type})`,
+      });
+    } else if (emailClassification.isLikelyMarketing) {
+      allSignals.push({
+        type: 'classification',
+        severity: 'info',
+        score: 0,
+        detail: `Detected as marketing email (${Math.round(emailClassification.confidence * 100)}% confidence)`,
+      });
+    }
+  } catch (error) {
+    console.error('Email classification error:', error);
+    // Continue without classification
+  }
+
+  // Layer 1: Policy Evaluation (allowlists/blocklists)
   try {
     const policyResult = await evaluatePolicies(email, tenantId);
 
@@ -102,31 +134,78 @@ export async function analyzeEmail(
     console.error('Policy evaluation error:', error);
   }
 
-  // Layer 1: Deterministic Analysis (always runs)
+  // Layer 2: Deterministic Analysis (always runs)
   const deterministicResult = await runDeterministicAnalysis(email);
-  layerResults.push(deterministicResult);
-  allSignals.push(...deterministicResult.signals);
 
-  // Layer 2: Reputation Lookup (TODO - placeholder for now)
+  // Filter out false positives based on email classification
+  const filteredDeterministicSignals = filterSignalsForEmailType(
+    deterministicResult.signals,
+    emailClassification
+  );
+  const filteredDeterministicResult = {
+    ...deterministicResult,
+    signals: filteredDeterministicSignals,
+    score: recalculateLayerScore(filteredDeterministicSignals),
+  };
+  layerResults.push(filteredDeterministicResult);
+  allSignals.push(...filteredDeterministicSignals);
+
+  // Layer 3: Reputation Lookup
   const reputationResult = await runReputationLookup(email);
   layerResults.push(reputationResult);
   allSignals.push(...reputationResult.signals);
 
-  // Layer 3: ML Analysis
+  // Layer 4: ML Analysis
   const mlResult = await runMLAnalysis(email, allSignals);
-  layerResults.push(mlResult);
-  allSignals.push(...mlResult.signals);
 
-  // Layer 4: BEC Detection (Business Email Compromise)
-  const becResult = await runBECAnalysis(email, tenantId);
+  // Filter ML signals for email type
+  const filteredMLSignals = filterSignalsForEmailType(
+    mlResult.signals,
+    emailClassification
+  );
+  const filteredMLResult = {
+    ...mlResult,
+    signals: filteredMLSignals,
+    score: recalculateLayerScore(filteredMLSignals),
+  };
+  layerResults.push(filteredMLResult);
+  allSignals.push(...filteredMLSignals);
+
+  // Layer 5: BEC Detection (Business Email Compromise)
+  // Skip BEC detection for marketing/transactional emails from known senders
+  let becResult: LayerResult;
+  if (emailClassification?.skipBECDetection && emailClassification.isKnownSender) {
+    becResult = {
+      layer: 'bec',
+      score: 0,
+      confidence: 1.0,
+      signals: [],
+      processingTimeMs: 0,
+      skipped: true,
+      skipReason: `Skipped for ${emailClassification.type} email from known sender`,
+    };
+  } else {
+    becResult = await runBECAnalysis(email, tenantId);
+
+    // Filter BEC signals for email type
+    const filteredBECSignals = filterSignalsForEmailType(
+      becResult.signals,
+      emailClassification
+    );
+    becResult = {
+      ...becResult,
+      signals: filteredBECSignals,
+      score: recalculateLayerScore(filteredBECSignals),
+    };
+  }
   layerResults.push(becResult);
   allSignals.push(...becResult.signals);
 
-  // Layer 5: LLM Analysis (conditional - only for uncertain cases)
+  // Layer 6: LLM Analysis (conditional - only for uncertain cases)
   // Skip LLM if explicitly disabled (e.g., for background sync to avoid timeout)
   const shouldUseLLM = !config.skipLLM && shouldInvokeLLM(
-    deterministicResult.score,
-    mlResult.confidence,
+    filteredDeterministicResult.score,
+    filteredMLResult.confidence,
     config
   );
 
@@ -153,13 +232,31 @@ export async function analyzeEmail(
     });
   }
 
-  // Layer 6: Sandbox (TODO - for attachments, placeholder for now)
+  // Layer 7: Sandbox (TODO - for attachments, placeholder for now)
   const sandboxResult = await runSandboxAnalysis(email);
   layerResults.push(sandboxResult);
   allSignals.push(...sandboxResult.signals);
 
   // Calculate final score and verdict
-  const { overallScore, confidence } = calculateFinalScore(layerResults, config);
+  let { overallScore, confidence } = calculateFinalScore(layerResults, config);
+
+  // Apply email type modifier to final score
+  // Marketing/known senders get reduced threat scores
+  if (emailClassification && emailClassification.threatScoreModifier < 1.0) {
+    const originalScore = overallScore;
+    overallScore = Math.round(overallScore * emailClassification.threatScoreModifier);
+
+    // Add signal explaining score reduction
+    if (originalScore !== overallScore) {
+      allSignals.push({
+        type: 'classification',
+        severity: 'info',
+        score: 0,
+        detail: `Score reduced from ${originalScore} to ${overallScore} (${emailClassification.type} email from ${emailClassification.isKnownSender ? 'known sender' : 'likely legitimate source'})`,
+      });
+    }
+  }
+
   const verdict = determineVerdict(overallScore, config);
 
   // Generate explanation from signals
@@ -178,7 +275,81 @@ export async function analyzeEmail(
     processingTimeMs: performance.now() - startTime,
     llmTokensUsed: llmTokensUsed > 0 ? llmTokensUsed : undefined,
     analyzedAt: new Date(),
+    // Include classification in result for transparency
+    emailClassification: emailClassification ? {
+      type: emailClassification.type,
+      confidence: emailClassification.confidence,
+      isKnownSender: emailClassification.isKnownSender,
+      senderName: emailClassification.senderInfo?.name,
+      senderCategory: emailClassification.senderInfo?.category,
+      threatScoreModifier: emailClassification.threatScoreModifier,
+      skipBECDetection: emailClassification.skipBECDetection,
+      skipGiftCardDetection: emailClassification.skipGiftCardDetection,
+      signals: emailClassification.marketingSignals?.signals || [],
+    } : undefined,
   };
+}
+
+/**
+ * Filter signals that are false positives for certain email types
+ */
+function filterSignalsForEmailType(
+  signals: Signal[],
+  classification: EmailClassification | null
+): Signal[] {
+  if (!classification) return signals;
+
+  return signals.filter(signal => {
+    // Marketing emails: Remove gift card and some BEC signals
+    if (classification.skipGiftCardDetection) {
+      if (signal.type === 'bec_gift_card_scam' ||
+          signal.type === 'ml_financial_request' ||
+          signal.detail?.toLowerCase().includes('gift card')) {
+        return false;
+      }
+    }
+
+    // Known senders: Remove reply-to mismatch if it's a known pattern
+    if (classification.isKnownSender && classification.senderInfo) {
+      if (signal.type === 'reply_to_mismatch' || signal.type === 'bec_reply_to_mismatch') {
+        // Check if it's a legitimate reply-to for this sender
+        const replyToDomain = extractDomainFromSignal(signal);
+        if (replyToDomain && isLegitimateReplyTo(classification.senderInfo, replyToDomain)) {
+          return false;
+        }
+      }
+    }
+
+    // Marketing emails: Reduce weight of urgency signals (sales urgency is normal)
+    if (classification.isLikelyMarketing) {
+      if (signal.type === 'ml_urgency' ||
+          signal.type === 'bec_urgency_pressure' ||
+          signal.detail?.toLowerCase().includes('urgency')) {
+        // Don't remove, but we'll handle score reduction elsewhere
+        return true;
+      }
+    }
+
+    return true;
+  });
+}
+
+/**
+ * Extract domain from signal detail (for reply-to checks)
+ */
+function extractDomainFromSignal(signal: Signal): string | null {
+  if (!signal.detail) return null;
+
+  // Try to extract domain from patterns like "Reply-To domain (example.com)"
+  const match = signal.detail.match(/\(([a-z0-9.-]+\.[a-z]+)\)/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Recalculate layer score from filtered signals
+ */
+function recalculateLayerScore(signals: Signal[]): number {
+  return Math.min(100, signals.reduce((sum, s) => sum + s.score, 0));
 }
 
 /**
@@ -741,7 +912,7 @@ export async function quickCheck(email: ParsedEmail): Promise<EmailVerdict['verd
  * Extract URLs from text content
  */
 function extractURLs(text: string): string[] {
-  const urlPattern = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
+  const urlPattern = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
   const matches = text.match(urlPattern) || [];
 
   // Clean up URLs (remove trailing punctuation)

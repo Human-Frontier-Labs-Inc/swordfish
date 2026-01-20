@@ -1,12 +1,25 @@
 /**
  * Microsoft 365 / Azure AD Integration
- * Handles OAuth flow and Graph API interactions
+ * Handles Graph API interactions
+ *
+ * Token management is handled by Nango - use getO365AccessToken() to get a fresh token.
  */
 
-import type { O365Config, OAuthTokens } from './types';
+import type { OAuthTokens } from './types';
+import { getAccessToken } from '@/lib/nango/client';
 
 const MICROSOFT_AUTH_URL = 'https://login.microsoftonline.com';
 const GRAPH_API_URL = 'https://graph.microsoft.com/v1.0';
+
+/**
+ * Get a fresh O365 access token from Nango
+ * Use this instead of storing/refreshing tokens yourself
+ *
+ * @param nangoConnectionId - The Nango connection ID from the integrations table
+ */
+export async function getO365AccessToken(nangoConnectionId: string): Promise<string> {
+  return getAccessToken('o365', nangoConnectionId);
+}
 
 // Required scopes for email access
 const SCOPES = [

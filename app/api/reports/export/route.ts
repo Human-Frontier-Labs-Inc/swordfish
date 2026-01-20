@@ -51,11 +51,12 @@ export async function GET(request: NextRequest) {
         content = await exportAuditLog(tenantId, { format, dateRange, limit });
         filename = generateExportFilename('audit_log', format, dateRange);
         break;
-      case 'executive':
+      case 'executive': {
         const summary = await generateExecutiveSummary(tenantId, daysBack);
         content = await exportExecutiveSummary(summary, format);
         filename = generateExportFilename('executive_summary', format, dateRange);
         break;
+      }
       default:
         return NextResponse.json(
           { error: 'Invalid report type' },

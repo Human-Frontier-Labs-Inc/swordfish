@@ -19,6 +19,7 @@ interface IntegrationRecord {
   tenant_id: string;
   type: string;
   config: Record<string, unknown>;
+  nango_connection_id: string | null;
   last_sync_at: Date | null;
   tenant_name: string;
 }
@@ -37,24 +38,19 @@ export async function GET(request: NextRequest) {
 
     // Find active integrations that need sync
     // Only get integrations where syncEnabled is true in config
-    // Use LEFT JOIN since personal users (personal_xxx) don't have tenants table entries
-    // CASE expression returns NULL for non-UUID tenant IDs, preventing cast errors
+    // Use LEFT JOIN matching tenant_id against both clerk_org_id and id::text
+    // Include integrations missing nango_connection_id for auto-healing
     const integrations = await sql`
       SELECT
         i.id,
-        i.tenant_id,
+        i.tenant_id::text as tenant_id,
         i.type,
         i.config,
+        i.nango_connection_id,
         i.last_sync_at,
-        COALESCE(t.name, i.tenant_id) as tenant_name
+        COALESCE(t.name, i.tenant_id::text) as tenant_name
       FROM integrations i
-      LEFT JOIN tenants t ON t.id = (
-        CASE
-          WHEN i.tenant_id ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
-          THEN i.tenant_id::uuid
-          ELSE NULL
-        END
-      )
+      LEFT JOIN tenants t ON i.tenant_id::text = t.clerk_org_id OR i.tenant_id::text = t.id::text
       WHERE i.status = 'connected'
       AND (i.config->>'syncEnabled')::boolean = true
       AND (i.last_sync_at IS NULL OR i.last_sync_at < NOW() - INTERVAL '5 minutes')
@@ -62,13 +58,61 @@ export async function GET(request: NextRequest) {
       LIMIT ${MAX_INTEGRATIONS_PER_RUN}
     ` as IntegrationRecord[];
 
-    console.log(`[Cron] Found ${integrations.length} integrations to sync`);
+    // Auto-heal integrations missing Nango connection IDs
+    const integrationsToHeal = integrations.filter(i => !i.nango_connection_id);
+    if (integrationsToHeal.length > 0) {
+      console.log(`[Cron] Auto-healing ${integrationsToHeal.length} integrations missing Nango connection...`);
+      try {
+        const nangoResponse = await fetch('https://api.nango.dev/connections', {
+          headers: {
+            'Authorization': `Bearer ${process.env.NANGO_SECRET_KEY}`,
+          },
+        });
+
+        if (nangoResponse.ok) {
+          const { connections } = await nangoResponse.json() as {
+            connections: Array<{
+              connection_id: string;
+              provider_config_key: string;
+              end_user?: { id: string };
+            }>
+          };
+
+          for (const integration of integrationsToHeal) {
+            const providerKey = integration.type === 'gmail' ? 'google-mail' : integration.type === 'outlook' ? 'microsoft-365' : null;
+            if (!providerKey) continue;
+
+            const match = connections.find(
+              c => c.end_user?.id === integration.tenant_id && c.provider_config_key === providerKey
+            );
+
+            if (match) {
+              await sql`
+                UPDATE integrations
+                SET nango_connection_id = ${match.connection_id},
+                    updated_at = NOW()
+                WHERE id = ${integration.id}
+              `;
+              integration.nango_connection_id = match.connection_id;
+              console.log(`[Cron] Auto-healed integration ${integration.id} with Nango connection ${match.connection_id}`);
+            }
+          }
+        }
+      } catch (healError) {
+        console.error('[Cron] Auto-heal error:', healError);
+      }
+    }
+
+    // Filter to only integrations that now have Nango connections
+    const validIntegrations = integrations.filter(i => i.nango_connection_id);
+
+    console.log(`[Cron] Found ${validIntegrations.length} integrations to sync (${integrationsToHeal.length} auto-healed)`);
 
     const results: SyncResult[] = [];
     const errors: string[] = [];
     let timedOut = false;
 
-    for (const integration of integrations) {
+    for (const integration of validIntegrations) {
       // Check if we're running out of time
       if (Date.now() - startTime > CRON_TIMEOUT_MS) {
         console.log('[Cron] Timeout approaching, stopping to avoid Vercel timeout');
@@ -85,6 +129,7 @@ export async function GET(request: NextRequest) {
           tenant_id: integration.tenant_id,
           type: integration.type,
           config: integration.config,
+          nango_connection_id: integration.nango_connection_id,
           last_sync_at: integration.last_sync_at,
         });
 
@@ -114,7 +159,8 @@ export async function GET(request: NextRequest) {
     const summary = {
       success: true,
       synced: results.length,
-      total: integrations.length,
+      total: validIntegrations.length,
+      autoHealed: integrationsToHeal.length,
       totalEmailsProcessed: results.reduce((sum, r) => sum + r.emailsProcessed, 0),
       totalThreatsFound: results.reduce((sum, r) => sum + r.threatsFound, 0),
       duration: totalDuration,

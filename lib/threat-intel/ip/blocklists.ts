@@ -417,7 +417,7 @@ export function extractIPsFromHeaders(headers: Record<string, string>): string[]
   // Check X-Originating-IP
   const originatingIP = headers['x-originating-ip'] || headers['X-Originating-IP'];
   if (originatingIP) {
-    const clean = originatingIP.replace(/[\[\]]/g, '');
+    const clean = originatingIP.replace(/[[\]]/g, '');
     if (isValidIPv4(clean)) {
       ips.push(clean);
     }

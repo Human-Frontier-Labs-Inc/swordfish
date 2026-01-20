@@ -119,10 +119,11 @@ export function TenantProvider({ children }: TenantProviderProps) {
 
     // Map Clerk roles to our internal roles
     switch (clerkRole) {
-      case 'org:admin':
+      case 'org:admin': {
         // Check if user is part of an MSP organization
         const isMsp = organization?.publicMetadata?.isMsp === true;
         return isMsp ? 'msp_admin' : 'tenant_admin';
+      }
       case 'org:member':
         return 'analyst';
       default:

@@ -257,6 +257,7 @@ export function sanitizeInput(
   if (typeof input === 'string') {
     let result = input.trim();
     // Remove null bytes
+    // eslint-disable-next-line no-control-regex
     result = result.replace(/\x00/g, '');
     // Limit length
     if (options.maxLength && result.length > options.maxLength) {
@@ -281,7 +282,7 @@ export function sanitizeInput(
 }
 
 // SQL dangerous characters
-const SQL_DANGEROUS = /[';\-]/g;
+const SQL_DANGEROUS = /[';-]/g;
 
 /**
  * Escape string for SQL (use parameterized queries instead when possible)

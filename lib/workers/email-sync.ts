@@ -7,24 +7,18 @@ import { sql } from '@/lib/db';
 import {
   listO365Emails,
   getO365Email,
-  refreshO365Token,
+  getO365AccessToken,
 } from '@/lib/integrations/o365';
 import {
   listGmailMessages,
   getGmailMessage,
-  refreshGmailToken,
+  getGmailAccessToken,
 } from '@/lib/integrations/gmail';
 import { parseGraphEmail, parseGmailEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
 import { storeVerdict } from '@/lib/detection/storage';
 import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
-import type { ParsedEmail } from '@/lib/detection/types';
-
-const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID!;
-const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!;
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
 // Sync configuration - optimized for Vercel's 60s timeout
 const BATCH_SIZE = 5;
@@ -93,6 +87,7 @@ export interface IntegrationRecord {
   tenant_id: string;
   type: string;
   config: Record<string, unknown>;
+  nango_connection_id: string | null;
   last_sync_at: Date | null;
 }
 
@@ -103,7 +98,7 @@ export async function runFullSync(): Promise<SyncResult[]> {
   console.log('Starting full email sync...');
 
   const integrations = await sql`
-    SELECT id, tenant_id, type, config, last_sync_at
+    SELECT id, tenant_id, type, config, nango_connection_id, last_sync_at
     FROM integrations
     WHERE status = 'connected'
     AND (config->>'syncEnabled')::boolean = true
@@ -168,41 +163,25 @@ async function syncO365Integration(
   let threatsFound = 0;
   let timedOut = false;
 
-  const config = integration.config as {
-    accessToken: string;
-    refreshToken: string;
-    tokenExpiresAt: string;
-  };
+  // Check for Nango connection
+  if (!integration.nango_connection_id) {
+    const syncError = categorizeError(new Error('No Nango connection configured'));
+    errors.push('No Nango connection configured');
+    detailedErrors.push(syncError);
+    await updateIntegrationError(integration.id, 'No Nango connection configured');
+    return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
+  }
 
-  // Refresh token if needed
-  let accessToken = config.accessToken;
-  if (new Date(config.tokenExpiresAt) <= new Date()) {
-    try {
-      const newTokens = await refreshO365Token({
-        refreshToken: config.refreshToken,
-        clientId: MICROSOFT_CLIENT_ID,
-        clientSecret: MICROSOFT_CLIENT_SECRET,
-      });
-
-      accessToken = newTokens.accessToken;
-
-      await sql`
-        UPDATE integrations
-        SET config = config || ${JSON.stringify({
-          accessToken: newTokens.accessToken,
-          refreshToken: newTokens.refreshToken || config.refreshToken,
-          tokenExpiresAt: newTokens.expiresAt.toISOString(),
-        })}::jsonb,
-        updated_at = NOW()
-        WHERE id = ${integration.id}
-      `;
-    } catch (error) {
-      const syncError = categorizeError(error);
-      errors.push(`Token refresh failed: ${error}`);
-      detailedErrors.push(syncError);
-      await updateIntegrationError(integration.id, 'Token refresh failed');
-      return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
-    }
+  // Get fresh token from Nango (handles refresh automatically)
+  let accessToken: string;
+  try {
+    accessToken = await getO365AccessToken(integration.nango_connection_id);
+  } catch (error) {
+    const syncError = categorizeError(error);
+    errors.push(`Token retrieval failed: ${error}`);
+    detailedErrors.push(syncError);
+    await updateIntegrationError(integration.id, 'Token retrieval failed');
+    return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
   }
 
   // Get emails received since last sync (or last 24 hours)
@@ -338,40 +317,25 @@ async function syncGmailIntegration(
   let threatsFound = 0;
   let timedOut = false;
 
-  const config = integration.config as {
-    accessToken: string;
-    refreshToken: string;
-    tokenExpiresAt: string;
-  };
+  // Check for Nango connection
+  if (!integration.nango_connection_id) {
+    const syncError = categorizeError(new Error('No Nango connection configured'));
+    errors.push('No Nango connection configured');
+    detailedErrors.push(syncError);
+    await updateIntegrationError(integration.id, 'No Nango connection configured');
+    return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
+  }
 
-  // Refresh token if needed
-  let accessToken = config.accessToken;
-  if (new Date(config.tokenExpiresAt) <= new Date()) {
-    try {
-      const newTokens = await refreshGmailToken({
-        refreshToken: config.refreshToken,
-        clientId: GOOGLE_CLIENT_ID,
-        clientSecret: GOOGLE_CLIENT_SECRET,
-      });
-
-      accessToken = newTokens.accessToken;
-
-      await sql`
-        UPDATE integrations
-        SET config = config || ${JSON.stringify({
-          accessToken: newTokens.accessToken,
-          tokenExpiresAt: newTokens.expiresAt.toISOString(),
-        })}::jsonb,
-        updated_at = NOW()
-        WHERE id = ${integration.id}
-      `;
-    } catch (error) {
-      const syncError = categorizeError(error);
-      errors.push(`Token refresh failed: ${error}`);
-      detailedErrors.push(syncError);
-      await updateIntegrationError(integration.id, 'Token refresh failed');
-      return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
-    }
+  // Get fresh token from Nango (handles refresh automatically)
+  let accessToken: string;
+  try {
+    accessToken = await getGmailAccessToken(integration.nango_connection_id);
+  } catch (error) {
+    const syncError = categorizeError(error);
+    errors.push(`Token retrieval failed: ${error}`);
+    detailedErrors.push(syncError);
+    await updateIntegrationError(integration.id, 'Token retrieval failed');
+    return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
   }
 
   // Get emails received since last sync
@@ -553,7 +517,7 @@ function createResult(
  */
 export async function syncTenant(tenantId: string): Promise<SyncResult[]> {
   const integrations = await sql`
-    SELECT id, tenant_id, type, config, last_sync_at
+    SELECT id, tenant_id, type, config, nango_connection_id, last_sync_at
     FROM integrations
     WHERE tenant_id = ${tenantId}
     AND status = 'connected'
