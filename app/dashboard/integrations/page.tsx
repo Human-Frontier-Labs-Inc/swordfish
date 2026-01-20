@@ -9,7 +9,7 @@ import { useSearchParams } from 'next/navigation';
 interface Integration {
   id: string;
   type: 'o365' | 'gmail' | 'smtp';
-  status: 'connected' | 'disconnected' | 'error' | 'pending';
+  status: 'connected' | 'disconnected' | 'error' | 'pending' | 'requires_reauth';
   email?: string;
   displayName?: string;
   syncEnabled: boolean;
@@ -160,6 +160,8 @@ export default function IntegrationsPage() {
         return <Badge className="bg-gray-100 text-gray-800">Disconnected</Badge>;
       case 'error':
         return <Badge className="bg-red-100 text-red-800">Error</Badge>;
+      case 'requires_reauth':
+        return <Badge className="bg-orange-100 text-orange-800">Reconnection Required</Badge>;
       case 'pending':
         return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
       default:
@@ -213,7 +215,6 @@ export default function IntegrationsPage() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Microsoft 365 Card */}
         <IntegrationCard
-          type="o365"
           info={integrationInfo.o365}
           integration={getIntegration('o365')}
           connecting={connecting === 'o365'}
@@ -227,7 +228,6 @@ export default function IntegrationsPage() {
 
         {/* Gmail Card */}
         <IntegrationCard
-          type="gmail"
           info={integrationInfo.gmail}
           integration={getIntegration('gmail')}
           connecting={connecting === 'gmail'}
@@ -323,7 +323,6 @@ export default function IntegrationsPage() {
 }
 
 interface IntegrationCardProps {
-  type: 'o365' | 'gmail';
   info: { name: string; description: string; icon: string; color: string };
   integration?: Integration;
   connecting: boolean;
@@ -336,7 +335,6 @@ interface IntegrationCardProps {
 }
 
 function IntegrationCard({
-  type,
   info,
   integration,
   connecting,
@@ -348,6 +346,10 @@ function IntegrationCard({
   formatDate,
 }: IntegrationCardProps) {
   const isConnected = integration?.status === 'connected';
+  const needsReauth = integration?.status === 'error' || integration?.status === 'requires_reauth';
+  const isTokenError = integration?.errorMessage?.toLowerCase().includes('token') ||
+                       integration?.errorMessage?.toLowerCase().includes('refresh') ||
+                       integration?.errorMessage?.toLowerCase().includes('auth');
 
   return (
     <Card>
@@ -410,6 +412,54 @@ function IntegrationCard({
                   disabled={syncing}
                 >
                   Disconnect
+                </Button>
+              </div>
+            </>
+          ) : needsReauth && integration ? (
+            <>
+              <div className="space-y-2">
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Account:</span>{' '}
+                  {integration.email || integration.displayName || 'Unknown'}
+                </p>
+                {integration.lastSyncAt && (
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Last successful sync:</span>{' '}
+                    {formatDate(integration.lastSyncAt)}
+                  </p>
+                )}
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mt-2">
+                  <p className="text-sm text-orange-800 font-medium">
+                    {isTokenError ? '🔐 Authentication Expired' : '⚠️ Connection Error'}
+                  </p>
+                  <p className="text-xs text-orange-700 mt-1">
+                    {isTokenError
+                      ? 'Your account authorization has expired. Please reconnect to resume email syncing.'
+                      : integration.errorMessage || 'An error occurred. Please try reconnecting your account.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1 bg-orange-600 hover:bg-orange-700"
+                  onClick={onConnect}
+                  disabled={connecting}
+                >
+                  {connecting ? (
+                    <>
+                      <span className="animate-spin mr-2">⏳</span>
+                      Reconnecting...
+                    </>
+                  ) : (
+                    '🔄 Reconnect Account'
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onDisconnect}
+                >
+                  Remove
                 </Button>
               </div>
             </>

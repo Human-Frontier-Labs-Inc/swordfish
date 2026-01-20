@@ -504,11 +504,19 @@ async function syncGmailIntegration(
 
 /**
  * Update integration with error message
+ * Sets 'requires_reauth' status for token-related errors, 'error' for others
  */
 async function updateIntegrationError(integrationId: string, errorMessage: string): Promise<void> {
+  const isTokenError = errorMessage.toLowerCase().includes('token') ||
+                       errorMessage.toLowerCase().includes('refresh') ||
+                       errorMessage.toLowerCase().includes('unauthorized') ||
+                       errorMessage.toLowerCase().includes('invalid_grant');
+
+  const status = isTokenError ? 'requires_reauth' : 'error';
+
   await sql`
     UPDATE integrations
-    SET status = 'error', error_message = ${errorMessage}, updated_at = NOW()
+    SET status = ${status}, error_message = ${errorMessage}, updated_at = NOW()
     WHERE id = ${integrationId}
   `;
 }
