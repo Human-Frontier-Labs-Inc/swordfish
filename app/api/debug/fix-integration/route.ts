@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
-import { nango } from '@/lib/nango/client';
+import { nango, getNangoIntegrationKey } from '@/lib/nango/client';
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,7 +46,8 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const connection = await nango.getConnection('google-mail', int.nango_connection_id);
+      const providerKey = getNangoIntegrationKey('gmail'); // Returns 'google'
+      const connection = await nango.getConnection(providerKey, int.nango_connection_id);
 
       // Try multiple ways to get the email
       const email = connection.connection_config?.email ||
