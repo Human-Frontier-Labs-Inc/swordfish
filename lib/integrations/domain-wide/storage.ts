@@ -111,14 +111,25 @@ export async function getDomainConfigByTenant(
 
 /**
  * Get all active domain configs (for cron jobs)
+ * Returns empty array if table doesn't exist (migration not yet run)
  */
 export async function getActiveDomainConfigs(): Promise<DomainWideConfig[]> {
-  const result = await sql`
-    SELECT * FROM domain_wide_configs
-    WHERE status = 'active' AND sync_enabled = true
-  `;
+  try {
+    const result = await sql`
+      SELECT * FROM domain_wide_configs
+      WHERE status = 'active' AND sync_enabled = true
+    `;
 
-  return result.map(mapDomainConfig);
+    return result.map(mapDomainConfig);
+  } catch (error) {
+    // Handle case where domain_wide_configs table doesn't exist yet
+    // This can happen if migration 013 hasn't been run in production
+    if (error instanceof Error && error.message.includes('domain_wide_configs')) {
+      console.log('[Domain-Wide] Table not yet created, skipping domain-wide checks');
+      return [];
+    }
+    throw error;
+  }
 }
 
 /**

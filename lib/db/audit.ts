@@ -13,11 +13,23 @@ export interface AuditLogEntry {
   userAgent?: string;
 }
 
+// Helper to truncate strings to fit database column limits
+function truncate(str: string | null | undefined, maxLength: number): string | null {
+  if (!str) return null;
+  return str.length > maxLength ? str.substring(0, maxLength - 3) + '...' : str;
+}
+
 /**
  * Log an audit event
  * Audit logs are immutable - they cannot be updated or deleted
  */
 export async function logAuditEvent(entry: AuditLogEntry): Promise<string> {
+  // Truncate string fields to fit database column limits
+  // action and resource_type are VARCHAR(100)
+  const safeAction = truncate(entry.action, 100) || 'unknown';
+  const safeResourceType = truncate(entry.resourceType, 100) || 'unknown';
+  const safeActorEmail = truncate(entry.actorEmail, 255);
+
   const result = await sql`
     INSERT INTO audit_log (
       tenant_id,
@@ -33,9 +45,9 @@ export async function logAuditEvent(entry: AuditLogEntry): Promise<string> {
     ) VALUES (
       ${entry.tenantId},
       ${entry.actorId},
-      ${entry.actorEmail},
-      ${entry.action},
-      ${entry.resourceType},
+      ${safeActorEmail},
+      ${safeAction},
+      ${safeResourceType},
       ${entry.resourceId || null},
       ${entry.beforeState ? JSON.stringify(entry.beforeState) : null},
       ${entry.afterState ? JSON.stringify(entry.afterState) : null},
