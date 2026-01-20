@@ -120,6 +120,15 @@ export async function POST(request: NextRequest) {
               }>;
             };
 
+            console.log(`[Gmail Webhook] Found ${connections.length} Nango connections total`);
+            const googleMailConnections = connections.filter(c => c.provider_config_key === 'google-mail');
+            console.log(`[Gmail Webhook] Found ${googleMailConnections.length} google-mail connections`);
+
+            // Log what we're looking for vs what we have
+            googleMailConnections.forEach(c => {
+              console.log(`[Gmail Webhook] Connection ${c.connection_id}: end_user.email=${c.end_user?.email}, connection_config.email=${c.connection_config?.email}`);
+            });
+
             // Find Nango connection matching this email
             const matchingConnection = connections.find(
               c => c.provider_config_key === 'google-mail' &&
