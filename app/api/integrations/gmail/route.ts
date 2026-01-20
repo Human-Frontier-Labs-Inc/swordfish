@@ -43,6 +43,11 @@ export async function GET(request: NextRequest) {
       state,
     });
 
+    console.log('[Gmail OAuth] Auth URL generated');
+    console.log('[Gmail OAuth]   redirectUri:', GMAIL_REDIRECT_URI);
+    console.log('[Gmail OAuth]   clientId:', GMAIL_CLIENT_ID?.substring(0, 30) + '...');
+    console.log('[Gmail OAuth]   tenantId:', tenantId);
+
     return NextResponse.json({ authUrl });
   } catch (error) {
     console.error('Gmail auth URL error:', error);

@@ -50,6 +50,11 @@ export async function exchangeGmailCode(params: {
 }): Promise<OAuthTokens> {
   const { code, clientId, clientSecret, redirectUri } = params;
 
+  console.log('[Gmail OAuth] Attempting code exchange with:');
+  console.log('[Gmail OAuth]   redirectUri:', redirectUri);
+  console.log('[Gmail OAuth]   clientId:', clientId?.substring(0, 30) + '...');
+  console.log('[Gmail OAuth]   code length:', code?.length || 0);
+
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -66,12 +71,29 @@ export async function exchangeGmailCode(params: {
 
   if (!response.ok) {
     const error = await response.json();
-    console.error('Google OAuth error response:', JSON.stringify(error));
-    console.error('Request params - clientId:', clientId?.substring(0, 20) + '...', 'redirectUri:', redirectUri);
+    console.error('[Gmail OAuth] Token exchange FAILED');
+    console.error('[Gmail OAuth]   Status:', response.status, response.statusText);
+    console.error('[Gmail OAuth]   Error:', JSON.stringify(error));
+    console.error('[Gmail OAuth]   Config used:');
+    console.error('[Gmail OAuth]     redirectUri:', redirectUri);
+    console.error('[Gmail OAuth]     clientId:', clientId?.substring(0, 30) + '...');
+    console.error('[Gmail OAuth]     clientSecret length:', clientSecret?.length || 0);
+    console.error('[Gmail OAuth]   Possible causes:');
+    if (error.error === 'redirect_uri_mismatch') {
+      console.error('[Gmail OAuth]     -> Redirect URI does not match Google Cloud Console config');
+      console.error('[Gmail OAuth]     -> Check: https://console.cloud.google.com/apis/credentials');
+    } else if (error.error === 'invalid_grant') {
+      console.error('[Gmail OAuth]     -> Authorization code already used or expired');
+    } else if (error.error === 'unauthorized_client') {
+      console.error('[Gmail OAuth]     -> Client ID/Secret may be invalid or not authorized for this redirect URI');
+    }
     throw new Error(`OAuth error: ${error.error_description || error.error}`);
   }
 
   const data = await response.json();
+  console.log('[Gmail OAuth] Token exchange SUCCESS');
+  console.log('[Gmail OAuth]   Scopes granted:', data.scope);
+  console.log('[Gmail OAuth]   Token expires in:', data.expires_in, 'seconds');
 
   return {
     accessToken: data.access_token,
@@ -91,6 +113,10 @@ export async function refreshGmailToken(params: {
 }): Promise<OAuthTokens> {
   const { refreshToken, clientId, clientSecret } = params;
 
+  console.log('[Gmail OAuth] Attempting token refresh');
+  console.log('[Gmail OAuth]   clientId:', clientId?.substring(0, 30) + '...');
+  console.log('[Gmail OAuth]   refreshToken length:', refreshToken?.length || 0);
+
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -106,10 +132,22 @@ export async function refreshGmailToken(params: {
 
   if (!response.ok) {
     const error = await response.json();
+    console.error('[Gmail OAuth] Token refresh FAILED');
+    console.error('[Gmail OAuth]   Status:', response.status, response.statusText);
+    console.error('[Gmail OAuth]   Error:', JSON.stringify(error));
+    console.error('[Gmail OAuth]   Possible causes:');
+    if (error.error === 'invalid_grant') {
+      console.error('[Gmail OAuth]     -> Refresh token revoked or expired');
+      console.error('[Gmail OAuth]     -> User needs to re-authorize the application');
+    } else if (error.error === 'unauthorized_client') {
+      console.error('[Gmail OAuth]     -> Client credentials may be invalid');
+    }
     throw new Error(`Token refresh error: ${error.error_description || error.error}`);
   }
 
   const data = await response.json();
+  console.log('[Gmail OAuth] Token refresh SUCCESS');
+  console.log('[Gmail OAuth]   New token expires in:', data.expires_in, 'seconds');
 
   return {
     accessToken: data.access_token,

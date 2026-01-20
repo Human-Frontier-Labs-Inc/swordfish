@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import clsx from 'clsx';
 
 interface Signal {
@@ -26,6 +26,8 @@ interface ScannedEmail {
   processingTimeMs: number;
   scannedAt: string;
 }
+
+const LIVE_POLL_INTERVAL = 10000; // 10 seconds
 
 const verdictConfig = {
   pass: {
@@ -60,13 +62,12 @@ export default function ScannedEmailsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [selectedEmail, setSelectedEmail] = useState<ScannedEmail | null>(null);
+  const [isLive, setIsLive] = useState(false);
+  const [lastPolled, setLastPolled] = useState<Date | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    fetchEmails();
-  }, [filter]);
-
-  async function fetchEmails() {
-    setIsLoading(true);
+  const fetchEmails = useCallback(async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     try {
       const params = new URLSearchParams({ limit: '100' });
       if (filter !== 'all') {
@@ -78,13 +79,42 @@ export default function ScannedEmailsPage() {
         const data = await res.json();
         setEmails(data.emails);
         setTotal(data.total);
+        setLastPolled(new Date());
       }
     } catch (error) {
       console.error('Failed to fetch emails:', error);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
-  }
+  }, [filter]);
+
+  // Initial fetch and filter change
+  useEffect(() => {
+    fetchEmails();
+  }, [fetchEmails]);
+
+  // Live polling effect
+  useEffect(() => {
+    if (isLive) {
+      // Start polling
+      pollIntervalRef.current = setInterval(() => {
+        fetchEmails(false); // Don't show loading spinner during live updates
+      }, LIVE_POLL_INTERVAL);
+    } else {
+      // Stop polling
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [isLive, fetchEmails]);
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return 'N/A';
@@ -106,15 +136,42 @@ export default function ScannedEmailsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Scanned Emails</h1>
           <p className="mt-1 text-sm text-gray-500">
             All emails analyzed by Swordfish ({total} total)
+            {lastPolled && isLive && (
+              <span className="ml-2 text-xs text-gray-400">
+                Last updated: {lastPolled.toLocaleTimeString()}
+              </span>
+            )}
           </p>
         </div>
-        <button
-          onClick={fetchEmails}
-          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <RefreshIcon className="h-4 w-4" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Live Toggle */}
+          <button
+            onClick={() => setIsLive(!isLive)}
+            className={clsx(
+              'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all',
+              isLive
+                ? 'bg-green-100 text-green-800 ring-2 ring-green-500 ring-offset-1'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            )}
+          >
+            <span
+              className={clsx(
+                'h-2 w-2 rounded-full',
+                isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
+              )}
+            />
+            {isLive ? 'Live' : 'Live'}
+          </button>
+          {/* Refresh Button */}
+          <button
+            onClick={() => fetchEmails()}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <RefreshIcon className={clsx('h-4 w-4', isLoading && 'animate-spin')} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Filter Tabs */}
