@@ -15,7 +15,7 @@ import { autoRemediate } from '@/lib/workers/remediation';
 import { validateGooglePubSub, checkRateLimit } from '@/lib/webhooks/validation';
 import { processGmailHistoryForUser, getGmailTokenForUser } from '@/lib/integrations/domain-wide/google-workspace';
 import { getDomainUserByEmail, incrementDomainUserStats, getActiveDomainConfigs } from '@/lib/integrations/domain-wide/storage';
-import { getNangoIntegrationKey } from '@/lib/nango/client';
+import { nango, getNangoIntegrationKey } from '@/lib/nango/client';
 
 const WEBHOOK_AUDIENCE = process.env.GOOGLE_WEBHOOK_AUDIENCE;
 
