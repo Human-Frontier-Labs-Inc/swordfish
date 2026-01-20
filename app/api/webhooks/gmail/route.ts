@@ -20,7 +20,8 @@ import { nango, getNangoIntegrationKey } from '@/lib/nango/client';
 const WEBHOOK_AUDIENCE = process.env.GOOGLE_WEBHOOK_AUDIENCE;
 
 // Export for Vercel configuration
-export const maxDuration = 30;
+// Use a slightly higher timeout, but keep processing lightweight by skipping LLM.
+export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 interface PubSubMessage {
@@ -289,8 +290,10 @@ export async function POST(request: NextRequest) {
         // Parse email
         const parsedEmail = parseGmailEmail(message);
 
-        // Analyze
-        const verdict = await analyzeEmail(parsedEmail, tenantId);
+        // Analyze - skip LLM here to keep webhook fast and avoid timeouts
+        const verdict = await analyzeEmail(parsedEmail, tenantId, {
+          skipLLM: true,
+        });
 
         // Store verdict
         await storeVerdict(tenantId, parsedEmail.messageId, verdict);
@@ -398,7 +401,9 @@ async function processDomainWideGmail(
         const message = await getGmailMessage({ accessToken, messageId, format: 'full' });
         const parsedEmail = parseGmailEmail(message);
 
-        const verdict = await analyzeEmail(parsedEmail, tenantId);
+        const verdict = await analyzeEmail(parsedEmail, tenantId, {
+          skipLLM: true,
+        });
         await storeVerdict(tenantId, parsedEmail.messageId, verdict);
 
         if (verdict.verdict === 'quarantine' || verdict.verdict === 'block') {
