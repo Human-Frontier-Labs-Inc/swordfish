@@ -22,7 +22,8 @@
     "setup:azure": "./scripts/setup-env.sh --azure",
     "setup:keys": "./scripts/setup-env.sh --keys",
     "setup:help": "./scripts/setup-env.sh --help",
-    "migrate:009": "tsx scripts/run-migration-009.ts"
+    "migrate:009": "tsx scripts/run-migration-009.ts",
+    "migrate:014": "tsx scripts/run-migration-014.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

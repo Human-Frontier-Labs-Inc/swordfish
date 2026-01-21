@@ -246,8 +246,8 @@ CREATE TABLE audit_log (
     tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
     actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
     actor_email VARCHAR(255),
-    action VARCHAR(100) NOT NULL,
-    resource_type VARCHAR(100) NOT NULL,
+    action VARCHAR(255) NOT NULL,
+    resource_type VARCHAR(255) NOT NULL,
     resource_id UUID,
     before_state JSONB,
     after_state JSONB,
@@ -301,7 +301,7 @@ CREATE TABLE IF NOT EXISTS threats (
     received_at TIMESTAMPTZ,
 
     -- Threat details
-    threat_type VARCHAR(100), -- phishing, malware, spam, bec
+    threat_type VARCHAR(255), -- phishing, malware, spam, bec
     verdict VARCHAR(50) NOT NULL, -- quarantine, block
     score INTEGER DEFAULT 0,
     signals JSONB DEFAULT '[]',
@@ -381,10 +381,12 @@ CREATE TABLE IF NOT EXISTS provider_connections (
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id VARCHAR(255) NOT NULL,
-    type VARCHAR(100) NOT NULL, -- threat_blocked, threat_quarantined, system_alert
+    type VARCHAR(255) NOT NULL, -- threat_blocked, threat_quarantined, system_alert
     severity VARCHAR(50) DEFAULT 'info', -- info, warning, critical
     title TEXT NOT NULL,
     message TEXT,
+    resource_type VARCHAR(255),
+    resource_id TEXT,
     metadata JSONB DEFAULT '{}',
     read BOOLEAN DEFAULT FALSE,
     read_at TIMESTAMPTZ,
