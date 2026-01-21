@@ -14,6 +14,9 @@
     "app/api/threats/feed/route.ts": {
       "maxDuration": 60
     },
+    "app/api/workers/gmail-queue/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/webhooks/gmail/route.ts": {
       "maxDuration": 60
     },
@@ -46,6 +49,10 @@
     {
       "path": "/api/cron/renew-subscriptions",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/workers/gmail-queue",
+      "schedule": "* * * * *"
     }
   ],
   "headers": [

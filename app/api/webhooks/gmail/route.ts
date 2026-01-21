@@ -16,6 +16,7 @@ import { validateGooglePubSub, checkRateLimit } from '@/lib/webhooks/validation'
 import { processGmailHistoryForUser, getGmailTokenForUser } from '@/lib/integrations/domain-wide/google-workspace';
 import { getDomainUserByEmail, incrementDomainUserStats, getActiveDomainConfigs } from '@/lib/integrations/domain-wide/storage';
 import { nango, getNangoIntegrationKey } from '@/lib/nango/client';
+import { enqueueGmailJob, isGmailQueueConfigured } from '@/lib/queue/gmail';
 
 const WEBHOOK_AUDIENCE = process.env.GOOGLE_WEBHOOK_AUDIENCE;
 
@@ -182,6 +183,29 @@ export async function POST(request: NextRequest) {
     const config = integration.config as {
       historyId: string;
     };
+
+    // If queue is configured, enqueue and return quickly
+    if (isGmailQueueConfigured()) {
+      try {
+        const job = await enqueueGmailJob({
+          tenantId,
+          integrationId: integration.id as string,
+          emailAddress,
+          historyId,
+        });
+
+        return NextResponse.json({
+          status: 'queued',
+          jobId: job.id,
+        });
+      } catch (queueError) {
+        console.error('[Gmail Webhook] Queue enqueue failed:', queueError);
+        return NextResponse.json(
+          { status: 'queue_error', error: 'Failed to enqueue job' },
+          { status: 200 }
+        );
+      }
+    }
 
     // Get fresh token from Nango (handles refresh automatically)
     let activeNangoConnectionId = nangoConnectionId;
