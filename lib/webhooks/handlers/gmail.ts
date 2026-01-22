@@ -132,7 +132,7 @@ export async function processGmailWebhook(
         const verdict = await analyzeEmail(parsedEmail, tenantId);
 
         // Store verdict
-        await storeVerdict(tenantId, parsedEmail.messageId, verdict);
+        await storeVerdict(tenantId, parsedEmail.messageId, verdict, parsedEmail);
 
         messagesProcessed++;
 

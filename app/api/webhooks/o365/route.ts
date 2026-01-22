@@ -170,7 +170,7 @@ async function processNotification(notification: GraphNotification['value'][0]) 
   const verdict = await analyzeEmail(parsedEmail, tenantId);
 
   // Store verdict
-  await storeVerdict(tenantId, parsedEmail.messageId, verdict);
+  await storeVerdict(tenantId, parsedEmail.messageId, verdict, parsedEmail);
 
   // Send notification and auto-remediate for threats
   if (verdict.verdict === 'quarantine' || verdict.verdict === 'block') {

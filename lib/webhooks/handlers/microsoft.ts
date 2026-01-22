@@ -171,7 +171,7 @@ async function processNotification(notification: GraphNotification): Promise<{
   const verdict = await analyzeEmail(parsedEmail, tenantId);
 
   // Store verdict
-  await storeVerdict(tenantId, parsedEmail.messageId, verdict);
+  await storeVerdict(tenantId, parsedEmail.messageId, verdict, parsedEmail);
 
   let threatFound = false;
 

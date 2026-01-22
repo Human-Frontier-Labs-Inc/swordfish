@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
         FROM email_verdicts
         WHERE tenant_id = ${tenantId}
         AND verdict = ${verdictFilter}
-        ORDER BY received_at DESC
+        ORDER BY COALESCE(received_at, created_at) DESC
         LIMIT ${limit}
         OFFSET ${offset}
       `;
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
           created_at
         FROM email_verdicts
         WHERE tenant_id = ${tenantId}
-        ORDER BY received_at DESC
+        ORDER BY COALESCE(received_at, created_at) DESC
         LIMIT ${limit}
         OFFSET ${offset}
       `;
@@ -97,6 +97,8 @@ export async function GET(request: NextRequest) {
         ? `${email.from_display_name} <${email.from_address}>`
         : email.from_address || 'Unknown sender';
 
+      const receivedAt = email.received_at || email.created_at;
+
       return {
         id: email.id,
         messageId: email.message_id,
@@ -104,7 +106,7 @@ export async function GET(request: NextRequest) {
         from: fromDisplay,
         fromAddress: email.from_address,
         to: email.to_addresses,
-        receivedAt: email.received_at,
+        receivedAt,
         verdict: email.verdict,
         score: email.score || 0,
         confidence: email.confidence || 0,

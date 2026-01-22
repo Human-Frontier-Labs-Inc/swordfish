@@ -262,7 +262,7 @@ export class EmailProcessingQueue extends EventEmitter {
     });
 
     // Store verdict
-    const stored = await storeVerdict(job.tenantId, job.email.messageId, verdict);
+    const stored = await storeVerdict(job.tenantId, job.email.messageId, verdict, parsedEmail);
 
     return {
       success: true,

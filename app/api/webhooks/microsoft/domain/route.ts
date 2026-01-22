@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         const verdict = await analyzeEmail(parsedEmail, config.tenantId);
 
         // Store the verdict
-        await storeVerdict(config.tenantId, parsedEmail.messageId, verdict);
+        await storeVerdict(config.tenantId, parsedEmail.messageId, verdict, parsedEmail);
 
         // Update stats
         await incrementDomainUserStats(domainUser.id, {

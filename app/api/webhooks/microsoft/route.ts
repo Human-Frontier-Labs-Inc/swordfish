@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
         const verdict = await analyzeEmail(parsedEmail, tenantId);
 
         // Store verdict
-        await storeVerdict(tenantId, parsedEmail.messageId, verdict);
+        await storeVerdict(tenantId, parsedEmail.messageId, verdict, parsedEmail);
 
         totalProcessed++;
 

@@ -41,6 +41,12 @@ export interface Notification {
   createdAt: Date;
 }
 
+// Guard against legacy schema limits in production (VARCHAR(100) in some envs)
+function truncateValue(value: string | null | undefined, maxLength: number): string | null {
+  if (!value) return null;
+  return value.length > maxLength ? value.slice(0, maxLength - 3) + '...' : value;
+}
+
 /**
  * Create and send a notification
  */
@@ -56,14 +62,18 @@ export async function sendNotification(params: {
 }): Promise<string> {
   const { tenantId, type, title, message, severity, resourceType, resourceId, metadata } = params;
 
+  const safeType = truncateValue(type, 100) || 'unknown';
+  const safeResourceType = truncateValue(resourceType, 100);
+  const safeResourceId = truncateValue(resourceId, 100);
+
   // Store in-app notification
   const result = await sql`
     INSERT INTO notifications (
       tenant_id, type, title, message, severity,
       resource_type, resource_id, metadata, read, created_at
     ) VALUES (
-      ${tenantId}, ${type}, ${title}, ${message}, ${severity},
-      ${resourceType || null}, ${resourceId || null},
+      ${tenantId}, ${safeType}, ${title}, ${message}, ${severity},
+      ${safeResourceType || null}, ${safeResourceId || null},
       ${metadata ? JSON.stringify(metadata) : null}, false, NOW()
     )
     RETURNING id

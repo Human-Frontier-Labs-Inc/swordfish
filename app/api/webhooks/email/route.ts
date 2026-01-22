@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
     const verdict = await analyzeEmail(parsedEmail, payload.tenantId);
 
     // Store the verdict
-    await storeVerdict(payload.tenantId, parsedEmail.messageId, verdict);
+    await storeVerdict(payload.tenantId, parsedEmail.messageId, verdict, parsedEmail);
 
     // Send notifications for threats
     if (verdict.verdict === 'quarantine' || verdict.verdict === 'block') {

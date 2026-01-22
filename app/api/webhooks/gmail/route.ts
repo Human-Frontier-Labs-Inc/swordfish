@@ -338,7 +338,7 @@ export async function POST(request: NextRequest) {
         });
 
         // Store verdict
-        await storeVerdict(tenantId, parsedEmail.messageId, verdict);
+        await storeVerdict(tenantId, parsedEmail.messageId, verdict, parsedEmail);
 
         // Send notification and auto-remediate for threats
         if (verdict.verdict === 'quarantine' || verdict.verdict === 'block') {
@@ -464,7 +464,7 @@ async function processDomainWideGmail(
         const verdict = await analyzeEmail(parsedEmail, tenantId, {
           skipLLM: true,
         });
-        await storeVerdict(tenantId, parsedEmail.messageId, verdict);
+        await storeVerdict(tenantId, parsedEmail.messageId, verdict, parsedEmail);
 
         if (verdict.verdict === 'quarantine' || verdict.verdict === 'block') {
           await sendThreatNotification(tenantId, {
