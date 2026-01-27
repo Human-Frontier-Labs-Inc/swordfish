@@ -183,7 +183,12 @@ export type SignalType =
   | 'anomaly_detected'
   | 'lookalike_detected'
   // Email classification
-  | 'classification';
+  | 'classification'
+  // Sender reputation (Phase 1 FP reduction)
+  | 'sender_reputation'
+  | 'sender_trust_applied'
+  | 'url_reputation'
+  | 'url_whitelisted';
 
 // Analysis result from each layer
 export interface LayerResult {

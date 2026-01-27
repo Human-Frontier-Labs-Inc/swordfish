@@ -22,6 +22,12 @@ import {
   isLegitimateReplyTo,
   type EmailClassification,
 } from './classifier';
+import {
+  runEnhancedReputationLookup,
+  filterDeterministicSignalsWithReputation,
+  calculateScoreWithTrust,
+  type EnhancedReputationContext,
+} from './reputation/sender-lookup';
 
 /**
  * Main detection pipeline - analyzes an email through all layers
@@ -36,6 +42,7 @@ export async function analyzeEmail(
   const layerResults: LayerResult[] = [];
   const allSignals: Signal[] = [];
   let llmTokensUsed = 0;
+  let reputationContext: EnhancedReputationContext | null = null;
 
   // Layer 0: Email Type Classification (NEW - runs first)
   // This classifies the email type BEFORE threat detection
@@ -137,11 +144,26 @@ export async function analyzeEmail(
   // Layer 2: Deterministic Analysis (always runs)
   const deterministicResult = await runDeterministicAnalysis(email);
 
-  // Filter out false positives based on email classification
-  const filteredDeterministicSignals = filterSignalsForEmailType(
+  // Layer 3: Enhanced Reputation Lookup (runs before filtering deterministic signals)
+  const { result: reputationResult, context: repContext } = await runEnhancedReputationLookup(email);
+  reputationContext = repContext;
+  layerResults.push(reputationResult);
+  allSignals.push(...reputationResult.signals);
+
+  // Filter out false positives based on email classification AND sender reputation
+  let filteredDeterministicSignals = filterSignalsForEmailType(
     deterministicResult.signals,
     emailClassification
   );
+
+  // Apply reputation-based filtering to remove known tracking URL false positives
+  if (reputationContext && reputationContext.isKnownSender) {
+    filteredDeterministicSignals = filterDeterministicSignalsWithReputation(
+      filteredDeterministicSignals,
+      reputationContext
+    );
+  }
+
   const filteredDeterministicResult = {
     ...deterministicResult,
     signals: filteredDeterministicSignals,
@@ -149,11 +171,6 @@ export async function analyzeEmail(
   };
   layerResults.push(filteredDeterministicResult);
   allSignals.push(...filteredDeterministicSignals);
-
-  // Layer 3: Reputation Lookup
-  const reputationResult = await runReputationLookup(email);
-  layerResults.push(reputationResult);
-  allSignals.push(...reputationResult.signals);
 
   // Layer 4: ML Analysis
   const mlResult = await runMLAnalysis(email, allSignals);
@@ -240,9 +257,36 @@ export async function analyzeEmail(
   // Calculate final score and verdict
   let { overallScore, confidence } = calculateFinalScore(layerResults, config);
 
-  // Apply email type modifier to final score
+  // Apply sender reputation trust modifier FIRST (more precise than email classification)
+  if (reputationContext && reputationContext.isKnownSender && reputationContext.trustModifier < 1.0) {
+    const { adjustedScore, reduction, reductionPercent } = calculateScoreWithTrust(
+      overallScore,
+      reputationContext
+    );
+
+    const originalScore = overallScore;
+    overallScore = adjustedScore;
+
+    // Add signal explaining sender reputation score reduction
+    allSignals.push({
+      type: 'sender_trust_applied',
+      severity: 'info',
+      score: 0,
+      detail: `Score reduced by ${Math.round(reductionPercent)}% due to sender reputation (${reputationContext.senderReputation!.display_name}, trust score: ${reputationContext.senderReputation!.trust_score}/100)`,
+      metadata: {
+        originalScore,
+        adjustedScore,
+        reduction,
+        reductionPercent: Math.round(reductionPercent),
+        senderDomain: reputationContext.senderReputation!.domain,
+        trustScore: reputationContext.senderReputation!.trust_score,
+        category: reputationContext.senderReputation!.category,
+      },
+    });
+  }
+  // Apply email type modifier to final score (only if sender reputation didn't already apply)
   // Marketing/known senders get reduced threat scores
-  if (emailClassification && emailClassification.threatScoreModifier < 1.0) {
+  else if (emailClassification && emailClassification.threatScoreModifier < 1.0) {
     const originalScore = overallScore;
     overallScore = Math.round(overallScore * emailClassification.threatScoreModifier);
 
