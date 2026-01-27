@@ -12,7 +12,7 @@ import type {
 } from './types';
 import { DEFAULT_DETECTION_CONFIG } from './types';
 import { runDeterministicAnalysis } from './deterministic';
-import { runLLMAnalysis, shouldInvokeLLM } from './llm';
+import { runLLMAnalysis, shouldInvokeLLM, type LLMAnalysisContext } from './llm';
 import { evaluatePolicies } from '@/lib/policies/engine';
 import { classifyEmail } from './ml/classifier';
 import { checkReputation } from './reputation/service';
@@ -230,7 +230,15 @@ export async function analyzeEmail(
   const becSuspected = becResult.score >= 30 && becResult.confidence < 0.8;
 
   if (shouldUseLLM || becSuspected) {
-    const llmResult = await runLLMAnalysis(email, allSignals);
+    // Phase 4: Build context from Phase 1-3 for LLM analysis
+    const llmContext = buildLLMContext(
+      reputationContext,
+      allSignals,
+      emailClassification,
+      layerResults
+    );
+
+    const llmResult = await runLLMAnalysis(email, allSignals, llmContext);
     layerResults.push(llmResult);
     allSignals.push(...llmResult.signals);
     // Estimate tokens used (rough approximation)
@@ -927,6 +935,106 @@ function estimateTokensUsed(email: ParsedEmail): number {
   const inputTokens = Math.ceil(textLength / 4) + 500; // +500 for prompt
   const outputTokens = 300; // Typical response size
   return inputTokens + outputTokens;
+}
+
+/**
+ * Phase 4: Build LLM analysis context from Phase 1-3 results
+ */
+function buildLLMContext(
+  reputationContext: EnhancedReputationContext | null,
+  allSignals: Signal[],
+  emailClassification: EmailClassification | null,
+  layerResults: LayerResult[]
+): LLMAnalysisContext {
+  const context: LLMAnalysisContext = {};
+
+  // Phase 1: Sender reputation
+  if (reputationContext?.senderReputation) {
+    const rep = reputationContext.senderReputation;
+    context.senderReputation = {
+      isKnownGood: reputationContext.isKnownSender && rep.trust_score > 70,
+      trustScore: rep.trust_score,
+      historicalActivity: rep.email_count > 10
+        ? 'Regular sender'
+        : rep.email_count > 0
+        ? 'Occasional sender'
+        : 'First contact',
+      knownCategories: rep.category ? [rep.category] : [],
+    };
+  }
+
+  // Phase 2: URL classification
+  // Extract URL statistics from signals
+  const trackingURLs = allSignals.filter(s =>
+    s.type === 'tracking_url'
+  ).length;
+  const maliciousURLs = allSignals.filter(s =>
+    s.type === 'malicious_url'
+  ).length;
+  const suspiciousURLs = allSignals.filter(s =>
+    s.type === 'suspicious_url' || s.type === 'shortened_url'
+  ).length;
+  const redirectURLs = allSignals.filter(s =>
+    s.type === 'url_redirect'
+  ).length;
+
+  const totalURLs = trackingURLs + maliciousURLs + suspiciousURLs + redirectURLs;
+
+  if (totalURLs > 0) {
+    // Determine trust level based on URL composition
+    let urlTrustLevel: 'high' | 'medium' | 'low' | 'untrusted';
+    if (maliciousURLs > 0) {
+      urlTrustLevel = 'untrusted';
+    } else if (suspiciousURLs > 0) {
+      urlTrustLevel = 'low';
+    } else if (redirectURLs > trackingURLs) {
+      urlTrustLevel = 'medium';
+    } else {
+      urlTrustLevel = 'high';
+    }
+
+    context.urlContext = {
+      totalURLs,
+      trackingURLs,
+      maliciousURLs,
+      suspiciousURLs,
+      urlTrustLevel,
+    };
+  }
+
+  // Email classification - convert to EmailClassificationResult format
+  if (emailClassification) {
+    context.emailClassification = {
+      type: emailClassification.type as 'marketing' | 'transactional' | 'automated' | 'personal' | 'unknown',
+      confidence: emailClassification.confidence,
+      isKnownSender: emailClassification.isKnownSender,
+      senderName: emailClassification.senderInfo?.name,
+      senderCategory: emailClassification.senderInfo?.category,
+      threatScoreModifier: emailClassification.threatScoreModifier,
+      skipBECDetection: emailClassification.skipBECDetection,
+      skipGiftCardDetection: emailClassification.skipGiftCardDetection,
+      signals: [], // LLM context doesn't need detailed signals, just the classification
+    };
+  }
+
+  // Prior scores from layers (for LLM to understand what prior analysis found)
+  const priorScores: Record<string, number> = {};
+  for (const result of layerResults) {
+    if (result.layer && !result.skipped) {
+      priorScores[result.layer] = result.score;
+    }
+  }
+
+  if (Object.keys(priorScores).length > 0) {
+    context.priorScores = {
+      deterministic: priorScores.deterministic || 0,
+      reputation: priorScores.reputation || 0,
+      ml: priorScores.ml || 0,
+      bec: priorScores.bec || 0,
+    };
+  }
+
+  return context;
 }
 
 /**
