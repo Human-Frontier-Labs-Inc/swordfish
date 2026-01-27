@@ -3,8 +3,10 @@
  * Fast, rule-based checks that don't require external APIs
  */
 
-import type { ParsedEmail, Signal, LayerResult, AuthenticationResults } from './types';
+import type { ParsedEmail, Signal, SignalType, LayerResult, AuthenticationResults } from './types';
 import { parseAuthenticationResults } from './parser';
+import { classifyURL, getURLScoreMultiplier, type URLClassification } from './url-classifier';
+import { deduplicateURLSignals } from './signal-deduplicator';
 
 // Known free email providers
 const FREE_EMAIL_PROVIDERS = new Set([
@@ -107,18 +109,21 @@ export async function runDeterministicAnalysis(email: ParsedEmail): Promise<Laye
   const content = email.body.text || stripHtml(email.body.html || '');
   signals.push(...analyzeContent(content, email.subject));
 
-  // 5. Extract and analyze URLs
+  // 5. Extract and analyze URLs with context-aware classification
   const urls = extractUrls(email.body.html || email.body.text || '');
-  signals.push(...analyzeUrls(urls));
+  signals.push(...analyzeUrls(urls, email.from.domain));
+
+  // 6. Deduplicate URL signals to prevent score inflation
+  const deduplicatedSignals = deduplicateURLSignals(signals);
 
   // Calculate overall score (0-100)
-  const score = calculateScore(signals);
+  const score = calculateScore(deduplicatedSignals);
 
   return {
     layer: 'deterministic',
     score,
     confidence: 0.8, // Deterministic rules have high confidence
-    signals,
+    signals: deduplicatedSignals,
     processingTimeMs: performance.now() - startTime,
   };
 }
@@ -332,58 +337,57 @@ function analyzeContent(content: string, subject: string): Signal[] {
 }
 
 /**
- * Analyze URLs in email
+ * Analyze URLs in email using context-aware classification
+ * Phase 2: Reduces false positives by distinguishing tracking URLs from malicious ones
  */
-function analyzeUrls(urls: string[]): Signal[] {
+function analyzeUrls(urls: string[], senderDomain: string, knownTrackingDomains: string[] = []): Signal[] {
   const signals: Signal[] = [];
 
   for (const url of urls) {
-    try {
-      const parsed = new URL(url);
+    // Classify the URL using context-aware classifier
+    const classification = classifyURL(url, senderDomain, knownTrackingDomains);
 
-      // Check for IP address URLs
-      if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(parsed.hostname)) {
-        signals.push({
-          type: 'ip_url',
-          severity: 'warning',
-          score: 20,
-          detail: `URL uses IP address instead of domain: ${url}`,
-        });
+    // Skip trusted tracking URLs (score = 0)
+    if (classification.type === 'tracking' && classification.trustLevel === 'high') {
+      continue;
+    }
+
+    // Apply score multiplier based on URL classification
+    const baseScore = classification.score;
+    const multiplier = getURLScoreMultiplier(classification);
+    const adjustedScore = Math.round(baseScore * multiplier);
+
+    // Only add signal if score is significant
+    if (adjustedScore > 0) {
+      // Map classification type to signal type and severity
+      let signalType: SignalType = 'suspicious_url';
+      let severity: 'info' | 'warning' | 'critical' = 'warning';
+
+      if (classification.type === 'malicious') {
+        signalType = 'malicious_url' as SignalType;
+        severity = 'critical';
+      } else if (classification.type === 'redirect') {
+        signalType = 'shortened_url' as SignalType;
+        severity = 'info';
+      } else if (classification.type === 'tracking') {
+        signalType = 'tracking_url' as SignalType;
+        severity = 'info';
       }
 
-      // Check for suspicious URL patterns
-      if (parsed.hostname.includes('-') && parsed.hostname.split('-').length > 3) {
-        signals.push({
-          type: 'suspicious_url',
-          severity: 'warning',
-          score: 10,
-          detail: `URL has suspicious hyphenated domain: ${parsed.hostname}`,
-        });
-      }
-
-      // Check for URL shorteners
-      const shorteners = ['bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'ow.ly', 'is.gd', 'buff.ly'];
-      if (shorteners.some(s => parsed.hostname.endsWith(s))) {
-        signals.push({
-          type: 'shortened_url',
-          severity: 'info',
-          score: 5,
-          detail: `URL uses shortening service: ${parsed.hostname}`,
-        });
-      }
-
-      // Check for data: or javascript: URLs
-      if (parsed.protocol === 'data:' || parsed.protocol === 'javascript:') {
-        signals.push({
-          type: 'dangerous_url',
-          severity: 'critical',
-          score: 50,
-          detail: `Dangerous URL protocol detected: ${parsed.protocol}`,
-        });
-      }
-
-    } catch {
-      // Invalid URL - skip
+      signals.push({
+        type: signalType,
+        severity,
+        score: adjustedScore,
+        detail: classification.reason,
+        metadata: {
+          url: classification.url,
+          urlType: classification.type,
+          trustLevel: classification.trustLevel,
+          originalScore: baseScore,
+          multiplier,
+          ...classification.metadata,
+        },
+      });
     }
   }
 

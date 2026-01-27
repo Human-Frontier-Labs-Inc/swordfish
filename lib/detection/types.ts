@@ -85,6 +85,8 @@ export type SignalType =
   | 'dangerous_url'
   | 'shortened_url'
   | 'ip_url'
+  | 'tracking_url' // Phase 2: Legitimate tracking URLs
+  | 'malicious_url' // Phase 2: Classified as malicious
   // Attachment analysis
   | 'dangerous_attachment'
   | 'password_protected_archive'
