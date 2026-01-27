@@ -827,14 +827,14 @@ function calculateFinalScore(
   results: LayerResult[],
   config: DetectionConfig
 ): { overallScore: number; confidence: number } {
-  // Layer weights (sum to 1.0) - Phase 3: Conservative rebalancing
+  // Layer weights (sum to 1.0) - Phase 3: Balanced rebalancing
   const weights: Record<string, number> = {
     deterministic: 0.29,  // Phase 3: Reduced from 0.30 (-3.3%) - minimal reduction
     reputation: 0.17,     // Phase 3: Increased from 0.15 (+13%) - reward Phase 1 success
     ml: 0.17,             // Phase 3: Increased from 0.15 (+13%) - promote ML importance
-    bec: 0.19,            // Phase 3: Reduced from 0.20 (-5%) - maintain BEC strength
+    bec: 0.20,            // Phase 3: Restored to original - maintain BEC detection strength
     llm: 0.12,            // Unchanged - maintain tie-breaker role
-    sandbox: 0.06,        // Phase 3: Reduced from 0.08 (-25%)
+    sandbox: 0.05,        // Phase 3: Reduced from 0.08 (-37.5%) - compensate for BEC restore
   };
 
   let weightedScore = 0;
@@ -859,10 +859,11 @@ function calculateFinalScore(
   const criticalSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'critical'));
   const warningSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'warning'));
 
-  // Phase 3: Conservative multiplier reduction to prevent false positive inflation
-  // Critical signals add 9 points each (max 36), warnings add 2.5 each (max 12)
-  const criticalBoost = Math.min(36, criticalSignals.length * 9);   // Reduced from 10/40
-  const warningBoost = Math.min(12, warningSignals.length * 2.5);   // Reduced from 3/15
+  // Phase 3: Balanced multiplier - maintain security while reducing false positives
+  // Critical signals add 11 points each (max 44), warnings add 2.5 each (max 12)
+  // Increased to ensure BEC/phishing attacks reach block threshold (85+)
+  const criticalBoost = Math.min(44, criticalSignals.length * 11);  // Original: 10/40, Conservative: 9/36, Balanced: 11/44
+  const warningBoost = Math.min(12, warningSignals.length * 2.5);    // Original: 3/15
 
   return {
     overallScore: Math.min(100, Math.round(normalizedScore * (totalWeight / 0.8) + criticalBoost + warningBoost)),

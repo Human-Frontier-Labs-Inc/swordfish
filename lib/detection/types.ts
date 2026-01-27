@@ -267,7 +267,7 @@ export interface DetectionConfig {
 export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
   passThreshold: 35,        // Phase 3: Raised from 30 (+16.7% margin)
   suspiciousThreshold: 55,  // Phase 3: Raised from 50 (+10.0% margin)
-  quarantineThreshold: 75,  // Phase 3: Raised from 70 (+7.1% margin)
+  quarantineThreshold: 73,  // Phase 3: Balanced from 75 - allow BEC/phishing to reach block threshold
   blockThreshold: 85,       // Unchanged - maintain security bar
 
   skipMlIfDeterministicBelow: 20,
