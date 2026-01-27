@@ -88,8 +88,12 @@ const CREDENTIAL_PATTERNS = [
 
 /**
  * Run deterministic analysis on a parsed email
+ * Phase 2: Now accepts reputation context for URL classification
  */
-export async function runDeterministicAnalysis(email: ParsedEmail): Promise<LayerResult> {
+export async function runDeterministicAnalysis(
+  email: ParsedEmail,
+  reputationContext?: { knownTrackingDomains: string[] }
+): Promise<LayerResult> {
   const startTime = performance.now();
   const signals: Signal[] = [];
 
@@ -109,11 +113,12 @@ export async function runDeterministicAnalysis(email: ParsedEmail): Promise<Laye
   const content = email.body.text || stripHtml(email.body.html || '');
   signals.push(...analyzeContent(content, email.subject));
 
-  // 5. Extract and analyze URLs with context-aware classification
+  // 5. Extract and analyze URLs with context-aware classification (Phase 2)
   const urls = extractUrls(email.body.html || email.body.text || '');
-  signals.push(...analyzeUrls(urls, email.from.domain));
+  const knownTrackingDomains = reputationContext?.knownTrackingDomains || [];
+  signals.push(...analyzeUrls(urls, email.from.domain, knownTrackingDomains));
 
-  // 6. Deduplicate URL signals to prevent score inflation
+  // 6. Deduplicate URL signals to prevent score inflation (Phase 2)
   const deduplicatedSignals = deduplicateURLSignals(signals);
 
   // Calculate overall score (0-100)

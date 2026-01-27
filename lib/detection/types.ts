@@ -265,10 +265,10 @@ export interface DetectionConfig {
 }
 
 export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
-  passThreshold: 30,
-  suspiciousThreshold: 50,
-  quarantineThreshold: 70,
-  blockThreshold: 85,
+  passThreshold: 35,        // Phase 3: Raised from 30 (+16.7% margin)
+  suspiciousThreshold: 55,  // Phase 3: Raised from 50 (+10.0% margin)
+  quarantineThreshold: 75,  // Phase 3: Raised from 70 (+7.1% margin)
+  blockThreshold: 85,       // Unchanged - maintain security bar
 
   skipMlIfDeterministicBelow: 20,
   skipMlIfDeterministicAbove: 80,

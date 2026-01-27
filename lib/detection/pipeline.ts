@@ -141,14 +141,14 @@ export async function analyzeEmail(
     console.error('Policy evaluation error:', error);
   }
 
-  // Layer 2: Deterministic Analysis (always runs)
-  const deterministicResult = await runDeterministicAnalysis(email);
-
-  // Layer 3: Enhanced Reputation Lookup (runs before filtering deterministic signals)
+  // Layer 2: Enhanced Reputation Lookup (runs FIRST to provide context for deterministic)
   const { result: reputationResult, context: repContext } = await runEnhancedReputationLookup(email);
   reputationContext = repContext;
   layerResults.push(reputationResult);
   allSignals.push(...reputationResult.signals);
+
+  // Layer 3: Deterministic Analysis (now has access to reputation context)
+  const deterministicResult = await runDeterministicAnalysis(email, reputationContext);
 
   // Filter out false positives based on email classification AND sender reputation
   let filteredDeterministicSignals = filterSignalsForEmailType(
@@ -827,14 +827,14 @@ function calculateFinalScore(
   results: LayerResult[],
   config: DetectionConfig
 ): { overallScore: number; confidence: number } {
-  // Layer weights (sum to 1.0)
+  // Layer weights (sum to 1.0) - Phase 3: Conservative rebalancing
   const weights: Record<string, number> = {
-    deterministic: 0.30,
-    reputation: 0.15,
-    ml: 0.15,
-    bec: 0.20,
-    llm: 0.12,
-    sandbox: 0.08,
+    deterministic: 0.29,  // Phase 3: Reduced from 0.30 (-3.3%) - minimal reduction
+    reputation: 0.17,     // Phase 3: Increased from 0.15 (+13%) - reward Phase 1 success
+    ml: 0.17,             // Phase 3: Increased from 0.15 (+13%) - promote ML importance
+    bec: 0.19,            // Phase 3: Reduced from 0.20 (-5%) - maintain BEC strength
+    llm: 0.12,            // Unchanged - maintain tie-breaker role
+    sandbox: 0.06,        // Phase 3: Reduced from 0.08 (-25%)
   };
 
   let weightedScore = 0;
@@ -859,9 +859,10 @@ function calculateFinalScore(
   const criticalSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'critical'));
   const warningSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'warning'));
 
-  // Critical signals add 10 points each (max 40), warnings add 3 each (max 15)
-  const criticalBoost = Math.min(40, criticalSignals.length * 10);
-  const warningBoost = Math.min(15, warningSignals.length * 3);
+  // Phase 3: Conservative multiplier reduction to prevent false positive inflation
+  // Critical signals add 9 points each (max 36), warnings add 2.5 each (max 12)
+  const criticalBoost = Math.min(36, criticalSignals.length * 9);   // Reduced from 10/40
+  const warningBoost = Math.min(12, warningSignals.length * 2.5);   // Reduced from 3/15
 
   return {
     overallScore: Math.min(100, Math.round(normalizedScore * (totalWeight / 0.8) + criticalBoost + warningBoost)),
@@ -932,7 +933,7 @@ function estimateTokensUsed(email: ParsedEmail): number {
  * Returns early verdict if high confidence, null if needs full analysis
  */
 export async function quickCheck(email: ParsedEmail): Promise<EmailVerdict['verdict'] | null> {
-  // Run just deterministic analysis
+  // Run just deterministic analysis (without reputation context for speed)
   const result = await runDeterministicAnalysis(email);
 
   // If score is very low, it's likely safe
