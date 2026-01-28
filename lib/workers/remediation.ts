@@ -20,6 +20,56 @@ import { sendNotification } from '@/lib/notifications/service';
 
 export type RemediationAction = 'quarantine' | 'release' | 'delete' | 'block';
 
+/**
+ * Detect message ID format - helps diagnose data integrity issues
+ */
+function detectMessageIdFormat(messageId: string): 'gmail' | 'o365' | 'unknown' {
+  if (!messageId) return 'unknown';
+
+  // Gmail message IDs are typically alphanumeric without special characters
+  // Example: "18e1a2b3c4d5e6f7"
+  if (/^[a-zA-Z0-9]+$/.test(messageId) && messageId.length <= 32) {
+    return 'gmail';
+  }
+
+  // O365/Outlook message IDs contain angle brackets and domain references
+  // Example: "<IA4PR10MB8730...@namprd10.prod.outlook.com>"
+  if (messageId.includes('@') && (
+    messageId.includes('outlook.com') ||
+    messageId.includes('namprd') ||
+    messageId.includes('prod.outlook') ||
+    messageId.startsWith('<') && messageId.endsWith('>')
+  )) {
+    return 'o365';
+  }
+
+  // O365 Graph API message IDs are typically base64-like
+  // Example: "AAMkAGIwMjAwMDM0..."
+  if (/^AAMk[A-Za-z0-9+/=]+$/.test(messageId)) {
+    return 'o365';
+  }
+
+  return 'unknown';
+}
+
+/**
+ * Validate message ID format matches integration type
+ * Returns error message if mismatch, null if ok
+ */
+function validateMessageIdFormat(messageId: string, integrationType: 'o365' | 'gmail'): string | null {
+  const detectedFormat = detectMessageIdFormat(messageId);
+
+  if (detectedFormat === 'unknown') {
+    return null; // Can't validate, proceed with caution
+  }
+
+  if (detectedFormat !== integrationType) {
+    return `Message ID format (${detectedFormat}) does not match integration type (${integrationType}). This email may have been synced from a different provider. Please check the email source.`;
+  }
+
+  return null;
+}
+
 export interface RemediationResult {
   success: boolean;
   action: RemediationAction;
@@ -79,6 +129,19 @@ export async function quarantineEmail(params: {
 
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
+
+  // Validate message ID format matches integration type
+  const formatError = validateMessageIdFormat(externalMessageId, threat.integration_type);
+  if (formatError) {
+    return {
+      success: false,
+      action: 'quarantine',
+      messageId: threat.message_id,
+      integrationId: threat.integration_id || '',
+      integrationType: threat.integration_type,
+      error: formatError,
+    };
+  }
 
   // If no nango_connection_id from JOIN, look up by tenant and integration_type
   let nangoConnectionId = threat.nango_connection_id;
@@ -193,6 +256,19 @@ export async function releaseEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
+  // Validate message ID format matches integration type
+  const formatError = validateMessageIdFormat(externalMessageId, threat.integration_type);
+  if (formatError) {
+    return {
+      success: false,
+      action: 'release',
+      messageId: threat.message_id,
+      integrationId: threat.integration_id || '',
+      integrationType: threat.integration_type,
+      error: formatError,
+    };
+  }
+
   // If no nango_connection_id from JOIN, look up by tenant and integration_type
   let nangoConnectionId = threat.nango_connection_id;
   if (!nangoConnectionId && threat.integration_type) {
@@ -304,6 +380,19 @@ export async function deleteEmail(params: {
 
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
+
+  // Validate message ID format matches integration type
+  const formatError = validateMessageIdFormat(externalMessageId, threat.integration_type);
+  if (formatError) {
+    return {
+      success: false,
+      action: 'delete',
+      messageId: threat.message_id,
+      integrationId: threat.integration_id || '',
+      integrationType: threat.integration_type,
+      error: formatError,
+    };
+  }
 
   // If no nango_connection_id from JOIN, look up by tenant and integration_type
   let nangoConnectionId = threat.nango_connection_id;
@@ -618,27 +707,32 @@ export async function autoRemediate(params: {
       SELECT id FROM threats WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
     `;
 
+    // Truncate external_message_id safely
+    const safeExternalMessageId = truncate(externalMessageId, 500);
+
     if (existingThreats.length > 0) {
-      // Update existing threat - also set integration_id if missing
+      // Update existing threat - also set integration_id and external_message_id if missing
       await sql`
         UPDATE threats SET
           status = ${status},
           verdict = ${verdict},
           score = ${score},
           integration_id = COALESCE(integration_id, ${integrationId}),
+          external_message_id = COALESCE(external_message_id, ${safeExternalMessageId}),
           signals = ${JSON.stringify(emailDetails.signals || [])}::jsonb,
           updated_at = NOW()
         WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
       `;
     } else {
-      // Insert new threat - include integration_id for proper remediation later
+      // Insert new threat - include integration_id and external_message_id for proper remediation later
       await sql`
         INSERT INTO threats (
-          tenant_id, message_id, subject, sender_email, recipient_email,
+          tenant_id, message_id, external_message_id, subject, sender_email, recipient_email,
           verdict, score, status, integration_id, integration_type, signals, created_at
         ) VALUES (
           ${tenantId},
           ${safeMessageId},
+          ${safeExternalMessageId},
           ${safeSubject},
           ${safeSenderEmail},
           ${safeRecipientEmail || ''},
