@@ -190,7 +190,9 @@ export type SignalType =
   | 'sender_reputation'
   | 'sender_trust_applied'
   | 'url_reputation'
-  | 'url_whitelisted';
+  | 'url_whitelisted'
+  // Feedback learning (Phase 5 FP reduction)
+  | 'feedback_learning';
 
 // Analysis result from each layer
 export interface LayerResult {

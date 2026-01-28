@@ -28,6 +28,11 @@ import {
   calculateScoreWithTrust,
   type EnhancedReputationContext,
 } from './reputation/sender-lookup';
+import {
+  getApplicableRules,
+  calculateRuleAdjustment,
+  type LearnedRule,
+} from '../feedback/feedback-learning';
 
 /**
  * Main detection pipeline - analyzes an email through all layers
@@ -264,6 +269,46 @@ export async function analyzeEmail(
 
   // Calculate final score and verdict
   let { overallScore, confidence } = calculateFinalScore(layerResults, config);
+
+  // Phase 5: Apply learned rules from user feedback
+  let appliedRules: LearnedRule[] = [];
+  try {
+    const senderDomain = email.from.domain || email.from.address.split('@')[1]?.toLowerCase() || '';
+    const urls = extractURLs((email.body.text || '') + (email.body.html || '')).map(url => {
+      try { return new URL(url.startsWith('http') ? url : `https://${url}`).hostname; }
+      catch { return ''; }
+    }).filter(Boolean);
+
+    appliedRules = await getApplicableRules({
+      tenantId,
+      senderDomain,
+      urls,
+      subject: email.subject,
+    });
+
+    if (appliedRules.length > 0) {
+      const { adjustment, appliedRules: ruleIds, explanation } = calculateRuleAdjustment(appliedRules);
+      if (adjustment !== 0) {
+        const originalScore = overallScore;
+        overallScore = Math.max(0, Math.min(100, overallScore + adjustment));
+
+        allSignals.push({
+          type: 'feedback_learning',
+          severity: adjustment < 0 ? 'info' : 'warning',
+          score: 0,
+          detail: explanation,
+          metadata: {
+            originalScore,
+            adjustedScore: overallScore,
+            adjustment,
+            rulesApplied: ruleIds.length,
+          },
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Feedback learning rule application error:', error);
+  }
 
   // Apply sender reputation trust modifier FIRST (more precise than email classification)
   if (reputationContext && reputationContext.isKnownSender && reputationContext.trustModifier < 1.0) {

@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
+import { processFeedback } from '@/lib/feedback/feedback-learning';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Check if threat exists and belongs to tenant
     const threats = await sql`
-      SELECT id, message_id, verdict, score FROM threats
+      SELECT id, message_id, verdict, score, sender_email, subject, signals FROM threats
       WHERE id = ${id}
       AND tenant_id = ${tenantId}
     `;
@@ -144,6 +145,44 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         WHERE message_id = ${messageId}
         AND tenant_id = ${tenantId}
       `;
+    }
+
+    // Phase 5: Process feedback for learning (async - don't block response)
+    // Get sender info from threat for learning
+    let senderEmail = '';
+    let senderDomain = '';
+    let subject = '';
+    let urls: string[] = [];
+
+    if (threats.length > 0) {
+      const threat = threats[0];
+      senderEmail = (threat.sender_email as string) || '';
+      senderDomain = senderEmail.split('@')[1]?.toLowerCase() || '';
+      subject = (threat.subject as string) || '';
+      // Get URLs from threat metadata if available
+      if (threat.signals && Array.isArray(threat.signals)) {
+        const signals = threat.signals as Array<{ type: string; metadata?: { url?: string } }>;
+        urls = signals
+          .filter(s => s.type?.includes('url') && s.metadata?.url)
+          .map(s => s.metadata!.url!)
+          .filter(Boolean);
+      }
+    }
+
+    if (senderDomain && messageId) {
+      // Process in background - don't await
+      processFeedback({
+        feedbackId: feedback[0].id as string,
+        tenantId,
+        messageId,
+        senderDomain,
+        senderEmail,
+        feedbackType: body.feedbackType,
+        originalVerdict: originalVerdict || 'unknown',
+        originalScore: originalScore || 0,
+        subject,
+        urls,
+      }).catch(err => console.error('Feedback learning error:', err));
     }
 
     // Audit log
