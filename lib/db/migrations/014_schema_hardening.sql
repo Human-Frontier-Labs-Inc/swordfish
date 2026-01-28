@@ -78,3 +78,51 @@ BEGIN
     ALTER TABLE threats ALTER COLUMN threat_type TYPE VARCHAR(255);
   END IF;
 END $$;
+
+-- Widen email_verdicts.recommendation from VARCHAR(100) to VARCHAR(255)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'email_verdicts'
+      AND column_name = 'recommendation'
+      AND data_type = 'character varying'
+      AND COALESCE(character_maximum_length, 0) < 255
+  ) THEN
+    ALTER TABLE email_verdicts ALTER COLUMN recommendation TYPE VARCHAR(255);
+  END IF;
+END $$;
+
+-- Widen file_analyses.file_type from VARCHAR(100) to VARCHAR(255)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'file_analyses'
+      AND column_name = 'file_type'
+      AND data_type = 'character varying'
+      AND COALESCE(character_maximum_length, 0) < 255
+  ) THEN
+    ALTER TABLE file_analyses ALTER COLUMN file_type TYPE VARCHAR(255);
+  END IF;
+END $$;
+
+-- Widen learned_rules.condition_field from VARCHAR(100) to VARCHAR(255)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'learned_rules'
+      AND column_name = 'condition_field'
+      AND data_type = 'character varying'
+      AND COALESCE(character_maximum_length, 0) < 255
+  ) THEN
+    ALTER TABLE learned_rules ALTER COLUMN condition_field TYPE VARCHAR(255);
+  END IF;
+END $$;
