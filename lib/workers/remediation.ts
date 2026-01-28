@@ -58,13 +58,13 @@ export async function quarantineEmail(params: {
 }): Promise<RemediationResult> {
   const { tenantId, threatId, actorId, actorEmail } = params;
 
-  // Get threat details
+  // Get threat details - use LEFT JOIN to handle NULL integration_id
   const threats = await sql`
-    SELECT t.*, i.type as integration_type, i.nango_connection_id
+    SELECT t.*, i.type as i_type, i.nango_connection_id
     FROM threats t
-    JOIN integrations i ON t.integration_id = i.id
+    LEFT JOIN integrations i ON t.integration_id = i.id
     WHERE t.id = ${threatId} AND t.tenant_id = ${tenantId}
-  ` as Array<ThreatRecord & { nango_connection_id: string | null }>;
+  ` as Array<ThreatRecord & { i_type: string | null; nango_connection_id: string | null }>;
 
   if (threats.length === 0) {
     return {
@@ -80,12 +80,25 @@ export async function quarantineEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
-  if (!threat.nango_connection_id) {
+  // If no nango_connection_id from JOIN, look up by tenant and integration_type
+  let nangoConnectionId = threat.nango_connection_id;
+  if (!nangoConnectionId && threat.integration_type) {
+    const integrations = await sql`
+      SELECT nango_connection_id FROM integrations
+      WHERE tenant_id = ${tenantId} AND type = ${threat.integration_type}
+      LIMIT 1
+    ` as Array<{ nango_connection_id: string | null }>;
+    if (integrations.length > 0) {
+      nangoConnectionId = integrations[0].nango_connection_id;
+    }
+  }
+
+  if (!nangoConnectionId) {
     return {
       success: false,
       action: 'quarantine',
       messageId: threat.message_id,
-      integrationId: threat.integration_id,
+      integrationId: threat.integration_id || '',
       integrationType: threat.integration_type,
       error: 'No Nango connection configured',
     };
@@ -93,9 +106,9 @@ export async function quarantineEmail(params: {
 
   try {
     if (threat.integration_type === 'o365') {
-      await quarantineO365Email(threat.nango_connection_id, externalMessageId);
+      await quarantineO365Email(nangoConnectionId, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
-      await quarantineGmailEmail(threat.nango_connection_id, externalMessageId);
+      await quarantineGmailEmail(nangoConnectionId, externalMessageId);
     }
 
     // Update threat status
@@ -158,12 +171,13 @@ export async function releaseEmail(params: {
 }): Promise<RemediationResult> {
   const { tenantId, threatId, actorId, actorEmail } = params;
 
+  // Use LEFT JOIN to handle NULL integration_id
   const threats = await sql`
-    SELECT t.*, i.type as integration_type, i.nango_connection_id
+    SELECT t.*, i.type as i_type, i.nango_connection_id
     FROM threats t
-    JOIN integrations i ON t.integration_id = i.id
+    LEFT JOIN integrations i ON t.integration_id = i.id
     WHERE t.id = ${threatId} AND t.tenant_id = ${tenantId}
-  ` as Array<ThreatRecord & { nango_connection_id: string | null }>;
+  ` as Array<ThreatRecord & { i_type: string | null; nango_connection_id: string | null }>;
 
   if (threats.length === 0) {
     return {
@@ -179,12 +193,25 @@ export async function releaseEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
-  if (!threat.nango_connection_id) {
+  // If no nango_connection_id from JOIN, look up by tenant and integration_type
+  let nangoConnectionId = threat.nango_connection_id;
+  if (!nangoConnectionId && threat.integration_type) {
+    const integrations = await sql`
+      SELECT nango_connection_id FROM integrations
+      WHERE tenant_id = ${tenantId} AND type = ${threat.integration_type}
+      LIMIT 1
+    ` as Array<{ nango_connection_id: string | null }>;
+    if (integrations.length > 0) {
+      nangoConnectionId = integrations[0].nango_connection_id;
+    }
+  }
+
+  if (!nangoConnectionId) {
     return {
       success: false,
       action: 'release',
       messageId: threat.message_id,
-      integrationId: threat.integration_id,
+      integrationId: threat.integration_id || '',
       integrationType: threat.integration_type,
       error: 'No Nango connection configured',
     };
@@ -192,9 +219,9 @@ export async function releaseEmail(params: {
 
   try {
     if (threat.integration_type === 'o365') {
-      await releaseO365Email(threat.nango_connection_id, externalMessageId);
+      await releaseO365Email(nangoConnectionId, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
-      await releaseGmailEmail(threat.nango_connection_id, externalMessageId);
+      await releaseGmailEmail(nangoConnectionId, externalMessageId);
     }
 
     // Update threat status
@@ -256,12 +283,13 @@ export async function deleteEmail(params: {
 }): Promise<RemediationResult> {
   const { tenantId, threatId, actorId, actorEmail } = params;
 
+  // Use LEFT JOIN to handle NULL integration_id
   const threats = await sql`
-    SELECT t.*, i.type as integration_type, i.nango_connection_id
+    SELECT t.*, i.type as i_type, i.nango_connection_id
     FROM threats t
-    JOIN integrations i ON t.integration_id = i.id
+    LEFT JOIN integrations i ON t.integration_id = i.id
     WHERE t.id = ${threatId} AND t.tenant_id = ${tenantId}
-  ` as Array<ThreatRecord & { nango_connection_id: string | null }>;
+  ` as Array<ThreatRecord & { i_type: string | null; nango_connection_id: string | null }>;
 
   if (threats.length === 0) {
     return {
@@ -277,12 +305,25 @@ export async function deleteEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
-  if (!threat.nango_connection_id) {
+  // If no nango_connection_id from JOIN, look up by tenant and integration_type
+  let nangoConnectionId = threat.nango_connection_id;
+  if (!nangoConnectionId && threat.integration_type) {
+    const integrations = await sql`
+      SELECT nango_connection_id FROM integrations
+      WHERE tenant_id = ${tenantId} AND type = ${threat.integration_type}
+      LIMIT 1
+    ` as Array<{ nango_connection_id: string | null }>;
+    if (integrations.length > 0) {
+      nangoConnectionId = integrations[0].nango_connection_id;
+    }
+  }
+
+  if (!nangoConnectionId) {
     return {
       success: false,
       action: 'delete',
       messageId: threat.message_id,
-      integrationId: threat.integration_id,
+      integrationId: threat.integration_id || '',
       integrationType: threat.integration_type,
       error: 'No Nango connection configured',
     };
@@ -290,9 +331,9 @@ export async function deleteEmail(params: {
 
   try {
     if (threat.integration_type === 'o365') {
-      await deleteO365Email(threat.nango_connection_id, externalMessageId);
+      await deleteO365Email(nangoConnectionId, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
-      await deleteGmailEmail(threat.nango_connection_id, externalMessageId);
+      await deleteGmailEmail(nangoConnectionId, externalMessageId);
     }
 
     // Update threat status
@@ -578,22 +619,23 @@ export async function autoRemediate(params: {
     `;
 
     if (existingThreats.length > 0) {
-      // Update existing threat
+      // Update existing threat - also set integration_id if missing
       await sql`
         UPDATE threats SET
           status = ${status},
           verdict = ${verdict},
           score = ${score},
+          integration_id = COALESCE(integration_id, ${integrationId}),
           signals = ${JSON.stringify(emailDetails.signals || [])}::jsonb,
           updated_at = NOW()
         WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
       `;
     } else {
-      // Insert new threat - only use columns from migration 002
+      // Insert new threat - include integration_id for proper remediation later
       await sql`
         INSERT INTO threats (
           tenant_id, message_id, subject, sender_email, recipient_email,
-          verdict, score, status, integration_type, signals, created_at
+          verdict, score, status, integration_id, integration_type, signals, created_at
         ) VALUES (
           ${tenantId},
           ${safeMessageId},
@@ -603,6 +645,7 @@ export async function autoRemediate(params: {
           ${verdict},
           ${score},
           ${status},
+          ${integrationId},
           ${integrationType},
           ${JSON.stringify(emailDetails.signals || [])}::jsonb,
           NOW()
