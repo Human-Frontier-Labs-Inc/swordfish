@@ -70,7 +70,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     // Get user email for audit
     const users = await sql`
-      SELECT email FROM users WHERE id = ${userId} LIMIT 1
+      SELECT email FROM users WHERE clerk_user_id = ${userId} LIMIT 1
     `;
     const actorEmail = users.length > 0 ? users[0].email as string : null;
 
