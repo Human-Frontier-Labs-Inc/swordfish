@@ -271,27 +271,60 @@ describe('Remediation Service', () => {
     });
 
     it('should handle Outlook-format message_id with Gmail integration gracefully', async () => {
-      // This tests the scenario where message_id format doesn't match integration type
+      // This tests the scenario where message_id (RFC 5322 header) is from Outlook
+      // but email was received via Gmail. This is NORMAL for cross-platform emails.
+      // e.g., email sent FROM Outlook TO Gmail has Outlook-format Message-ID header.
       mockSql
         .mockResolvedValueOnce([{
           id: 'threat-123',
           tenant_id: 'tenant-abc',
-          message_id: '<IA4PR10MB8730...@namprd10.prod.outlook.com>', // Outlook format
-          external_message_id: null,
+          message_id: '<IA4PR10MB8730...@namprd10.prod.outlook.com>', // Outlook format (from sender)
+          external_message_id: null, // No Gmail API message ID available
           integration_id: null,
-          integration_type: 'gmail', // But integration is Gmail!
+          integration_type: 'gmail', // Received via Gmail - this is correct!
           status: 'quarantined',
           nango_connection_id: null,
         }])
         .mockResolvedValueOnce([{
           nango_connection_id: 'nango-conn-123',
         }])
-        .mockResolvedValueOnce([]);
+        .mockResolvedValueOnce([]); // status update
 
-      // Mock Gmail API to reject invalid message ID
-      (modifyGmailMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-        new Error('Invalid message ID format')
+      // The remediation should proceed - the message_id format doesn't need to match
+      // integration type since message_id is the RFC 5322 header from the SENDING server
+      const result = await releaseEmail({
+        tenantId: 'tenant-abc',
+        threatId: 'threat-123',
+        actorId: 'user-123',
+        actorEmail: 'user@example.com',
+      });
+
+      // Should succeed - cross-platform emails are valid
+      expect(result.success).toBe(true);
+      expect(modifyGmailMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: '<IA4PR10MB8730...@namprd10.prod.outlook.com>',
+        })
       );
+    });
+
+    it('should reject when external_message_id format mismatches integration type', async () => {
+      // This tests a REAL data integrity issue - when external_message_id
+      // (the platform API message ID) doesn't match the integration type
+      mockSql
+        .mockResolvedValueOnce([{
+          id: 'threat-123',
+          tenant_id: 'tenant-abc',
+          message_id: '<IA4PR10MB8730abc@namprd10.prod.outlook.com>',
+          external_message_id: 'AAMkAGIwMDAwMDM0LTg2NjctNDI3NS1hY2E4LTZmYjcwNWQwMDBkZQ==', // O365 Graph API ID (should be Gmail ID!)
+          integration_id: null,
+          integration_type: 'gmail', // But external_message_id is O365 format!
+          status: 'quarantined',
+          nango_connection_id: null,
+        }])
+        .mockResolvedValueOnce([{
+          nango_connection_id: 'nango-conn-123',
+        }]);
 
       const result = await releaseEmail({
         tenantId: 'tenant-abc',
@@ -300,8 +333,10 @@ describe('Remediation Service', () => {
         actorEmail: 'user@example.com',
       });
 
+      // Should fail - external_message_id format mismatch is a real data integrity issue
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Message ID format');
+      expect(result.error).toContain('External message ID format');
+      expect(result.error).toContain('Data integrity issue');
     });
   });
 });

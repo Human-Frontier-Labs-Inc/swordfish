@@ -53,18 +53,46 @@ function detectMessageIdFormat(messageId: string): 'gmail' | 'o365' | 'unknown' 
 }
 
 /**
- * Validate message ID format matches integration type
+ * Validate external message ID format matches integration type
+ * Only validates when we have a true external_message_id (platform API ID).
+ * The RFC 5322 Message-ID header (message_id) can be any format since it's
+ * set by the SENDING server - e.g., an email FROM Outlook TO Gmail will have
+ * an Outlook-format Message-ID but should be processed by Gmail API.
+ *
  * Returns error message if mismatch, null if ok
  */
-function validateMessageIdFormat(messageId: string, integrationType: 'o365' | 'gmail'): string | null {
-  const detectedFormat = detectMessageIdFormat(messageId);
+function validateExternalMessageIdFormat(
+  externalMessageId: string | null,
+  messageId: string,
+  integrationType: 'o365' | 'gmail'
+): string | null {
+  // Only validate format when we have a proper external_message_id
+  // The external_message_id is the platform-specific API message ID (e.g., Gmail ID or O365 Graph ID)
+  // It SHOULD match the integration type
+  if (externalMessageId) {
+    const detectedFormat = detectMessageIdFormat(externalMessageId);
 
-  if (detectedFormat === 'unknown') {
-    return null; // Can't validate, proceed with caution
+    if (detectedFormat === 'unknown') {
+      return null; // Can't validate, proceed
+    }
+
+    if (detectedFormat !== integrationType) {
+      // This is a real data integrity issue - external_message_id should match integration
+      return `External message ID format (${detectedFormat}) does not match integration type (${integrationType}). Data integrity issue - external_message_id should be the ${integrationType} API message ID.`;
+    }
+
+    return null;
   }
 
-  if (detectedFormat !== integrationType) {
-    return `Message ID format (${detectedFormat}) does not match integration type (${integrationType}). This email may have been synced from a different provider. Please check the email source.`;
+  // When falling back to message_id (RFC 5322 header), DON'T validate format
+  // The Message-ID header is set by the sending server, not the receiving platform
+  // An email FROM Outlook TO Gmail will have Outlook-format Message-ID but gmail integration
+  const detectedFormat = detectMessageIdFormat(messageId);
+  if (detectedFormat !== 'unknown' && detectedFormat !== integrationType) {
+    console.warn(
+      `[remediation] Falling back to message_id which has ${detectedFormat} format but integration is ${integrationType}. ` +
+      `This is expected for cross-platform emails (e.g., email sent FROM ${detectedFormat} TO ${integrationType}).`
+    );
   }
 
   return null;
@@ -130,8 +158,8 @@ export async function quarantineEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
-  // Validate message ID format matches integration type
-  const formatError = validateMessageIdFormat(externalMessageId, threat.integration_type);
+  // Validate external message ID format matches integration type (only for external_message_id)
+  const formatError = validateExternalMessageIdFormat(threat.external_message_id, threat.message_id, threat.integration_type);
   if (formatError) {
     return {
       success: false,
@@ -256,8 +284,8 @@ export async function releaseEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
-  // Validate message ID format matches integration type
-  const formatError = validateMessageIdFormat(externalMessageId, threat.integration_type);
+  // Validate external message ID format matches integration type (only for external_message_id)
+  const formatError = validateExternalMessageIdFormat(threat.external_message_id, threat.message_id, threat.integration_type);
   if (formatError) {
     return {
       success: false,
@@ -381,8 +409,8 @@ export async function deleteEmail(params: {
   const threat = threats[0];
   const externalMessageId = threat.external_message_id || threat.message_id;
 
-  // Validate message ID format matches integration type
-  const formatError = validateMessageIdFormat(externalMessageId, threat.integration_type);
+  // Validate external message ID format matches integration type (only for external_message_id)
+  const formatError = validateExternalMessageIdFormat(threat.external_message_id, threat.message_id, threat.integration_type);
   if (formatError) {
     return {
       success: false,

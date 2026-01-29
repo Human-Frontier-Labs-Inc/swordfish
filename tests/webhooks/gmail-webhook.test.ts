@@ -93,6 +93,30 @@ vi.mock('@/lib/webhooks/validation', () => ({
   checkRateLimit: vi.fn().mockReturnValue({ limited: false, remaining: 99, resetAt: new Date() }),
 }));
 
+// Mock domain-wide storage to avoid consuming sql mocks
+vi.mock('@/lib/integrations/domain-wide/storage', () => ({
+  getActiveDomainConfigs: vi.fn().mockResolvedValue([]),
+  getDomainUserByEmail: vi.fn().mockResolvedValue(null),
+  incrementDomainUserStats: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock queue to avoid side effects
+vi.mock('@/lib/queue/gmail', () => ({
+  enqueueGmailJob: vi.fn(),
+  isGmailQueueConfigured: vi.fn().mockReturnValue(false),
+}));
+
+// Mock Nango client
+vi.mock('@/lib/nango/client', () => ({
+  nango: {
+    getConnection: vi.fn().mockResolvedValue({
+      connection_config: { email: 'test@gmail.com' },
+      end_user: { email: 'test@gmail.com' },
+    }),
+  },
+  getNangoIntegrationKey: vi.fn().mockReturnValue('google'),
+}));
+
 describe('Gmail Webhook Handler', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -164,6 +188,14 @@ describe('Gmail Webhook Handler', () => {
       processingTimeMs: 100,
       analyzedAt: new Date(),
     });
+
+    // Reset domain-wide storage mocks
+    const { getActiveDomainConfigs } = await import('@/lib/integrations/domain-wide/storage');
+    vi.mocked(getActiveDomainConfigs).mockResolvedValue([]);
+
+    // Reset queue mock
+    const { isGmailQueueConfigured } = await import('@/lib/queue/gmail');
+    vi.mocked(isGmailQueueConfigured).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -260,8 +292,10 @@ describe('Gmail Webhook Handler', () => {
         resetAt: new Date(),
       });
 
-      // No integration found
-      vi.mocked(sql).mockResolvedValueOnce([] as any);
+      // No integration found - first call is by email, second is all Gmail integrations fallback
+      vi.mocked(sql)
+        .mockResolvedValueOnce([] as any)  // Find by email - none found
+        .mockResolvedValueOnce([] as any); // Get all Gmail integrations - none found
 
       const pubSubPayload = {
         message: {
