@@ -354,6 +354,38 @@ export async function analyzeEmail(
     }
   }
 
+  // CRITICAL: Prevent auto-remediation of trusted senders unless there's actual malware
+  // This prevents false positives on newsletters, government emails, and known business senders
+  // Only real threats (malware, verified phishing) should trigger remediation for trusted senders
+  const isTrustedSender = (reputationContext?.isKnownSender && reputationContext.trustModifier <= 0.5) ||
+    (emailClassification?.isKnownSender && emailClassification.threatScoreModifier <= 0.5);
+
+  const hasRealThreat = allSignals.some(s =>
+    s.type === 'attachment_malware' ||
+    s.type === 'known_malware_url' ||
+    s.type === 'active_phishing_campaign' ||
+    s.type === 'verified_bec_attack' ||
+    s.type === 'credential_harvesting' ||
+    (s.type === 'url' && s.severity === 'critical' && s.detail?.toLowerCase().includes('malware'))
+  );
+
+  // If trusted sender with no real malware threat, cap score below quarantine threshold
+  if (isTrustedSender && !hasRealThreat && overallScore >= config.quarantineThreshold) {
+    const cappedScore = config.quarantineThreshold - 1; // Just below quarantine
+    allSignals.push({
+      type: 'trusted_sender_bypass',
+      severity: 'info',
+      score: 0,
+      detail: `Score capped from ${overallScore} to ${cappedScore} - trusted sender without malware indicators will not be auto-remediated`,
+      metadata: {
+        originalScore: overallScore,
+        cappedScore,
+        reason: 'Known trusted sender (newsletter, government, or business domain) - no malware detected',
+      },
+    });
+    overallScore = cappedScore;
+  }
+
   const verdict = determineVerdict(overallScore, config);
 
   // Generate explanation from signals
