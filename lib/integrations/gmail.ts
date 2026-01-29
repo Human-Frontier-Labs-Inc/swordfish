@@ -398,6 +398,64 @@ export async function trashGmailMessage(params: {
 }
 
 /**
+ * Untrash a message (restore from Trash)
+ * Includes retry logic for rate limiting and transient errors
+ */
+export async function untrashGmailMessage(params: {
+  accessToken: string;
+  messageId: string;
+}): Promise<void> {
+  const { accessToken, messageId } = params;
+
+  const response = await gmailFetchWithRetry(
+    `${GMAIL_API_URL}/users/me/messages/${messageId}/untrash`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to untrash message');
+  }
+}
+
+/**
+ * Search for a Gmail message by RFC 2822 Message-ID header
+ * Useful when we only have the Message-ID but need the Gmail internal ID
+ */
+export async function findGmailMessageByMessageId(params: {
+  accessToken: string;
+  rfc822MessageId: string;
+}): Promise<string | null> {
+  const { accessToken, rfc822MessageId } = params;
+
+  // Gmail search query for RFC 2822 Message-ID
+  const query = `rfc822msgid:${rfc822MessageId}`;
+
+  const response = await gmailFetchWithRetry(
+    `${GMAIL_API_URL}/users/me/messages?q=${encodeURIComponent(query)}&maxResults=1`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+
+  if (!response.ok) {
+    console.log(`[gmail] Search failed for Message-ID: ${rfc822MessageId}`);
+    return null;
+  }
+
+  const data = (await response.json()) as { messages?: Array<{ id: string }> };
+
+  if (data.messages && data.messages.length > 0) {
+    return data.messages[0].id;
+  }
+
+  return null;
+}
+
+/**
  * Create a label (for quarantine)
  * Includes retry logic for rate limiting and transient errors
  */

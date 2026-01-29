@@ -12,6 +12,8 @@ import {
 import {
   modifyGmailMessage,
   trashGmailMessage,
+  untrashGmailMessage,
+  findGmailMessageByMessageId,
   getOrCreateQuarantineLabel,
   getGmailAccessToken,
 } from '@/lib/integrations/gmail';
@@ -205,7 +207,7 @@ export async function quarantineEmail(params: {
     // Update threat status
     await sql`
       UPDATE threats
-      SET status = 'quarantined', remediation_at = NOW(), remediated_by = ${actorId}
+      SET status = 'quarantined', quarantined_at = NOW(), quarantined_by = ${actorId}
       WHERE id = ${threatId}
     `;
 
@@ -325,13 +327,14 @@ export async function releaseEmail(params: {
     if (threat.integration_type === 'o365') {
       await releaseO365Email(nangoConnectionId, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
-      await releaseGmailEmail(nangoConnectionId, externalMessageId);
+      // Pass wasDeleted flag so we can untrash before releasing
+      await releaseGmailEmail(nangoConnectionId, externalMessageId, threat.status === 'deleted');
     }
 
     // Update threat status
     await sql`
       UPDATE threats
-      SET status = 'released', remediation_at = NOW(), remediated_by = ${actorId}
+      SET status = 'released', released_at = NOW(), released_by = ${actorId}
       WHERE id = ${threatId}
     `;
 
@@ -456,7 +459,7 @@ export async function deleteEmail(params: {
     // Update threat status
     await sql`
       UPDATE threats
-      SET status = 'deleted', remediation_at = NOW(), remediated_by = ${actorId}
+      SET status = 'deleted', deleted_at = NOW(), deleted_by = ${actorId}
       WHERE id = ${threatId}
     `;
 
@@ -602,15 +605,68 @@ async function quarantineGmailEmail(
 
 async function releaseGmailEmail(
   nangoConnectionId: string,
-  messageId: string
+  messageId: string,
+  wasDeleted: boolean = false
 ): Promise<void> {
   const accessToken = await getGmailAccessToken(nangoConnectionId);
   const quarantineLabelId = await getOrCreateQuarantineLabel(accessToken);
 
+  // Check if messageId looks like a Gmail ID (alphanumeric, no special chars except dashes)
+  // Gmail IDs are typically hex strings like "18e1a2b3c4d5e6f7"
+  // O365/RFC822 Message-IDs contain <, >, @, etc.
+  let resolvedMessageId = messageId;
+  const looksLikeGmailId = /^[a-zA-Z0-9-]+$/.test(messageId) && !messageId.includes('<');
+
+  if (!looksLikeGmailId) {
+    console.log(`[remediation] Message ID "${messageId}" doesn't look like a Gmail ID, searching by Message-ID header...`);
+
+    // Try to find the Gmail message ID by searching for the RFC822 Message-ID
+    const foundId = await findGmailMessageByMessageId({
+      accessToken,
+      rfc822MessageId: messageId,
+    });
+
+    if (foundId) {
+      console.log(`[remediation] Found Gmail ID: ${foundId} for Message-ID: ${messageId}`);
+      resolvedMessageId = foundId;
+    } else {
+      // Try without angle brackets if they're present
+      const cleanedId = messageId.replace(/^<|>$/g, '');
+      if (cleanedId !== messageId) {
+        const foundCleanId = await findGmailMessageByMessageId({
+          accessToken,
+          rfc822MessageId: cleanedId,
+        });
+        if (foundCleanId) {
+          console.log(`[remediation] Found Gmail ID: ${foundCleanId} for cleaned Message-ID: ${cleanedId}`);
+          resolvedMessageId = foundCleanId;
+        }
+      }
+
+      if (resolvedMessageId === messageId) {
+        throw new Error(`Could not find Gmail message with Message-ID: ${messageId}`);
+      }
+    }
+  }
+
+  // If the email was deleted (trashed), untrash it first
+  if (wasDeleted) {
+    try {
+      await untrashGmailMessage({
+        accessToken,
+        messageId: resolvedMessageId,
+      });
+      console.log(`[remediation] Untrashed message ${resolvedMessageId}`);
+    } catch (err) {
+      // If untrash fails, the message might not be in Trash - try to continue
+      console.log(`[remediation] Untrash failed (may not be in Trash): ${err}`);
+    }
+  }
+
   // Remove quarantine label and add back to INBOX
   await modifyGmailMessage({
     accessToken,
-    messageId,
+    messageId: resolvedMessageId,
     addLabelIds: ['INBOX'],
     removeLabelIds: [quarantineLabelId],
   });

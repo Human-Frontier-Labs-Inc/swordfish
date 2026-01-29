@@ -6,7 +6,7 @@
  * 2. Releases them back to the user's inbox
  * 3. Updates their status to 'released'
  *
- * Run with: npx tsx scripts/release-quarantined-emails.ts
+ * Run with: source .env.production && npx tsx scripts/release-quarantined-emails.ts
  */
 
 import { sql } from '@/lib/db';
