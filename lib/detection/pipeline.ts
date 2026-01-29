@@ -234,7 +234,13 @@ export async function analyzeEmail(
   // Also invoke LLM if BEC is suspected but not confirmed
   const becSuspected = becResult.score >= 30 && becResult.confidence < 0.8;
 
-  if (shouldUseLLM || becSuspected) {
+  // CRITICAL: Also invoke LLM for trusted senders getting high scores (potential false positive)
+  // The LLM has context-aware logic to recognize newsletters and marketing emails as legitimate
+  const trustedSenderHighScore = !config.skipLLM &&
+    (reputationContext?.isKnownSender || emailClassification?.isKnownSender) &&
+    filteredDeterministicResult.score >= 50;
+
+  if (shouldUseLLM || becSuspected || trustedSenderHighScore) {
     // Phase 4: Build context from Phase 1-3 for LLM analysis
     const llmContext = buildLLMContext(
       reputationContext,
