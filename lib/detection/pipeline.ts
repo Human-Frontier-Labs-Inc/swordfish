@@ -908,15 +908,15 @@ function calculateFinalScore(
   const normalizedScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
   const normalizedConfidence = totalWeight > 0 ? weightedConfidence / totalWeight : 0;
 
-  // Boost score if multiple critical signals - more aggressive boosting
+  // Boost score if multiple critical signals - balanced boosting
   const criticalSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'critical'));
   const warningSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'warning'));
 
-  // Phase 3: Balanced multiplier - maintain security while reducing false positives
-  // Critical signals add 11 points each (max 44), warnings add 2.5 each (max 12)
-  // Increased to ensure BEC/phishing attacks reach block threshold (85+)
-  const criticalBoost = Math.min(44, criticalSignals.length * 11);  // Original: 10/40, Conservative: 9/36, Balanced: 11/44
-  const warningBoost = Math.min(12, warningSignals.length * 2.5);    // Original: 3/15
+  // Phase 4: Reduced boosting to avoid false positives on legitimate emails
+  // Critical signals add 7 points each (max 28), warnings add 2 each (max 10)
+  // Ensures real threats still get flagged but newsletters/legitimate emails have buffer
+  const criticalBoost = Math.min(28, criticalSignals.length * 7);   // Reduced from 11/44
+  const warningBoost = Math.min(10, warningSignals.length * 2);     // Reduced from 2.5/12
 
   return {
     overallScore: Math.min(100, Math.round(normalizedScore * (totalWeight / 0.8) + criticalBoost + warningBoost)),

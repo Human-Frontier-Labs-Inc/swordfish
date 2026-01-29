@@ -265,8 +265,9 @@ describe('O365 Email Remediation', () => {
       );
     });
 
-    it('should delete email when verdict is block', async () => {
-      // Arrange
+    it('should quarantine email when verdict is block (never auto-delete)', async () => {
+      // Arrange - Note: Block verdict now quarantines instead of deleting
+      // This allows users to review and release false positives
       vi.mocked(sql).mockResolvedValueOnce([
         { nango_connection_id: TEST_NANGO_CONNECTION_ID },
       ]);
@@ -274,7 +275,16 @@ describe('O365 Email Remediation', () => {
       vi.mocked(sql).mockResolvedValueOnce([]);
       vi.mocked(sql).mockResolvedValueOnce([]);
 
-      // Mock Graph API - move to deleteditems
+      // Mock Graph API - get/create quarantine folder
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ value: [] }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 'quarantine-folder-id' }),
+      });
+      // Mock Graph API - move to quarantine folder
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({}),
@@ -296,13 +306,10 @@ describe('O365 Email Remediation', () => {
       expect(result.success).toBe(true);
       expect(result.action).toBe('block');
 
-      // Verify Graph API was called to move to deleteditems
+      // Verify Graph API was called to move (to quarantine, not deleteditems)
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/move'),
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('deleteditems'),
-        })
+        expect.objectContaining({ method: 'POST' })
       );
     });
 

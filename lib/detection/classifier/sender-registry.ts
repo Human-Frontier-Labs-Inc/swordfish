@@ -427,6 +427,342 @@ const KNOWN_SENDERS: SenderInfo[] = [
     name: 'TikTok',
     category: SenderCategory.SOCIAL,
   },
+
+  // NEWSLETTERS & FINANCIAL NEWS
+  {
+    domain: 'morningbrew.com',
+    name: 'Morning Brew',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.morningbrew.com', 'newsletters.morningbrew.com'],
+  },
+  {
+    domain: 'themorningbrew.com',
+    name: 'Morning Brew',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'substack.com',
+    name: 'Substack',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.substack.com'],
+  },
+  {
+    domain: 'beehiiv.com',
+    name: 'Beehiiv',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'convertkit.com',
+    name: 'ConvertKit',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'techcrunch.com',
+    name: 'TechCrunch',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'theinformation.com',
+    name: 'The Information',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'axios.com',
+    name: 'Axios',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.axios.com'],
+  },
+  {
+    domain: 'wsj.com',
+    name: 'Wall Street Journal',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.wsj.com', 'newsletters.wsj.com'],
+  },
+  {
+    domain: 'nytimes.com',
+    name: 'New York Times',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.nytimes.com', 'newsletters.nytimes.com'],
+  },
+  {
+    domain: 'bloomberg.com',
+    name: 'Bloomberg',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.bloomberg.com'],
+  },
+  {
+    domain: 'reuters.com',
+    name: 'Reuters',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'cnbc.com',
+    name: 'CNBC',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.cnbc.com'],
+  },
+  {
+    domain: 'marketwatch.com',
+    name: 'MarketWatch',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'fool.com',
+    name: 'Motley Fool',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.fool.com'],
+  },
+  {
+    domain: 'investopedia.com',
+    name: 'Investopedia',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'seekingalpha.com',
+    name: 'Seeking Alpha',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'barrons.com',
+    name: "Barron's",
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'fortune.com',
+    name: 'Fortune',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'forbes.com',
+    name: 'Forbes',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'medium.com',
+    name: 'Medium',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.medium.com'],
+  },
+  {
+    domain: 'wired.com',
+    name: 'Wired',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'theverge.com',
+    name: 'The Verge',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'arstechnica.com',
+    name: 'Ars Technica',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'engadget.com',
+    name: 'Engadget',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'cnet.com',
+    name: 'CNET',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'zdnet.com',
+    name: 'ZDNet',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'techpoint.africa',
+    name: 'TechPoint Africa',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'techcabal.com',
+    name: 'TechCabal',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'thedailybeast.com',
+    name: 'The Daily Beast',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'politico.com',
+    name: 'Politico',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'thehill.com',
+    name: 'The Hill',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'vox.com',
+    name: 'Vox',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'washingtonpost.com',
+    name: 'Washington Post',
+    category: SenderCategory.MARKETING,
+    subDomains: ['email.washingtonpost.com'],
+  },
+  {
+    domain: 'latimes.com',
+    name: 'Los Angeles Times',
+    category: SenderCategory.MARKETING,
+  },
+  {
+    domain: 'usatoday.com',
+    name: 'USA Today',
+    category: SenderCategory.MARKETING,
+  },
+
+  // GOVERNMENT DOMAINS
+  {
+    domain: 'irs.gov',
+    name: 'Internal Revenue Service',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'ssa.gov',
+    name: 'Social Security Administration',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'state.gov',
+    name: 'US State Department',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'treasury.gov',
+    name: 'US Treasury',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'dol.gov',
+    name: 'Department of Labor',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'dhs.gov',
+    name: 'Department of Homeland Security',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'fbi.gov',
+    name: 'FBI',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'cdc.gov',
+    name: 'CDC',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'nih.gov',
+    name: 'National Institutes of Health',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'fda.gov',
+    name: 'FDA',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'cms.gov',
+    name: 'CMS (Medicare/Medicaid)',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'usa.gov',
+    name: 'USA.gov',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'benefits.gov',
+    name: 'Benefits.gov',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'sec.gov',
+    name: 'SEC',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'ftc.gov',
+    name: 'FTC',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'federalreserve.gov',
+    name: 'Federal Reserve',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'doi.gov',
+    name: 'Department of Interior',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'epa.gov',
+    name: 'EPA',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'ed.gov',
+    name: 'Department of Education',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'hud.gov',
+    name: 'HUD',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'va.gov',
+    name: 'Veterans Affairs',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'sba.gov',
+    name: 'Small Business Administration',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'gsa.gov',
+    name: 'General Services Administration',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+
+  // STATE GOVERNMENT (Common patterns)
+  {
+    domain: 'nc.gov',
+    name: 'North Carolina Government',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'ca.gov',
+    name: 'California Government',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'ny.gov',
+    name: 'New York Government',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'tx.gov',
+    name: 'Texas Government',
+    category: SenderCategory.TRANSACTIONAL,
+  },
+  {
+    domain: 'fl.gov',
+    name: 'Florida Government',
+    category: SenderCategory.TRANSACTIONAL,
+  },
 ];
 
 /**
@@ -472,6 +808,27 @@ export async function lookupSender(
     if (domainIndex.has(parentDomain)) {
       return domainIndex.get(parentDomain)!;
     }
+  }
+
+  // Auto-recognize .gov domains as government senders
+  // This catches all government domains not explicitly listed
+  if (lowerDomain.endsWith('.gov') || lowerDomain.endsWith('.gov.uk') || lowerDomain.endsWith('.gc.ca')) {
+    return {
+      domain: lowerDomain,
+      name: `Government Domain (${lowerDomain})`,
+      category: SenderCategory.TRANSACTIONAL,
+      notes: 'Auto-recognized government domain',
+    };
+  }
+
+  // Auto-recognize .edu domains as educational institutions
+  if (lowerDomain.endsWith('.edu') || lowerDomain.endsWith('.ac.uk')) {
+    return {
+      domain: lowerDomain,
+      name: `Educational Institution (${lowerDomain})`,
+      category: SenderCategory.TRANSACTIONAL,
+      notes: 'Auto-recognized educational domain',
+    };
   }
 
   // TODO: Check tenant-specific trusted senders from database

@@ -331,8 +331,9 @@ describe('Gmail Email Remediation', () => {
       );
     });
 
-    it('should delete email when verdict is block', async () => {
-      // Arrange
+    it('should quarantine email when verdict is block (never auto-delete)', async () => {
+      // Arrange - Note: Block verdict now quarantines instead of deleting
+      // This allows users to review and release false positives
       vi.mocked(sql).mockResolvedValueOnce([
         { nango_connection_id: TEST_NANGO_CONNECTION_ID },
       ]);
@@ -340,11 +341,23 @@ describe('Gmail Email Remediation', () => {
       vi.mocked(sql).mockResolvedValueOnce([]);
       vi.mocked(sql).mockResolvedValueOnce([]);
 
-      // Mock Gmail trash endpoint
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({}),
-      });
+      // Mock Gmail API calls
+      mockFetch
+        // Get labels - check if quarantine label exists
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              labels: [
+                { id: TEST_QUARANTINE_LABEL_ID, name: 'Swordfish/Quarantine' },
+              ],
+            }),
+        })
+        // Modify message (add quarantine label, remove INBOX)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({}),
+        });
 
       // Act
       const { autoRemediate } = await import('@/lib/workers/remediation');
@@ -362,9 +375,9 @@ describe('Gmail Email Remediation', () => {
       expect(result.success).toBe(true);
       expect(result.action).toBe('block');
 
-      // Verify Gmail trash API was called
+      // Verify Gmail modify API was called (quarantine, not trash)
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/trash'),
+        expect.stringContaining('/modify'),
         expect.objectContaining({ method: 'POST' })
       );
     });

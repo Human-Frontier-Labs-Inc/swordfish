@@ -699,7 +699,10 @@ export async function autoRemediate(params: {
       signals: null,
     };
 
-    const status = verdict === 'block' ? 'deleted' : 'quarantined';
+    // IMPORTANT: Always quarantine, never delete automatically
+    // This allows users to review and release false positives
+    // Blocked emails can still be manually deleted by admins if needed
+    const status = 'quarantined';
 
     // Truncate values to fit database column constraints
     const safeMessageId = truncate(messageId, 490);
@@ -712,20 +715,12 @@ export async function autoRemediate(params: {
       250
     );
 
-    if (verdict === 'block') {
-      // Delete immediately for blocked emails
-      if (integrationType === 'o365') {
-        await deleteO365Email(nangoConnectionId, externalMessageId);
-      } else {
-        await deleteGmailEmail(nangoConnectionId, externalMessageId);
-      }
+    // Always quarantine - both 'block' and 'quarantine' verdicts go to quarantine
+    // This ensures users can review and release false positives
+    if (integrationType === 'o365') {
+      await quarantineO365Email(nangoConnectionId, externalMessageId);
     } else {
-      // Quarantine for suspicious emails
-      if (integrationType === 'o365') {
-        await quarantineO365Email(nangoConnectionId, externalMessageId);
-      } else {
-        await quarantineGmailEmail(nangoConnectionId, externalMessageId);
-      }
+      await quarantineGmailEmail(nangoConnectionId, externalMessageId);
     }
 
     // Write to threats table so it appears in Threats/Quarantine pages
