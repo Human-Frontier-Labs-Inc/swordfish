@@ -7,6 +7,12 @@ import type { ParsedEmail, Signal, SignalType, LayerResult, AuthenticationResult
 import { parseAuthenticationResults } from './parser';
 import { classifyURL, getURLScoreMultiplier, type URLClassification } from './url-classifier';
 import { deduplicateURLSignals } from './signal-deduplicator';
+import {
+  getURLIntelligence,
+  detectLookalikeDomain,
+  detectURLObfuscation,
+  type URLIntelligenceResult,
+} from './url-intelligence';
 
 // Known free email providers
 const FREE_EMAIL_PROVIDERS = new Set([
@@ -118,7 +124,11 @@ export async function runDeterministicAnalysis(
   const knownTrackingDomains = reputationContext?.knownTrackingDomains || [];
   signals.push(...analyzeUrls(urls, email.from.domain, knownTrackingDomains));
 
-  // 6. Deduplicate URL signals to prevent score inflation (Phase 2)
+  // 6. Phase 2: Enhanced URL Intelligence analysis (lookalike, obfuscation, etc.)
+  const urlIntelligenceSignals = await analyzeUrlsWithIntelligence(urls);
+  signals.push(...urlIntelligenceSignals);
+
+  // 7. Deduplicate URL signals to prevent score inflation (Phase 2)
   const deduplicatedSignals = deduplicateURLSignals(signals);
 
   // Calculate overall score (0-100)
@@ -393,6 +403,116 @@ function analyzeUrls(urls: string[], senderDomain: string, knownTrackingDomains:
           ...classification.metadata,
         },
       });
+    }
+  }
+
+  return signals;
+}
+
+/**
+ * Phase 2: Enhanced URL Intelligence analysis
+ * Analyzes URLs for lookalike domains, obfuscation techniques, and other threats
+ */
+async function analyzeUrlsWithIntelligence(urls: string[]): Promise<Signal[]> {
+  const signals: Signal[] = [];
+
+  for (const url of urls) {
+    try {
+      // Get comprehensive URL intelligence
+      const intelligence = await getURLIntelligence(url, {
+        checkLookalike: true,
+        checkObfuscation: true,
+        // Domain age and redirect chain require external data, skip for now
+        checkDomainAge: false,
+        checkRedirectChain: false,
+      });
+
+      // Skip safe URLs
+      if (intelligence.verdict === 'safe' && intelligence.overallRiskScore < 2) {
+        continue;
+      }
+
+      // Convert URL Intelligence risk score (0-10) to pipeline score (0-100)
+      // Use a multiplier that makes scores meaningful in the pipeline context
+      const baseScore = Math.round(intelligence.overallRiskScore * 8);
+
+      // Determine severity based on verdict
+      let severity: 'info' | 'warning' | 'critical';
+      if (intelligence.verdict === 'malicious') {
+        severity = 'critical';
+      } else if (intelligence.verdict === 'suspicious') {
+        severity = 'warning';
+      } else {
+        severity = 'info';
+      }
+
+      // Build detail message from signals
+      const detailParts: string[] = [];
+
+      // Lookalike detection
+      if (intelligence.lookalike?.isLookalike) {
+        const target = intelligence.lookalike.targetDomain || 'unknown brand';
+        const technique = intelligence.lookalike.technique || 'lookalike';
+        detailParts.push(`Domain impersonates ${target} using ${technique}`);
+
+        // Add specific lookalike signal
+        signals.push({
+          type: 'lookalike_domain' as SignalType,
+          severity: 'critical',
+          score: Math.round(intelligence.lookalike.riskScore * 8),
+          detail: `Lookalike domain detected: ${url} impersonates ${target}`,
+          metadata: {
+            url,
+            targetDomain: target,
+            technique,
+            riskScore: intelligence.lookalike.riskScore,
+          },
+        });
+      }
+
+      // Obfuscation detection
+      if (intelligence.obfuscation?.isObfuscated) {
+        const technique = intelligence.obfuscation.technique || 'obfuscation';
+        detailParts.push(`URL uses ${technique} obfuscation`);
+
+        // Add specific obfuscation signal
+        signals.push({
+          type: 'url_obfuscation' as SignalType,
+          severity: intelligence.obfuscation.riskScore >= 8 ? 'critical' : 'warning',
+          score: Math.round(intelligence.obfuscation.riskScore * 8),
+          detail: `URL obfuscation detected: ${technique}`,
+          metadata: {
+            url,
+            technique,
+            decodedUrl: intelligence.obfuscation.decodedUrl,
+            riskScore: intelligence.obfuscation.riskScore,
+          },
+        });
+      }
+
+      // Add overall URL intelligence signal if we detected issues
+      if (detailParts.length > 0 || intelligence.overallRiskScore >= 3) {
+        const detail = detailParts.length > 0
+          ? `URL Intelligence: ${detailParts.join('; ')}`
+          : `URL Intelligence: ${intelligence.signals.join(', ')}`;
+
+        signals.push({
+          type: 'url_intelligence' as SignalType,
+          severity,
+          score: baseScore,
+          detail,
+          metadata: {
+            url,
+            verdict: intelligence.verdict,
+            overallRiskScore: intelligence.overallRiskScore,
+            signals: intelligence.signals,
+            breakdown: intelligence.breakdown,
+          },
+        });
+      }
+    } catch (error) {
+      // Log error but don't fail the entire analysis
+      console.warn(`URL Intelligence analysis failed for ${url}:`, error);
     }
   }
 

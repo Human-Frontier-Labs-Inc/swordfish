@@ -69,6 +69,19 @@ const MALICIOUS_PATTERNS = {
   ],
 };
 
+// Trusted top-level domains (government, military, educational)
+// These TLDs are inherently trustworthy and should never be flagged as suspicious
+const TRUSTED_TLDS = [
+  '.gov',      // US Government
+  '.gov.uk',   // UK Government
+  '.gov.au',   // Australian Government
+  '.gov.ca',   // Canadian Government
+  '.gc.ca',    // Canadian Government (alternate)
+  '.mil',      // US Military
+  '.edu',      // Educational institutions
+  '.ac.uk',    // UK Academic
+];
+
 // Known safe domains
 const TRUSTED_DOMAINS = new Set([
   'google.com',
@@ -79,6 +92,7 @@ const TRUSTED_DOMAINS = new Set([
   'linkedin.com',
   'facebook.com',
   'twitter.com',
+  'x.com',
   'dropbox.com',
   'slack.com',
   'zoom.us',
@@ -89,6 +103,19 @@ const TRUSTED_DOMAINS = new Set([
   'hotmail.com',
   'gmail.com',
   'yahoo.com',
+  'instagram.com',
+  'youtube.com',
+  'pinterest.com',
+  // Email signature services
+  'sigstr.net',
+  'sigstr.com',
+  'wisestamp.com',
+  'mysignature.io',
+  'exclaimer.net',
+  'exclaimer.com',
+  'rocketseed.net',
+  'rocketseed.com',
+  'opensense.com',
 ]);
 
 // Freemail providers (higher scrutiny for business context)
@@ -173,6 +200,30 @@ export async function checkDomainReputation(domain: string): Promise<ReputationR
 
   const sources: ReputationSource[] = [];
   let score = 50; // Start neutral
+
+  // Check against trusted TLDs (government, military, educational)
+  // These TLDs are inherently trustworthy and should return clean immediately
+  const isTrustedTLD = TRUSTED_TLDS.some(tld => normalizedDomain.endsWith(tld));
+  if (isTrustedTLD) {
+    sources.push({
+      name: 'trusted_tld',
+      verdict: 'clean',
+      score: 100,
+      details: 'Trusted government/educational/military domain',
+    });
+
+    const result: ReputationResult = {
+      entity: normalizedDomain,
+      entityType: 'domain',
+      score: 100,
+      category: 'clean',
+      sources,
+      cached: false,
+      lastChecked: new Date(),
+    };
+    await cacheReputation(result);
+    return result;
+  }
 
   // Check against trusted domains
   if (TRUSTED_DOMAINS.has(normalizedDomain) ||
@@ -534,6 +585,30 @@ export async function checkEmailReputation(email: string): Promise<ReputationRes
       entityType: 'email',
       score: 10,
       category: 'suspicious',
+      sources,
+      cached: false,
+      lastChecked: new Date(),
+    };
+    await cacheReputation(result);
+    return result;
+  }
+
+  // Check if email is from a trusted TLD (government, military, educational)
+  // Return clean immediately without further checks
+  const isTrustedTLD = TRUSTED_TLDS.some(tld => domain.endsWith(tld));
+  if (isTrustedTLD) {
+    sources.push({
+      name: 'trusted_tld',
+      verdict: 'clean',
+      score: 100,
+      details: 'Email from trusted government/educational/military domain',
+    });
+
+    const result: ReputationResult = {
+      entity: normalizedEmail,
+      entityType: 'email',
+      score: 100,
+      category: 'clean',
       sources,
       cached: false,
       lastChecked: new Date(),

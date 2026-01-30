@@ -33,6 +33,25 @@ import {
   calculateRuleAdjustment,
   type LearnedRule,
 } from '../feedback/feedback-learning';
+import {
+  detectQRCodes,
+  analyzeQRUrls,
+  type QRCodeDetection,
+} from './qr-detector';
+import {
+  getTenantConfig,
+  getCategoryThreshold,
+  isModuleEnabled,
+} from './tenant-config';
+import {
+  runEnhancedSandboxAnalysis,
+  type EnhancedSandboxResult,
+} from './sandbox-layer';
+import {
+  runLookalikeAnalysis,
+  convertLookalikeAnalysisToSignals,
+  type LookalikeAnalysisResult,
+} from './phase4c-integration';
 
 /**
  * Main detection pipeline - analyzes an email through all layers
@@ -177,6 +196,35 @@ export async function analyzeEmail(
   layerResults.push(filteredDeterministicResult);
   allSignals.push(...filteredDeterministicSignals);
 
+  // Layer 3.5: Lookalike Domain Analysis (Phase 4c)
+  // Detects brand impersonation via homoglyph, typosquat, and cousin domain attacks
+  let lookalikeResult: LookalikeAnalysisResult | null = null;
+  try {
+    lookalikeResult = runLookalikeAnalysis(email, tenantId);
+
+    if (lookalikeResult.hasLookalike) {
+      const lookalikeSignals = convertLookalikeAnalysisToSignals(lookalikeResult);
+      allSignals.push(...lookalikeSignals);
+
+      // Add layer result for lookalike detection
+      layerResults.push({
+        layer: 'lookalike',
+        score: lookalikeResult.riskScore,
+        confidence: lookalikeResult.confidence,
+        signals: lookalikeSignals,
+        processingTimeMs: 0, // Synchronous analysis
+        metadata: {
+          detectionCount: lookalikeResult.detections.length,
+          attackTypes: lookalikeResult.detections.map(d => d.attackType).filter(Boolean),
+          targetBrands: lookalikeResult.detections.map(d => d.targetBrand).filter(Boolean),
+        },
+      });
+    }
+  } catch (error) {
+    console.error('Lookalike analysis error:', error);
+    // Continue without lookalike analysis
+  }
+
   // Layer 4: ML Analysis
   const mlResult = await runMLAnalysis(email, allSignals);
 
@@ -269,7 +317,7 @@ export async function analyzeEmail(
   }
 
   // Layer 7: Sandbox (TODO - for attachments, placeholder for now)
-  const sandboxResult = await runSandboxAnalysis(email);
+  const sandboxResult = await runSandboxAnalysis(email, tenantId);
   layerResults.push(sandboxResult);
   allSignals.push(...sandboxResult.signals);
 
@@ -688,14 +736,58 @@ async function runMLAnalysis(email: ParsedEmail, _priorSignals: Signal[]): Promi
 }
 
 /**
- * Placeholder: Sandbox analysis for attachments
+ * Sandbox and attachment analysis layer
+ * Phase 3: Enhanced with deep attachment analysis (+4 points)
+ * Includes: Magic bytes detection, macro extraction, archive inspection,
+ *           double extension detection, RTL override detection, malware hash checking
+ * Phase 1: QR code detection ("Quishing" prevention)
  */
-async function runSandboxAnalysis(email: ParsedEmail): Promise<LayerResult> {
+async function runSandboxAnalysis(email: ParsedEmail, tenantId: string): Promise<LayerResult> {
   const startTime = performance.now();
   const signals: Signal[] = [];
 
-  // Only run if there are attachments
-  if (email.attachments.length === 0) {
+  // Phase 1: QR Code Detection ("Quishing" prevention)
+  // Run QR detection even without attachments (checks HTML for inline images)
+  const qrDetectionEnabled = isModuleEnabled(tenantId, 'enableQRDetection');
+
+  if (qrDetectionEnabled) {
+    const attachmentData = email.attachments.map(a => ({
+      filename: a.filename,
+      mimeType: a.mimeType || 'application/octet-stream',
+      size: a.size || 0,
+    }));
+
+    const qrResult = detectQRCodes(attachmentData, email.body.html);
+
+    if (qrResult.found) {
+      // Convert QR signals to pipeline signals
+      for (const qrSignal of qrResult.signals) {
+        signals.push({
+          type: qrSignal.type,
+          severity: qrSignal.severity,
+          score: qrSignal.score,
+          detail: qrSignal.detail,
+          metadata: { qrCodeCount: qrResult.count },
+        });
+      }
+
+      // Analyze any extracted URLs from QR codes
+      if (qrResult.extractedUrls.length > 0) {
+        const urlSignals = analyzeQRUrls(qrResult.extractedUrls);
+        for (const urlSignal of urlSignals) {
+          signals.push({
+            type: urlSignal.type,
+            severity: urlSignal.severity,
+            score: urlSignal.score,
+            detail: urlSignal.detail,
+          });
+        }
+      }
+    }
+  }
+
+  // Return early if no attachments (QR detection on HTML already done above)
+  if (email.attachments.length === 0 && signals.length === 0) {
     return {
       layer: 'sandbox',
       score: 0,
@@ -707,20 +799,52 @@ async function runSandboxAnalysis(email: ParsedEmail): Promise<LayerResult> {
     };
   }
 
-  // TODO: Implement sandbox analysis:
-  // - Static file analysis
-  // - Dynamic execution in sandbox
-  // - Behavior monitoring
-  // - Network activity tracking
+  // Phase 3: Enhanced Sandbox Analysis (+4 points)
+  // Run deep attachment analysis when attachments have content
+  const hasAttachmentContent = email.attachments.some(a => a.content && a.content.length > 0);
+  const sandboxEnabled = isModuleEnabled(tenantId, 'enableSandboxAnalysis');
 
-  // Check for dangerous file types
+  if (sandboxEnabled && email.attachments.length > 0) {
+    try {
+      const enhancedResult = await runEnhancedSandboxAnalysis(email, tenantId, {
+        checkSandbox: true, // Enable hash checking against malware databases
+        skipDynamicAnalysis: false, // Run full static + dynamic analysis
+      });
+
+      // Add enhanced sandbox signals
+      if (!enhancedResult.skipped && enhancedResult.signals.length > 0) {
+        signals.push(...enhancedResult.signals);
+      }
+
+      // If enhanced analysis completed successfully with high confidence, use its result
+      if (!enhancedResult.skipped && enhancedResult.confidence >= 0.7) {
+        const totalScore = Math.min(100, signals.reduce((sum, s) => sum + s.score, 0));
+        return {
+          layer: 'sandbox',
+          score: totalScore,
+          confidence: enhancedResult.confidence,
+          signals,
+          processingTimeMs: performance.now() - startTime,
+          metadata: {
+            attachmentsAnalyzed: enhancedResult.attachmentsAnalyzed,
+            enhancedAnalysis: true,
+            attachmentResults: enhancedResult.attachmentResults,
+          },
+        };
+      }
+    } catch (error) {
+      console.error('Enhanced sandbox analysis error:', error);
+      // Fall through to basic analysis
+    }
+  }
+
+  // Fallback: Basic file extension analysis
+  // Used when enhanced analysis is disabled, fails, or for quick checks
   const dangerousExtensions = ['.exe', '.scr', '.bat', '.cmd', '.ps1', '.js', '.vbs', '.hta'];
   const macroExtensions = ['.docm', '.xlsm', '.pptm'];
   const archiveExtensions = ['.zip', '.rar', '.7z', '.tar', '.gz'];
 
   for (const attachment of email.attachments) {
-    const ext = attachment.filename.toLowerCase().split('.').pop() || '';
-
     if (dangerousExtensions.some((d) => attachment.filename.toLowerCase().endsWith(d))) {
       signals.push({
         type: 'executable',

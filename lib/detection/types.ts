@@ -30,6 +30,7 @@ export interface EmailAddress {
 export interface Attachment {
   filename: string;
   contentType: string;
+  mimeType?: string; // Alternative to contentType for compatibility
   size: number;
   content?: Buffer;
   hash?: string; // SHA-256
@@ -87,6 +88,10 @@ export type SignalType =
   | 'ip_url'
   | 'tracking_url' // Phase 2: Legitimate tracking URLs
   | 'malicious_url' // Phase 2: Classified as malicious
+  // Phase 2: URL Intelligence
+  | 'lookalike_domain' // Typosquatting/homoglyph domain
+  | 'url_obfuscation' // URL uses obfuscation techniques
+  | 'url_intelligence' // Combined URL intelligence signal
   // Attachment analysis
   | 'dangerous_attachment'
   | 'password_protected_archive'
@@ -184,6 +189,10 @@ export type SignalType =
   | 'behavioral_anomaly'
   | 'anomaly_detected'
   | 'lookalike_detected'
+  // Phase 4c: Lookalike domain learning
+  | 'lookalike_homoglyph'
+  | 'lookalike_typosquat'
+  | 'lookalike_cousin'
   // Email classification
   | 'classification'
   // Sender reputation (Phase 1 FP reduction)
@@ -192,11 +201,25 @@ export type SignalType =
   | 'url_reputation'
   | 'url_whitelisted'
   // Feedback learning (Phase 5 FP reduction)
-  | 'feedback_learning';
+  | 'feedback_learning'
+  // QR Code Detection (Phase 1)
+  | 'qr_code_present'
+  | 'qr_url_suspicious'
+  | 'qr_url_shortened'
+  | 'qr_multiple'
+  | 'qr_inline_hidden'
+  // Pipeline critical signals
+  | 'attachment_malware'
+  | 'known_malware_url'
+  | 'active_phishing_campaign'
+  | 'verified_bec_attack'
+  | 'credential_harvesting'
+  | 'trusted_sender_bypass'
+  | 'url';
 
 // Analysis result from each layer
 export interface LayerResult {
-  layer: 'deterministic' | 'reputation' | 'ml' | 'bec' | 'llm' | 'sandbox';
+  layer: 'deterministic' | 'reputation' | 'lookalike' | 'ml' | 'bec' | 'llm' | 'sandbox';
   score: number; // 0-100
   confidence: number; // 0-1
   signals: Signal[];

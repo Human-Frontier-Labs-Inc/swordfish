@@ -24,9 +24,77 @@ export interface URLClassification {
 }
 
 /**
+ * Trusted top-level domains that should never be flagged
+ * These are government, educational, and military domains that are inherently trustworthy
+ */
+const TRUSTED_TLDS = [
+  '.gov',      // US Government
+  '.gov.uk',   // UK Government
+  '.gov.au',   // Australian Government
+  '.gov.ca',   // Canadian Government
+  '.gc.ca',    // Canadian Government (alternate)
+  '.mil',      // US Military
+  '.edu',      // Educational institutions
+  '.ac.uk',    // UK Academic
+];
+
+/**
+ * Trusted social media and professional networking domains
+ * Direct links to these platforms should not be flagged as suspicious
+ */
+const TRUSTED_SOCIAL_DOMAINS = [
+  'linkedin.com',
+  'www.linkedin.com',
+  'facebook.com',
+  'www.facebook.com',
+  'twitter.com',
+  'www.twitter.com',
+  'x.com',
+  'www.x.com',
+  'instagram.com',
+  'www.instagram.com',
+  'youtube.com',
+  'www.youtube.com',
+  'github.com',
+  'www.github.com',
+  'pinterest.com',
+  'www.pinterest.com',
+];
+
+/**
+ * Email signature service domains
+ * These are used to track and manage email signatures and should not be flagged
+ */
+const EMAIL_SIGNATURE_SERVICES = [
+  'sigstr.net',           // Terminus email signatures
+  'sigstr.com',           // Terminus email signatures
+  'wisestamp.com',        // WiseStamp
+  'mysignature.io',       // MySignature
+  'exclaimer.net',        // Exclaimer
+  'exclaimer.com',
+  'rocketseed.net',       // Rocketseed
+  'rocketseed.com',
+  'htmlsig.com',          // HTMLsig
+  'mail-signatures.com',  // Email-Signatures
+  'codetwo.com',          // CodeTwo
+  'newoldstamp.com',      // Newoldstamp
+  'gimmio.com',           // Gimmio
+  'opensense.com',        // Opensense
+  'template.net',         // Template services
+];
+
+/**
  * Common legitimate tracking patterns used by major email platforms
  */
 const TRACKING_PATTERNS = [
+  // Email Signature Services (high priority)
+  { pattern: /sigstr\.(net|com)/i, service: 'Email signature service (Terminus)', score: 0 },
+  { pattern: /wisestamp\.com/i, service: 'Email signature service (WiseStamp)', score: 0 },
+  { pattern: /mysignature\.io/i, service: 'Email signature service (MySignature)', score: 0 },
+  { pattern: /exclaimer\.(net|com)/i, service: 'Email signature service (Exclaimer)', score: 0 },
+  { pattern: /rocketseed\.(net|com)/i, service: 'Email signature service (Rocketseed)', score: 0 },
+  { pattern: /opensense\.com/i, service: 'Email signature service (Opensense)', score: 0 },
+
   // Quora
   { pattern: /\/tc\?/i, service: 'Quora tracking', score: 0 },
   { pattern: /\/qemail\//i, service: 'Quora email', score: 0 },
@@ -127,7 +195,51 @@ export function classifyURL(
       };
     }
 
-    // 2. Check for suspicious patterns FIRST (security priority)
+    // 2. Check for TRUSTED TLDs (government, military, educational) - BEFORE suspicious patterns
+    // These domains are inherently trustworthy and should never be flagged
+    const isTrustedTLD = TRUSTED_TLDS.some(tld => hostname.endsWith(tld));
+    if (isTrustedTLD) {
+      return {
+        url,
+        type: 'legitimate',
+        trustLevel: 'high',
+        reason: `Trusted government/educational/military domain`,
+        score: 0,
+        metadata: { knownDomain: true },
+      };
+    }
+
+    // 3. Check for trusted social media domains - BEFORE suspicious patterns
+    const isTrustedSocial = TRUSTED_SOCIAL_DOMAINS.some(domain =>
+      hostname === domain || hostname.endsWith(`.${domain}`)
+    );
+    if (isTrustedSocial) {
+      return {
+        url,
+        type: 'legitimate',
+        trustLevel: 'high',
+        reason: 'Trusted social media/professional platform',
+        score: 0,
+        metadata: { knownDomain: true },
+      };
+    }
+
+    // 4. Check for email signature services - BEFORE suspicious patterns
+    const isSignatureService = EMAIL_SIGNATURE_SERVICES.some(domain =>
+      hostname === domain || hostname.endsWith(`.${domain}`)
+    );
+    if (isSignatureService) {
+      return {
+        url,
+        type: 'tracking',
+        trustLevel: 'high',
+        reason: 'Email signature service',
+        score: 0,
+        metadata: { knownDomain: true },
+      };
+    }
+
+    // 5. Check for suspicious patterns (security priority)
     for (const { pattern, reason, score } of SUSPICIOUS_PATTERNS) {
       if (pattern.test(url)) {
         return {
@@ -141,7 +253,7 @@ export function classifyURL(
       }
     }
 
-    // 3. Check for legitimate tracking patterns
+    // 6. Check for legitimate tracking patterns
     for (const { pattern, service, score } of TRACKING_PATTERNS) {
       if (pattern.test(url)) {
         return {
@@ -155,7 +267,7 @@ export function classifyURL(
       }
     }
 
-    // 4. Check if URL domain matches sender domain (same-domain links are safer)
+    // 7. Check if URL domain matches sender domain (same-domain links are safer)
     if (hostname === senderDomain || hostname.endsWith(`.${senderDomain}`)) {
       return {
         url,
@@ -167,7 +279,7 @@ export function classifyURL(
       };
     }
 
-    // 5. URL shorteners (medium risk - need to check destination)
+    // 8. URL shorteners (medium risk - need to check destination)
     if (/bit\.ly|tinyurl\.com|ow\.ly|goo\.gl|t\.co/i.test(hostname)) {
       return {
         url,
@@ -178,7 +290,7 @@ export function classifyURL(
       };
     }
 
-    // 6. Default to legitimate with medium trust
+    // 9. Default to legitimate with medium trust
     return {
       url,
       type: 'legitimate',
