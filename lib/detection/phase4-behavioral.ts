@@ -379,7 +379,7 @@ export function convertAnomalyToSignals(
       detail: `Volume anomaly: z-score ${result.volumeAnomaly.zScore.toFixed(2)}, ` +
               `actual: ${result.volumeAnomaly.actualVolume}, ` +
               `expected: ${result.volumeAnomaly.expectedVolume}`,
-      metadata: result.volumeAnomaly,
+      metadata: { ...result.volumeAnomaly },
     });
   }
 
@@ -391,7 +391,7 @@ export function convertAnomalyToSignals(
       score: result.timeAnomaly.severity === 'high' ? 15 : 8,
       detail: `Time anomaly: email sent at unusual hour (${result.timeAnomaly.hour}:00), ` +
               `probability: ${(result.timeAnomaly.hourProbability * 100).toFixed(1)}%`,
-      metadata: result.timeAnomaly,
+      metadata: { ...result.timeAnomaly },
     });
   }
 
@@ -403,7 +403,7 @@ export function convertAnomalyToSignals(
       score: result.recipientAnomaly.severity === 'high' ? 18 : 10,
       detail: `Recipient anomaly: ${result.recipientAnomaly.unusualRecipients.length} ` +
               `unusual recipients detected`,
-      metadata: result.recipientAnomaly,
+      metadata: { ...result.recipientAnomaly },
     });
   }
 
@@ -415,7 +415,7 @@ export function convertAnomalyToSignals(
       score: Math.round(result.contentAnomaly.urgencyScore * 20),
       detail: `Content anomaly: urgency score ${(result.contentAnomaly.urgencyScore * 100).toFixed(0)}%` +
               (result.contentAnomaly.allCapsSubject ? ', ALL CAPS subject' : ''),
-      metadata: result.contentAnomaly,
+      metadata: { ...result.contentAnomaly },
     });
   }
 
@@ -489,7 +489,7 @@ export async function runBehavioralAnalysisLayer(
 
   if (!baseline) {
     return {
-      layer: 'behavioral' as any,
+      layer: 'behavioral',
       score: 0,
       confidence: 0.3,
       signals: [],
@@ -529,7 +529,7 @@ export async function runBehavioralAnalysisLayer(
       ageConfidence * 0.7;
 
     return {
-      layer: 'behavioral' as any,
+      layer: 'behavioral',
       score,
       confidence,
       signals,
@@ -541,7 +541,7 @@ export async function runBehavioralAnalysisLayer(
     };
   } catch (error) {
     return {
-      layer: 'behavioral' as any,
+      layer: 'behavioral',
       score: 0,
       confidence: 0.2,
       signals: [],

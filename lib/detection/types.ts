@@ -189,6 +189,27 @@ export type SignalType =
   | 'behavioral_anomaly'
   | 'anomaly_detected'
   | 'lookalike_detected'
+  // Domain correlation (Phase 4b)
+  | 'domain_age_bec_correlation'
+  | 'domain_age_lookalike_correlation'
+  | 'new_domain_in_links'
+  | 'compound_domain_risk'
+  // Macro analysis (Phase 4b)
+  | 'macro_obfuscated'
+  | 'macro_auto_exec'
+  | 'macro_suspicious_pattern'
+  | 'macro_network_activity'
+  // Redirect analysis (Phase 4b)
+  | 'redirect_chain_risk'
+  | 'protocol_downgrade'
+  | 'suspicious_tld_redirect'
+  | 'redirect_to_ip'
+  // Threat intelligence (Phase 4b)
+  | 'threat_intel_consensus'
+  | 'threat_intel_malware_family'
+  | 'threat_intel_tags'
+  | 'threat_intel_high_confidence'
+  | 'threat_intel_disagreement'
   // Phase 4c: Lookalike domain learning
   | 'lookalike_homoglyph'
   | 'lookalike_typosquat'
@@ -219,7 +240,7 @@ export type SignalType =
 
 // Analysis result from each layer
 export interface LayerResult {
-  layer: 'deterministic' | 'reputation' | 'lookalike' | 'ml' | 'bec' | 'llm' | 'sandbox';
+  layer: 'deterministic' | 'reputation' | 'lookalike' | 'ml' | 'bec' | 'llm' | 'sandbox' | 'behavioral';
   score: number; // 0-100
   confidence: number; // 0-1
   signals: Signal[];

@@ -122,7 +122,7 @@ export function correlateDomainAgeWithSignals(
     AMPLIFIABLE_SIGNAL_TYPES.some(type => s.type.includes(type) || s.type === type)
   );
 
-  if (hasAmplifiableSignals && domainAge.riskLevel !== 'safe') {
+  if (hasAmplifiableSignals) {
     amplificationApplied = true;
 
     // Check for BEC + new domain correlation

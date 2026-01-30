@@ -836,7 +836,7 @@ async function runSandboxAnalysis(email: ParsedEmail, tenantId: string): Promise
   // Phase 3: Enhanced Sandbox Analysis (+4 points)
   // Run deep attachment analysis when attachments have content
   const hasAttachmentContent = email.attachments.some(a => a.content && a.content.length > 0);
-  const sandboxEnabled = isModuleEnabled(tenantId, 'enableSandboxAnalysis');
+  const sandboxEnabled = isModuleEnabled(tenantId, 'enableAttachmentSandbox');
 
   if (sandboxEnabled && email.attachments.length > 0) {
     try {

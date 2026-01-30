@@ -79,14 +79,18 @@ export async function analyzeAttachmentDeep(
   // Run attachment analyzer
   const analysis = await analyzeAttachment(buffer, attachment.filename);
 
-  // Convert analyzer signals to pipeline signals
-  if (analysis.signals && analysis.signals.length > 0) {
-    for (const signal of analysis.signals) {
+  // Generate signals from risk factors
+  if (analysis.riskFactors && analysis.riskFactors.length > 0) {
+    for (const factor of analysis.riskFactors) {
+      const signalType = mapRiskFactorToSignalType(factor);
+      const severity = analysis.riskLevel === 'critical' || analysis.riskLevel === 'high'
+        ? 'critical'
+        : analysis.riskLevel === 'medium' ? 'warning' : 'info';
       signals.push({
-        type: signal.type as Signal['type'],
-        severity: signal.severity as Signal['severity'],
-        score: getSignalScore(signal.type, signal.severity),
-        detail: signal.detail,
+        type: signalType,
+        severity,
+        score: getSignalScore(signalType, severity),
+        detail: factor,
       });
     }
   }
@@ -101,7 +105,7 @@ export async function analyzeAttachmentDeep(
         sandboxResult = {
           verdict: 'malicious',
           malwareFamily: hashResult.malwareFamily,
-          sources: hashResult.sources || ['VirusTotal'],
+          sources: ['VirusTotal'], // Default source since HashCheckResult doesn't track sources
         };
 
         signals.push({
@@ -125,14 +129,27 @@ export async function analyzeAttachmentDeep(
   // Build archive contents if available
   let archiveContents: DeepAttachmentResult['archiveContents'];
   if (analysis.archiveContents) {
+    // Map ArchiveEntry[] to simpler format and calculate derived values
+    const entries = analysis.archiveContents.entries.map(e => ({
+      filename: e.filename,
+      size: e.size,
+      isDirectory: e.isDirectory,
+    }));
+    const totalFiles = entries.filter(e => !e.isDirectory).length;
+    const totalDirectories = entries.filter(e => e.isDirectory).length;
+    const containsExecutable = analysis.archiveContents.entries.some(e => e.isDangerous);
+    const containsMacroDocument = analysis.archiveContents.entries.some(e =>
+      e.extension === '.docm' || e.extension === '.xlsm' || e.extension === '.pptm'
+    );
+
     archiveContents = {
-      entries: analysis.archiveContents.entries || [],
-      totalFiles: analysis.archiveContents.totalFiles || 0,
-      totalDirectories: analysis.archiveContents.totalDirectories || 0,
-      containsExecutable: analysis.archiveContents.containsExecutable || false,
-      containsMacroDocument: analysis.archiveContents.containsMacroDocument || false,
+      entries,
+      totalFiles,
+      totalDirectories,
+      containsExecutable,
+      containsMacroDocument,
       isPasswordProtected: analysis.archiveContents.isPasswordProtected || false,
-      nestingLevel: analysis.archiveContents.nestingLevel || 0,
+      nestingLevel: analysis.archiveContents.maxDepth || 0,
     };
   }
 
@@ -140,16 +157,35 @@ export async function analyzeAttachmentDeep(
     filename: attachment.filename,
     riskScore: analysis.riskScore || 0,
     riskLevel: analysis.riskLevel || 'safe',
-    typeMismatch: analysis.typeMismatch || false,
+    typeMismatch: analysis.extensionMismatch || false,
     hasDoubleExtension: analysis.hasDoubleExtension || false,
     hasRtlOverride: analysis.hasRtlOverride || false,
     hasMacros: analysis.hasMacros || false,
-    isEncrypted: analysis.isEncrypted || false,
+    isEncrypted: analysis.isPasswordProtected || false,
     isExecutable: analysis.isExecutable || false,
     signals,
     archiveContents,
     sandboxResult,
   };
+}
+
+/**
+ * Map risk factor string to signal type
+ */
+function mapRiskFactorToSignalType(factor: string): Signal['type'] {
+  const lowerFactor = factor.toLowerCase();
+
+  if (lowerFactor.includes('macro')) return 'macro_enabled';
+  if (lowerFactor.includes('executable')) return 'executable';
+  if (lowerFactor.includes('password') || lowerFactor.includes('encrypted')) return 'password_protected_archive';
+  if (lowerFactor.includes('malware')) return 'attachment_malware';
+  if (lowerFactor.includes('double extension')) return 'dangerous_attachment';
+  if (lowerFactor.includes('rtl') || lowerFactor.includes('override')) return 'dangerous_attachment';
+  if (lowerFactor.includes('mismatch')) return 'dangerous_attachment';
+  if (lowerFactor.includes('script')) return 'dangerous_attachment';
+  if (lowerFactor.includes('archive')) return 'dangerous_attachment';
+
+  return 'dangerous_attachment';
 }
 
 /**

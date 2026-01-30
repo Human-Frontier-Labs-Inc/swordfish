@@ -377,3 +377,14 @@ export class SandboxService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
+
+/**
+ * Default sandbox service singleton instance
+ * Uses VirusTotal as the default provider with environment variable configuration
+ */
+export const sandboxService = new SandboxService({
+  provider: (process.env.SANDBOX_PROVIDER as SandboxConfig['provider']) || 'virustotal',
+  apiKey: process.env.SANDBOX_API_KEY || process.env.VIRUSTOTAL_API_KEY || '',
+  cacheResults: true,
+  cacheTtlMs: 3600000, // 1 hour
+});

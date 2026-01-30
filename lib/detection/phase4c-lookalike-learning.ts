@@ -47,7 +47,7 @@ export interface LearnedPattern {
   pattern: string;
   targetBrand: string;
   targetDomain: string;
-  attackType: 'homoglyph' | 'typosquat' | 'cousin';
+  attackType: 'homoglyph' | 'typosquat' | 'cousin' | 'exact';
   occurrences: number;
   averageConfidence: number;
   isGeneralized: boolean;
@@ -59,7 +59,7 @@ export interface LookalikeDetectionResult {
   isLookalike: boolean;
   targetBrand?: string;
   targetDomain?: string;
-  attackType?: 'homoglyph' | 'typosquat' | 'cousin';
+  attackType?: 'homoglyph' | 'typosquat' | 'cousin' | 'exact';
   baseConfidence: number;
   learningBoost: number;
   finalConfidence: number;
@@ -452,7 +452,7 @@ export class LookalikeLearningService {
   private containsLearnedVariant(
     testDomain: string,
     brandBase: string,
-    attackType: 'homoglyph' | 'typosquat' | 'cousin'
+    attackType: 'homoglyph' | 'typosquat' | 'cousin' | 'exact'
   ): boolean {
     // Extract core part from test domain (handle prefixes/suffixes like paypa1-new -> paypa1)
     const parts = testDomain.split('-');
