@@ -55,6 +55,8 @@ import {
 
 /**
  * Main detection pipeline - analyzes an email through all layers
+ * Phase 6: Optimized with parallel execution for independent layers
+ * Expected latency reduction: 40-60%
  */
 export async function analyzeEmail(
   email: ParsedEmail,
@@ -68,13 +70,34 @@ export async function analyzeEmail(
   let llmTokensUsed = 0;
   let reputationContext: EnhancedReputationContext | null = null;
 
-  // Layer 0: Email Type Classification (NEW - runs first)
-  // This classifies the email type BEFORE threat detection
-  let emailClassification: EmailClassification | null = null;
-  try {
-    emailClassification = await classifyEmailType(email);
+  // ============================================================================
+  // PHASE A: Run independent layers in parallel
+  // - Email Type Classification
+  // - Policy Evaluation
+  // - Enhanced Reputation Lookup
+  // ============================================================================
+  const [
+    classificationResult,
+    policyResult,
+    reputationLookupResult,
+  ] = await Promise.all([
+    // Layer 0: Email Type Classification
+    classifyEmailType(email).catch(error => {
+      console.error('Email classification error:', error);
+      return null;
+    }),
+    // Layer 1: Policy Evaluation
+    evaluatePolicies(email, tenantId).catch(error => {
+      console.error('Policy evaluation error:', error);
+      return { matched: false } as { matched: false };
+    }),
+    // Layer 2: Enhanced Reputation Lookup
+    runEnhancedReputationLookup(email),
+  ]);
 
-    // Add classification signal for transparency
+  // Process classification result
+  let emailClassification: EmailClassification | null = classificationResult;
+  if (emailClassification) {
     if (emailClassification.isKnownSender) {
       allSignals.push({
         type: 'classification',
@@ -90,91 +113,108 @@ export async function analyzeEmail(
         detail: `Detected as marketing email (${Math.round(emailClassification.confidence * 100)}% confidence)`,
       });
     }
-  } catch (error) {
-    console.error('Email classification error:', error);
-    // Continue without classification
   }
 
-  // Layer 1: Policy Evaluation (allowlists/blocklists)
-  try {
-    const policyResult = await evaluatePolicies(email, tenantId);
-
-    if (policyResult.matched) {
-      // Short-circuit based on policy
-      if (policyResult.action === 'allow') {
-        // Allowlisted sender - skip all detection
-        return {
-          messageId: email.messageId,
-          tenantId,
-          verdict: 'pass',
-          overallScore: 0,
-          confidence: 1.0,
-          signals: [{
-            type: 'policy',
-            severity: 'info',
-            score: 0,
-            detail: policyResult.reason || 'Sender is in allowlist',
-          }],
-          layerResults: [],
-          explanation: 'This email was allowed by policy.',
-          recommendation: 'Sender is on your allowlist.',
-          processingTimeMs: performance.now() - startTime,
-          analyzedAt: new Date(),
-          policyApplied: {
-            policyId: policyResult.policyId,
-            policyName: policyResult.policyName,
-            action: policyResult.action,
-          },
-        };
-      } else if (policyResult.action === 'block') {
-        // Blocklisted sender - block immediately
-        return {
-          messageId: email.messageId,
-          tenantId,
-          verdict: 'block',
-          overallScore: 100,
-          confidence: 1.0,
-          signals: [{
-            type: 'policy',
-            severity: 'critical',
-            score: 100,
-            detail: policyResult.reason || 'Sender is in blocklist',
-          }],
-          layerResults: [],
-          explanation: 'This email was blocked by policy.',
-          recommendation: 'Sender is on your blocklist.',
-          processingTimeMs: performance.now() - startTime,
-          analyzedAt: new Date(),
-          policyApplied: {
-            policyId: policyResult.policyId,
-            policyName: policyResult.policyName,
-            action: policyResult.action,
-          },
-        };
-      }
-      // Other actions (quarantine, tag) - continue with detection but note the policy
-      allSignals.push({
-        type: 'policy',
-        severity: 'info',
-        score: 0,
-        detail: `Policy "${policyResult.policyName}" matched: ${policyResult.reason}`,
-      });
+  // Check policy result - may short-circuit entire pipeline
+  if (policyResult.matched) {
+    if (policyResult.action === 'allow') {
+      return {
+        messageId: email.messageId,
+        tenantId,
+        verdict: 'pass',
+        overallScore: 0,
+        confidence: 1.0,
+        signals: [{
+          type: 'policy',
+          severity: 'info',
+          score: 0,
+          detail: policyResult.reason || 'Sender is in allowlist',
+        }],
+        layerResults: [],
+        explanation: 'This email was allowed by policy.',
+        recommendation: 'Sender is on your allowlist.',
+        processingTimeMs: performance.now() - startTime,
+        analyzedAt: new Date(),
+        policyApplied: {
+          policyId: policyResult.policyId,
+          policyName: policyResult.policyName,
+          action: policyResult.action,
+        },
+      };
+    } else if (policyResult.action === 'block') {
+      return {
+        messageId: email.messageId,
+        tenantId,
+        verdict: 'block',
+        overallScore: 100,
+        confidence: 1.0,
+        signals: [{
+          type: 'policy',
+          severity: 'critical',
+          score: 100,
+          detail: policyResult.reason || 'Sender is in blocklist',
+        }],
+        layerResults: [],
+        explanation: 'This email was blocked by policy.',
+        recommendation: 'Sender is on your blocklist.',
+        processingTimeMs: performance.now() - startTime,
+        analyzedAt: new Date(),
+        policyApplied: {
+          policyId: policyResult.policyId,
+          policyName: policyResult.policyName,
+          action: policyResult.action,
+        },
+      };
     }
-  } catch (error) {
-    // Log but don't fail if policy evaluation fails
-    console.error('Policy evaluation error:', error);
+    // Other actions (quarantine, tag) - continue with detection but note the policy
+    allSignals.push({
+      type: 'policy',
+      severity: 'info',
+      score: 0,
+      detail: `Policy "${policyResult.policyName}" matched: ${policyResult.reason}`,
+    });
   }
 
-  // Layer 2: Enhanced Reputation Lookup (runs FIRST to provide context for deterministic)
-  const { result: reputationResult, context: repContext } = await runEnhancedReputationLookup(email);
+  // Process reputation result
+  const { result: reputationResult, context: repContext } = reputationLookupResult;
   reputationContext = repContext;
   layerResults.push(reputationResult);
   allSignals.push(...reputationResult.signals);
 
-  // Layer 3: Deterministic Analysis (now has access to reputation context)
-  const deterministicResult = await runDeterministicAnalysis(email, reputationContext);
+  // ============================================================================
+  // PHASE B: Run analysis layers in parallel (after reputation context available)
+  // - Deterministic Analysis (needs reputationContext)
+  // - BEC Detection (needs emailClassification - skips for known marketing senders)
+  // - Sandbox Analysis (independent)
+  // ============================================================================
 
-  // Filter out false positives based on email classification AND sender reputation
+  // Check if BEC should be skipped before parallel execution
+  const skipBEC = emailClassification?.skipBECDetection && emailClassification.isKnownSender;
+
+  const [
+    deterministicResult,
+    becResultRaw,
+    sandboxResult,
+  ] = await Promise.all([
+    // Layer 3: Deterministic Analysis
+    runDeterministicAnalysis(email, reputationContext),
+    // Layer 5: BEC Detection (may be skipped)
+    skipBEC
+      ? Promise.resolve({
+          layer: 'bec' as const,
+          score: 0,
+          confidence: 1.0,
+          signals: [] as Signal[],
+          processingTimeMs: 0,
+          skipped: true,
+          skipReason: `Skipped for ${emailClassification!.type} email from known sender`,
+        })
+      : runBECAnalysis(email, tenantId),
+    // Layer 7: Sandbox Analysis
+    runSandboxAnalysis(email, tenantId),
+  ]);
+
+  // Process deterministic result
   let filteredDeterministicSignals = filterSignalsForEmailType(
     deterministicResult.signals,
     emailClassification
@@ -196,7 +236,7 @@ export async function analyzeEmail(
   layerResults.push(filteredDeterministicResult);
   allSignals.push(...filteredDeterministicSignals);
 
-  // Layer 3.5: Lookalike Domain Analysis (Phase 4c)
+  // Layer 3.5: Lookalike Domain Analysis (Phase 4c) - synchronous, runs inline
   // Detects brand impersonation via homoglyph, typosquat, and cousin domain attacks
   let lookalikeResult: LookalikeAnalysisResult | null = null;
   try {
@@ -225,7 +265,7 @@ export async function analyzeEmail(
     // Continue without lookalike analysis
   }
 
-  // Layer 4: ML Analysis
+  // Layer 4: ML Analysis (needs allSignals from prior layers - must be sequential)
   const mlResult = await runMLAnalysis(email, allSignals);
 
   // Filter ML signals for email type
@@ -241,29 +281,18 @@ export async function analyzeEmail(
   layerResults.push(filteredMLResult);
   allSignals.push(...filteredMLSignals);
 
-  // Layer 5: BEC Detection (Business Email Compromise)
-  // Skip BEC detection for marketing/transactional emails from known senders
+  // Process BEC result (from Phase B parallel execution)
   let becResult: LayerResult;
-  if (emailClassification?.skipBECDetection && emailClassification.isKnownSender) {
-    becResult = {
-      layer: 'bec',
-      score: 0,
-      confidence: 1.0,
-      signals: [],
-      processingTimeMs: 0,
-      skipped: true,
-      skipReason: `Skipped for ${emailClassification.type} email from known sender`,
-    };
+  if (skipBEC) {
+    becResult = becResultRaw;
   } else {
-    becResult = await runBECAnalysis(email, tenantId);
-
     // Filter BEC signals for email type
     const filteredBECSignals = filterSignalsForEmailType(
-      becResult.signals,
+      becResultRaw.signals,
       emailClassification
     );
     becResult = {
-      ...becResult,
+      ...becResultRaw,
       signals: filteredBECSignals,
       score: recalculateLayerScore(filteredBECSignals),
     };
@@ -271,7 +300,13 @@ export async function analyzeEmail(
   layerResults.push(becResult);
   allSignals.push(...becResult.signals);
 
-  // Layer 6: LLM Analysis (conditional - only for uncertain cases)
+  // Add sandbox result to layer results (from Phase B parallel execution)
+  layerResults.push(sandboxResult);
+  allSignals.push(...sandboxResult.signals);
+
+  // ============================================================================
+  // PHASE C: LLM Analysis (conditional - only for uncertain cases)
+  // ============================================================================
   // Skip LLM if explicitly disabled (e.g., for background sync to avoid timeout)
   const shouldUseLLM = !config.skipLLM && shouldInvokeLLM(
     filteredDeterministicResult.score,
@@ -316,10 +351,9 @@ export async function analyzeEmail(
     });
   }
 
-  // Layer 7: Sandbox (TODO - for attachments, placeholder for now)
-  const sandboxResult = await runSandboxAnalysis(email, tenantId);
-  layerResults.push(sandboxResult);
-  allSignals.push(...sandboxResult.signals);
+  // ============================================================================
+  // PHASE D: Final score calculation and verdict
+  // ============================================================================
 
   // Calculate final score and verdict
   let { overallScore, confidence } = calculateFinalScore(layerResults, config);
