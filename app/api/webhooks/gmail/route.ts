@@ -155,20 +155,15 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // If still no match and there's exactly one Gmail integration, use it anyway
-      // This handles the case where Nango doesn't return the email at all
-      if (integrations.length === 0 && allGmailIntegrations.length === 1) {
-        console.log(`[Gmail Webhook] Only one Gmail integration exists, using it and adding email`);
-
-        await sql`
-          UPDATE integrations
-          SET config = config || ${JSON.stringify({ email: emailAddress })}::jsonb,
-              updated_at = NOW()
-          WHERE id = ${allGmailIntegrations[0].id}
-        `;
-
-        integrations = allGmailIntegrations;
-        console.log(`[Gmail Webhook] Auto-healed single integration for ${emailAddress}`);
+      // SECURITY: Do NOT fall back to using a single integration without verification
+      // This would cause cross-tenant data leakage if multiple users have Gmail integrations
+      // and the email address doesn't match. Log a warning for debugging but reject the webhook.
+      if (integrations.length === 0) {
+        console.warn(
+          `[Gmail Webhook] SECURITY: No verified integration found for ${emailAddress}. ` +
+          `Found ${allGmailIntegrations.length} total Gmail integrations but none matched. ` +
+          `This webhook will be ignored to prevent cross-tenant data leakage.`
+        );
       }
     }
 
