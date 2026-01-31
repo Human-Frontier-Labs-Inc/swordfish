@@ -13,9 +13,9 @@
  * Expected Impact: +4 points to detection score
  */
 
-import type { ParsedEmail, Attachment, Signal, LayerResult } from './types';
-import { analyzeAttachment } from './attachment-analyzer';
-import { sandboxService } from '../threat-intel/sandbox';
+import type { ParsedEmail, Attachment, Signal, LayerResult } from '@/lib/detection/types';
+import { analyzeAttachment } from '@/lib/detection/attachment-analyzer';
+import { sandboxService } from '@/lib/threat-intel/sandbox';
 
 /**
  * Options for attachment analysis

@@ -13,6 +13,8 @@ vi.mock('@/lib/db', () => ({
 vi.mock('@/lib/integrations/gmail', () => ({
   modifyGmailMessage: vi.fn(),
   trashGmailMessage: vi.fn(),
+  untrashGmailMessage: vi.fn(),
+  findGmailMessageByMessageId: vi.fn().mockResolvedValue('gmail-msg-id-123'),
   getOrCreateQuarantineLabel: vi.fn().mockResolvedValue('Label_123'),
   getGmailAccessToken: vi.fn().mockResolvedValue('mock-token'),
 }));
@@ -301,9 +303,11 @@ describe('Remediation Service', () => {
 
       // Should succeed - cross-platform emails are valid
       expect(result.success).toBe(true);
+      // The code correctly looks up the Gmail API message ID by the RFC 5322 Message-ID header
+      // when the message_id format doesn't match the integration type
       expect(modifyGmailMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          messageId: '<IA4PR10MB8730...@namprd10.prod.outlook.com>',
+          messageId: 'gmail-msg-id-123', // The looked-up Gmail API message ID
         })
       );
     });
