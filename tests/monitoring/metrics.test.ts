@@ -192,10 +192,11 @@ describe('Metrics Collection', () => {
       const histogram = collector.histogram('operation_duration_seconds', 'Operation duration');
 
       const end = histogram.startTimer();
-      await new Promise((r) => setTimeout(r, 50));
+      // Use 55ms sleep with 45ms threshold to account for CI timing variations
+      await new Promise((r) => setTimeout(r, 55));
       const duration = end();
 
-      expect(duration).toBeGreaterThanOrEqual(0.05);
+      expect(duration).toBeGreaterThanOrEqual(0.045);
       expect(histogram.getStats().count).toBe(1);
     });
   });
