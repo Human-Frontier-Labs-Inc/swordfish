@@ -156,28 +156,70 @@ async function cleanupCrossTenantDuplicates() {
     tenantEmails.set(t.tenant_id, t.email);
   }
 
+  // Build domain to tenant mapping
+  const domainToTenant = new Map<string, string>();
+  for (const [tenantId, email] of tenantEmails) {
+    const domain = email.split('@')[1]?.toLowerCase();
+    if (domain) {
+      domainToTenant.set(domain, tenantId);
+      console.log(`Domain mapping: ${domain} => ${tenantId.substring(0, 30)}...`);
+    }
+  }
+  console.log('');
+
   for (const [messageId, records] of messageGroups) {
     console.log(`Message: ${messageId.substring(0, 50)}...`);
 
+    // Fetch to_addresses for one of the records to determine correct tenant
+    const recordWithTo = await sql`
+      SELECT to_addresses FROM email_verdicts WHERE id = ${records[0].id}::uuid
+    ` as { to_addresses: unknown[] }[];
+
+    const toAddresses = recordWithTo[0]?.to_addresses || [];
+    let correctTenantId: string | null = null;
+
+    // Extract recipient domain from to_addresses
+    for (const addr of toAddresses) {
+      let email = '';
+      if (typeof addr === 'string') {
+        email = addr;
+      } else if (addr && typeof addr === 'object') {
+        email = (addr as { address?: string; email?: string }).address ||
+                (addr as { address?: string; email?: string }).email || '';
+      }
+
+      const domain = email.split('@')[1]?.toLowerCase();
+      if (domain && domainToTenant.has(domain)) {
+        correctTenantId = domainToTenant.get(domain)!;
+        console.log(`  Recipient domain: ${domain} -> correct tenant: ${correctTenantId.substring(0, 30)}...`);
+        break;
+      }
+    }
+
     for (const record of records) {
       const integrationEmail = tenantEmails.get(record.tenant_id);
-      // Check if the from_address or the integration email indicates this is the wrong tenant
-      // The email should be in the recipient's tenant, but we're checking from_address patterns
+      const isCorrectTenant = record.tenant_id === correctTenantId;
       console.log(`  - Tenant: ${record.tenant_id.substring(0, 30)}...`);
       console.log(`    From: ${record.from_address}`);
       console.log(`    Integration email: ${integrationEmail || 'N/A'}`);
+      console.log(`    Correct owner: ${isCorrectTenant ? 'YES ✓' : 'NO ✗'}`);
       console.log(`    Created: ${record.created_at}`);
     }
 
-    // For the bug we're fixing: emails were duplicated with ~1 second apart
-    // The SECOND record (created later) is likely the duplicate
-    // Keep the first one, delete the second
-    if (records.length === 2) {
+    if (records.length === 2 && correctTenantId) {
+      // Delete the record from the WRONG tenant
+      const wrongRecord = records.find(r => r.tenant_id !== correctTenantId);
+      if (wrongRecord) {
+        toDelete.push(wrongRecord);
+        console.log(`  → Will DELETE record from wrong tenant (${tenantEmails.get(wrongRecord.tenant_id)})`);
+      }
+    } else if (records.length === 2) {
+      // Fall back to deleting later record if we can't determine correct tenant
       const sorted = records.sort((a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
-      toDelete.push(sorted[1]); // Delete the later record
-      console.log(`  → Will DELETE the later record (created ${sorted[1].created_at})`);
+      toDelete.push(sorted[1]);
+      console.log(`  → Will DELETE the later record (could not determine correct tenant)`);
     } else {
       console.log(`  → Skipping: ${records.length} records found (needs manual review)`);
     }
