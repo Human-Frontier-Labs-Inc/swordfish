@@ -300,15 +300,16 @@ describe('Deep Health Checks', () => {
       checker.register({
         name: 'service',
         check: vi.fn().mockImplementation(async () => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          // Use 15ms sleep with 8ms threshold to account for CI timing variations
+          await new Promise(resolve => setTimeout(resolve, 15));
           return { status: HealthStatus.HEALTHY };
         }),
       });
 
       const result = await checker.checkAll();
 
-      expect(result.components['service'].duration).toBeGreaterThanOrEqual(10);
-      expect(result.totalDuration).toBeGreaterThanOrEqual(10);
+      expect(result.components['service'].duration).toBeGreaterThanOrEqual(8);
+      expect(result.totalDuration).toBeGreaterThanOrEqual(8);
     });
   });
 

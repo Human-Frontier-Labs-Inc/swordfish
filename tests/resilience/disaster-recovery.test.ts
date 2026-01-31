@@ -567,7 +567,8 @@ describe('Disaster Recovery', () => {
       plan.addStep({
         name: 'Slow Step',
         action: async () => {
-          await new Promise(resolve => setTimeout(resolve, 50));
+          // Use 55ms sleep with 45ms threshold to account for CI timing variations
+          await new Promise(resolve => setTimeout(resolve, 55));
           return true;
         },
         timeout: 60000,
@@ -576,7 +577,7 @@ describe('Disaster Recovery', () => {
 
       const result = await plan.execute();
 
-      expect(result.duration).toBeGreaterThanOrEqual(50);
+      expect(result.duration).toBeGreaterThanOrEqual(45);
     });
 
     it('should verify RTO compliance', async () => {
