@@ -10,6 +10,7 @@ import type {
   Signal,
   DetectionConfig,
 } from './types';
+import { loggers } from '@/lib/logging/logger';
 import { DEFAULT_DETECTION_CONFIG } from './types';
 import { runDeterministicAnalysis } from './deterministic';
 import { runLLMAnalysis, shouldInvokeLLM, type LLMAnalysisContext } from './llm';
@@ -83,12 +84,12 @@ export async function analyzeEmail(
   ] = await Promise.all([
     // Layer 0: Email Type Classification
     classifyEmailType(email).catch(error => {
-      console.error('Email classification error:', error);
+      loggers.detection.error('Email classification failed', error instanceof Error ? error : new Error(String(error)));
       return null;
     }),
     // Layer 1: Policy Evaluation
     evaluatePolicies(email, tenantId).catch(error => {
-      console.error('Policy evaluation error:', error);
+      loggers.detection.error('Policy evaluation failed', error instanceof Error ? error : new Error(String(error)), { tenantId });
       return { matched: false } as { matched: false };
     }),
     // Layer 2: Enhanced Reputation Lookup
@@ -261,7 +262,7 @@ export async function analyzeEmail(
       });
     }
   } catch (error) {
-    console.error('Lookalike analysis error:', error);
+    loggers.detection.error('Lookalike analysis failed', error instanceof Error ? error : new Error(String(error)), { tenantId });
     // Continue without lookalike analysis
   }
 
@@ -395,7 +396,7 @@ export async function analyzeEmail(
       }
     }
   } catch (error) {
-    console.error('Feedback learning rule application error:', error);
+    loggers.detection.error('Feedback learning rule application failed', error instanceof Error ? error : new Error(String(error)), { tenantId });
   }
 
   // Apply sender reputation trust modifier FIRST (more precise than email classification)
@@ -672,7 +673,7 @@ async function runReputationLookup(email: ParsedEmail): Promise<LayerResult> {
       processingTimeMs: performance.now() - startTime,
     };
   } catch (error) {
-    console.error('Reputation lookup error:', error);
+    loggers.detection.error('Reputation lookup failed', error instanceof Error ? error : new Error(String(error)));
     return {
       layer: 'reputation',
       score: 0,
@@ -756,7 +757,7 @@ async function runMLAnalysis(email: ParsedEmail, _priorSignals: Signal[]): Promi
       },
     };
   } catch (error) {
-    console.error('ML analysis error:', error);
+    loggers.detection.error('ML analysis failed', error instanceof Error ? error : new Error(String(error)));
     return {
       layer: 'ml',
       score: 0,
@@ -867,7 +868,7 @@ async function runSandboxAnalysis(email: ParsedEmail, tenantId: string): Promise
         };
       }
     } catch (error) {
-      console.error('Enhanced sandbox analysis error:', error);
+      loggers.detection.error('Enhanced sandbox analysis failed', error instanceof Error ? error : new Error(String(error)), { tenantId });
       // Fall through to basic analysis
     }
   }
@@ -1056,7 +1057,7 @@ async function runBECAnalysis(email: ParsedEmail, tenantId: string): Promise<Lay
       },
     };
   } catch (error) {
-    console.error('BEC analysis error:', error);
+    loggers.detection.error('BEC analysis failed', error instanceof Error ? error : new Error(String(error)), { tenantId });
     return {
       layer: 'bec' as LayerResult['layer'],
       score: 0,

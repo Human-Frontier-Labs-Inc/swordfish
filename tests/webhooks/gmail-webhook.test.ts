@@ -106,15 +106,9 @@ vi.mock('@/lib/queue/gmail', () => ({
   isGmailQueueConfigured: vi.fn().mockReturnValue(false),
 }));
 
-// Mock Nango client
-vi.mock('@/lib/nango/client', () => ({
-  nango: {
-    getConnection: vi.fn().mockResolvedValue({
-      connection_config: { email: 'test@gmail.com' },
-      end_user: { email: 'test@gmail.com' },
-    }),
-  },
-  getNangoIntegrationKey: vi.fn().mockReturnValue('google'),
+// Mock OAuth module
+vi.mock('@/lib/oauth', () => ({
+  findIntegrationByEmail: vi.fn().mockResolvedValue(null),
 }));
 
 describe('Gmail Webhook Handler', () => {
@@ -206,17 +200,23 @@ describe('Gmail Webhook Handler', () => {
     it('should process valid Pub/Sub notification', async () => {
       const { POST } = await import('@/app/api/webhooks/gmail/route');
       const { sql } = await import('@/lib/db');
+      const { findIntegrationByEmail } = await import('@/lib/oauth');
 
-      // Mock finding integration (with nango_connection_id)
+      // Mock findIntegrationByEmail to return the integration
+      vi.mocked(findIntegrationByEmail).mockResolvedValue({
+        tenantId: 'tenant-1',
+        integrationId: 'int-1',
+      });
+
+      // Mock SQL for subsequent queries
       vi.mocked(sql)
         .mockResolvedValueOnce([
           {
             id: 'int-1',
             tenant_id: 'tenant-1',
-            nango_connection_id: 'nango-conn-1',
+            connected_email: 'test@gmail.com',
             config: {
               historyId: '11111',
-              email: 'test@gmail.com',
             },
           },
         ] as any)
@@ -326,6 +326,7 @@ describe('Gmail Webhook Handler', () => {
       const { autoRemediate } = await import('@/lib/workers/remediation');
       const { sendThreatNotification } = await import('@/lib/notifications/service');
       const { checkRateLimit } = await import('@/lib/webhooks/validation');
+      const { findIntegrationByEmail } = await import('@/lib/oauth');
 
       vi.mocked(checkRateLimit).mockReturnValue({
         limited: false,
@@ -333,16 +334,21 @@ describe('Gmail Webhook Handler', () => {
         resetAt: new Date(),
       });
 
-      // Mock finding integration (with nango_connection_id)
+      // Mock findIntegrationByEmail to return the integration
+      vi.mocked(findIntegrationByEmail).mockResolvedValue({
+        tenantId: 'tenant-1',
+        integrationId: 'int-1',
+      });
+
+      // Mock SQL for subsequent queries
       vi.mocked(sql)
         .mockResolvedValueOnce([
           {
             id: 'int-1',
             tenant_id: 'tenant-1',
-            nango_connection_id: 'nango-conn-1',
+            connected_email: 'test@gmail.com',
             config: {
               historyId: '11111',
-              email: 'test@gmail.com',
             },
           },
         ] as any)

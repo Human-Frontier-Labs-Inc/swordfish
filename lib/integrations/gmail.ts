@@ -2,11 +2,12 @@
  * Gmail / Google Workspace Integration
  * Handles Gmail API interactions
  *
- * Token management is handled by Nango - use getGmailAccessToken() to get a fresh token.
+ * Token management is handled by the OAuth token manager.
+ * Use getGmailAccessToken() to get a fresh token (auto-refreshes if needed).
  */
 
 import type { OAuthTokens } from './types';
-import { getAccessToken } from '@/lib/nango/client';
+import { getAccessToken as getTokenFromManager } from '@/lib/oauth/token-manager';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -99,13 +100,13 @@ async function gmailFetchWithRetry(
 }
 
 /**
- * Get a fresh Gmail access token from Nango
- * Use this instead of storing/refreshing tokens yourself
+ * Get a fresh Gmail access token
+ * Automatically refreshes if expired or about to expire
  *
- * @param nangoConnectionId - The Nango connection ID from the integrations table
+ * @param tenantId - The tenant ID to get the token for
  */
-export async function getGmailAccessToken(nangoConnectionId: string): Promise<string> {
-  return getAccessToken('gmail', nangoConnectionId);
+export async function getGmailAccessToken(tenantId: string): Promise<string> {
+  return getTokenFromManager(tenantId, 'gmail');
 }
 
 // Required scopes for email access
@@ -117,13 +118,21 @@ const SCOPES = [
 
 /**
  * Generate OAuth authorization URL for Gmail
+ *
+ * @param params.clientId - Google OAuth client ID
+ * @param params.redirectUri - Callback URL
+ * @param params.state - CSRF protection state token
+ * @param params.codeChallenge - PKCE code challenge (optional but recommended)
+ * @param params.loginHint - Pre-fill email address (optional)
  */
 export function getGmailAuthUrl(params: {
   clientId: string;
   redirectUri: string;
   state: string;
+  codeChallenge?: string;
+  loginHint?: string;
 }): string {
-  const { clientId, redirectUri, state } = params;
+  const { clientId, redirectUri, state, codeChallenge, loginHint } = params;
 
   const authParams = new URLSearchParams({
     client_id: clientId,
@@ -135,24 +144,37 @@ export function getGmailAuthUrl(params: {
     prompt: 'consent',
   });
 
+  // Add PKCE if provided
+  if (codeChallenge) {
+    authParams.set('code_challenge', codeChallenge);
+    authParams.set('code_challenge_method', 'S256');
+  }
+
+  // Add login hint to pre-fill email
+  if (loginHint) {
+    authParams.set('login_hint', loginHint);
+  }
+
   return `${GOOGLE_AUTH_URL}?${authParams}`;
 }
 
 /**
  * Exchange authorization code for tokens
+ *
+ * @param params.code - Authorization code from OAuth callback
+ * @param params.clientId - Google OAuth client ID
+ * @param params.clientSecret - Google OAuth client secret
+ * @param params.redirectUri - Same redirect URI used in authorization request
+ * @param params.codeVerifier - PKCE code verifier (if PKCE was used)
  */
 export async function exchangeGmailCode(params: {
   code: string;
   clientId: string;
   clientSecret: string;
   redirectUri: string;
+  codeVerifier?: string;
 }): Promise<OAuthTokens> {
-  const { code, clientId, clientSecret, redirectUri } = params;
-
-  console.log('[Gmail OAuth] Attempting code exchange with:');
-  console.log('[Gmail OAuth]   redirectUri:', redirectUri);
-  console.log('[Gmail OAuth]   clientId:', clientId?.substring(0, 30) + '...');
-  console.log('[Gmail OAuth]   code length:', code?.length || 0);
+  const { code, clientId, clientSecret, redirectUri, codeVerifier } = params;
 
   const body = new URLSearchParams({
     client_id: clientId,
@@ -161,6 +183,11 @@ export async function exchangeGmailCode(params: {
     redirect_uri: redirectUri,
     grant_type: 'authorization_code',
   });
+
+  // Add PKCE code verifier if provided
+  if (codeVerifier) {
+    body.set('code_verifier', codeVerifier);
+  }
 
   const response = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',

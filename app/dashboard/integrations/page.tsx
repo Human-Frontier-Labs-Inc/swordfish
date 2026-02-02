@@ -136,6 +136,15 @@ export default function IntegrationsPage() {
 
     try {
       const response = await fetch('/api/sync', { method: 'POST' });
+
+      // Check content type before parsing JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType?.includes('application/json')) {
+        const text = await response.text();
+        console.error('Sync returned non-JSON response:', text.substring(0, 200));
+        throw new Error('Sync service temporarily unavailable. Please try again.');
+      }
+
       const data = await response.json();
 
       if (!response.ok) {

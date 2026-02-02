@@ -37,9 +37,9 @@ describe('Phase 4a: First-Contact Risk Amplification', () => {
 
       const result = amplifyFirstContactRisk(signals);
 
-      // BEC + first-contact should amplify by 1.5x
+      // FP-001: BEC + first-contact now amplifies by 1.2x (reduced from 1.5x)
       const becSignal = result.find(s => s.type === 'bec_detected');
-      expect(becSignal?.score).toBeGreaterThanOrEqual(50); // 35 * 1.5 ≈ 52
+      expect(becSignal?.score).toBeGreaterThanOrEqual(36); // 35 * 1.2 = 42 (capped at 55)
     });
 
     it('should boost to critical when first-contact + executive title + financial request', () => {
@@ -118,7 +118,8 @@ describe('Phase 4a: Scoring Synergy Bonus', () => {
 
       const bonus = calculateSynergyBonus(signals);
 
-      expect(bonus).toBeGreaterThanOrEqual(5);
+      // FP-007: Reduced from 5 to 4 for 2 patterns
+      expect(bonus).toBeGreaterThanOrEqual(4);
     });
 
     it('should add higher bonus for 3+ attack patterns', () => {
@@ -130,7 +131,8 @@ describe('Phase 4a: Scoring Synergy Bonus', () => {
 
       const bonus = calculateSynergyBonus(signals);
 
-      expect(bonus).toBeGreaterThanOrEqual(8);
+      // FP-007: Reduced from 8 to 6 for 3 patterns
+      expect(bonus).toBeGreaterThanOrEqual(6);
     });
 
     it('should add maximum bonus for 4+ attack patterns (compound attack)', () => {
@@ -143,7 +145,8 @@ describe('Phase 4a: Scoring Synergy Bonus', () => {
 
       const bonus = calculateSynergyBonus(signals);
 
-      expect(bonus).toBeGreaterThanOrEqual(12);
+      // FP-007: Reduced from 12 to 8 (hard cap) for 4+ patterns
+      expect(bonus).toBeGreaterThanOrEqual(8);
     });
 
     it('should return 0 for single attack pattern', () => {

@@ -2,23 +2,24 @@
  * Microsoft 365 / Azure AD Integration
  * Handles Graph API interactions
  *
- * Token management is handled by Nango - use getO365AccessToken() to get a fresh token.
+ * SECURITY: Token management is handled by the direct OAuth token manager.
+ * No longer depends on Nango.
  */
 
 import type { OAuthTokens } from './types';
-import { getAccessToken } from '@/lib/nango/client';
+import { getAccessToken as getTokenFromManager } from '@/lib/oauth/token-manager';
 
 const MICROSOFT_AUTH_URL = 'https://login.microsoftonline.com';
 const GRAPH_API_URL = 'https://graph.microsoft.com/v1.0';
 
 /**
- * Get a fresh O365 access token from Nango
- * Use this instead of storing/refreshing tokens yourself
+ * Get a fresh O365 access token
+ * Uses direct OAuth token management with automatic refresh
  *
- * @param nangoConnectionId - The Nango connection ID from the integrations table
+ * @param tenantId - The SwordPhish tenant ID
  */
-export async function getO365AccessToken(nangoConnectionId: string): Promise<string> {
-  return getAccessToken('o365', nangoConnectionId);
+export async function getO365AccessToken(tenantId: string): Promise<string> {
+  return getTokenFromManager(tenantId, 'o365');
 }
 
 // Required scopes for email access
@@ -31,14 +32,17 @@ const SCOPES = [
 
 /**
  * Generate OAuth authorization URL for Microsoft 365
+ * Supports PKCE for enhanced security
  */
 export function getO365AuthUrl(params: {
   clientId: string;
   redirectUri: string;
   state: string;
+  codeChallenge?: string;
+  loginHint?: string;
   tenantId?: string;
 }): string {
-  const { clientId, redirectUri, state, tenantId = 'common' } = params;
+  const { clientId, redirectUri, state, codeChallenge, loginHint, tenantId = 'common' } = params;
 
   const authParams = new URLSearchParams({
     client_id: clientId,
@@ -50,20 +54,33 @@ export function getO365AuthUrl(params: {
     prompt: 'consent',
   });
 
+  // PKCE support (optional for confidential clients but adds security)
+  if (codeChallenge) {
+    authParams.set('code_challenge', codeChallenge);
+    authParams.set('code_challenge_method', 'S256');
+  }
+
+  // Pre-fill email for better UX
+  if (loginHint) {
+    authParams.set('login_hint', loginHint);
+  }
+
   return `${MICROSOFT_AUTH_URL}/${tenantId}/oauth2/v2.0/authorize?${authParams}`;
 }
 
 /**
  * Exchange authorization code for tokens
+ * Supports PKCE code verifier for enhanced security
  */
 export async function exchangeO365Code(params: {
   code: string;
   clientId: string;
   clientSecret: string;
   redirectUri: string;
+  codeVerifier?: string;
   tenantId?: string;
 }): Promise<OAuthTokens> {
-  const { code, clientId, clientSecret, redirectUri, tenantId = 'common' } = params;
+  const { code, clientId, clientSecret, redirectUri, codeVerifier, tenantId = 'common' } = params;
 
   const tokenUrl = `${MICROSOFT_AUTH_URL}/${tenantId}/oauth2/v2.0/token`;
 
@@ -75,6 +92,11 @@ export async function exchangeO365Code(params: {
     grant_type: 'authorization_code',
     scope: SCOPES,
   });
+
+  // PKCE support
+  if (codeVerifier) {
+    body.set('code_verifier', codeVerifier);
+  }
 
   const response = await fetch(tokenUrl, {
     method: 'POST',

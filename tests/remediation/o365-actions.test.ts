@@ -14,9 +14,14 @@ vi.mock('@/lib/db', () => ({
   sql: vi.fn(),
 }));
 
-vi.mock('@/lib/nango/client', () => ({
-  getAccessToken: vi.fn(),
-}));
+// Token retrieval is handled by getO365AccessToken in integration module
+vi.mock('@/lib/integrations/o365', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    getO365AccessToken: vi.fn().mockResolvedValue('mock-access-token'),
+  };
+});
 
 vi.mock('@/lib/db/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
@@ -29,13 +34,12 @@ vi.mock('@/lib/notifications/service', () => ({
 
 // Import after mocking
 import { sql } from '@/lib/db';
-import { getAccessToken } from '@/lib/nango/client';
 import { logAuditEvent } from '@/lib/db/audit';
 
 // Test constants
 const TEST_TENANT_ID = 'personal_test_user_001';
 const TEST_INTEGRATION_ID = 'int_o365_001';
-const TEST_NANGO_CONNECTION_ID = 'nango_conn_o365_001';
+const TEST_CONNECTED_EMAIL = 'user@example.com';
 const TEST_MESSAGE_ID = 'msg_o365_12345';
 const TEST_EXTERNAL_MESSAGE_ID = 'AAMkAGI2TG93AAA=';
 const TEST_ACCESS_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IkpCQU';
@@ -64,8 +68,7 @@ describe('O365 Email Remediation', () => {
     mockFetch = vi.fn();
     global.fetch = mockFetch;
 
-    // Default mock for getAccessToken
-    vi.mocked(getAccessToken).mockResolvedValue(TEST_ACCESS_TOKEN);
+    // Token retrieval is mocked via getO365AccessToken in vi.mock block above
   });
 
   afterEach(() => {
@@ -211,9 +214,9 @@ describe('O365 Email Remediation', () => {
 
     it('should quarantine email when verdict is quarantine', async () => {
       // Arrange
-      // Mock: Get integration with nango_connection_id
+      // Mock: Get connected integration
       vi.mocked(sql).mockResolvedValueOnce([
-        { nango_connection_id: TEST_NANGO_CONNECTION_ID },
+        { id: TEST_INTEGRATION_ID },
       ]);
 
       // Mock: Get email details from email_verdicts
@@ -269,7 +272,7 @@ describe('O365 Email Remediation', () => {
       // Arrange - Note: Block verdict now quarantines instead of deleting
       // This allows users to review and release false positives
       vi.mocked(sql).mockResolvedValueOnce([
-        { nango_connection_id: TEST_NANGO_CONNECTION_ID },
+        { id: TEST_INTEGRATION_ID },
       ]);
       vi.mocked(sql).mockResolvedValueOnce([mockEmailVerdict]);
       vi.mocked(sql).mockResolvedValueOnce([]);
@@ -313,9 +316,9 @@ describe('O365 Email Remediation', () => {
       );
     });
 
-    it('should return error when integration has no nango_connection_id', async () => {
-      // Arrange
-      vi.mocked(sql).mockResolvedValueOnce([{ nango_connection_id: null }]);
+    it('should return error when integration is not connected', async () => {
+      // Arrange - Return empty array (integration not found or not connected)
+      vi.mocked(sql).mockResolvedValueOnce([]);
 
       // Act
       const { autoRemediate } = await import('@/lib/workers/remediation');
@@ -331,13 +334,13 @@ describe('O365 Email Remediation', () => {
 
       // Assert
       expect(result.success).toBe(false);
-      expect(result.error).toContain('No Nango connection');
+      expect(result.error).toContain('Integration not found or not connected');
     });
 
     it('should write to threats table after successful remediation', async () => {
       // Arrange
       vi.mocked(sql).mockResolvedValueOnce([
-        { nango_connection_id: TEST_NANGO_CONNECTION_ID },
+        { id: TEST_INTEGRATION_ID },
       ]);
       vi.mocked(sql).mockResolvedValueOnce([mockEmailVerdict]);
       vi.mocked(sql).mockResolvedValueOnce([]); // No existing threat
@@ -398,7 +401,7 @@ describe('O365 Email Remediation', () => {
           integration_id: TEST_INTEGRATION_ID,
           integration_type: 'o365',
           status: 'pending',
-          nango_connection_id: TEST_NANGO_CONNECTION_ID,
+          connected_email: TEST_CONNECTED_EMAIL,
         },
       ]);
 
@@ -469,7 +472,7 @@ describe('O365 Email Remediation', () => {
           integration_id: TEST_INTEGRATION_ID,
           integration_type: 'o365',
           status: 'quarantined',
-          nango_connection_id: TEST_NANGO_CONNECTION_ID,
+          connected_email: TEST_CONNECTED_EMAIL,
         },
       ]);
 
@@ -522,7 +525,7 @@ describe('O365 Email Remediation', () => {
           integration_id: TEST_INTEGRATION_ID,
           integration_type: 'o365',
           status: 'quarantined',
-          nango_connection_id: TEST_NANGO_CONNECTION_ID,
+          connected_email: TEST_CONNECTED_EMAIL,
         },
       ]);
       vi.mocked(sql).mockResolvedValueOnce([]); // Update threat status
@@ -671,14 +674,14 @@ describe('Diagnostic Tests (O365)', () => {
   });
 
   describe('Integration health checks', () => {
-    it('should verify nango_connection_id is populated', async () => {
+    it('should verify connected_email is populated', async () => {
       vi.mocked(sql).mockResolvedValueOnce([
         {
           id: 'integration_id',
           tenant_id: TEST_TENANT_ID,
           type: 'o365',
           status: 'connected',
-          nango_connection_id: TEST_NANGO_CONNECTION_ID, // Should NOT be null
+          connected_email: TEST_CONNECTED_EMAIL, // Should NOT be null
           config: {
             email: 'user@company.onmicrosoft.com',
             subscriptionId: 'sub_123',
@@ -687,7 +690,7 @@ describe('Diagnostic Tests (O365)', () => {
       ]);
 
       const result = await sql`SELECT * FROM integrations WHERE tenant_id = ${TEST_TENANT_ID}`;
-      expect(result[0].nango_connection_id).not.toBeNull();
+      expect(result[0].connected_email).not.toBeNull();
     });
 
     it('should verify Graph API subscription is active', async () => {

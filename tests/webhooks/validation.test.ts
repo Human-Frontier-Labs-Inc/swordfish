@@ -4,6 +4,33 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mock google-auth-library before importing validation module
+vi.mock('google-auth-library', () => {
+  const MockOAuth2Client = vi.fn().mockImplementation(() => ({
+    verifyIdToken: vi.fn().mockImplementation(async ({ idToken, audience }) => {
+      // Decode the token to inspect claims (without real signature verification in tests)
+      const [, payloadB64] = idToken.split('.');
+      const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+
+      // Simulate Google's validation behavior
+      if (audience && payload.aud !== audience) {
+        throw new Error(`Wrong recipient, payload audience != requiredAudience (${payload.aud} != ${audience})`);
+      }
+
+      if (!payload.iss?.includes('accounts.google.com')) {
+        throw new Error(`Invalid token signature: wrong issuer ${payload.iss}`);
+      }
+
+      return {
+        getPayload: () => payload,
+      };
+    }),
+  }));
+
+  return { OAuth2Client: MockOAuth2Client };
+});
+
 import {
   validateGooglePubSub,
   validateMicrosoftGraph,
@@ -115,7 +142,8 @@ describe('Webhook Validation', () => {
       });
 
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('Invalid issuer');
+      // google-auth-library throws 'wrong issuer' error
+      expect(result.error).toMatch(/issuer/i);
     });
 
     it('should validate audience when expected', async () => {
@@ -137,7 +165,8 @@ describe('Webhook Validation', () => {
       });
 
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('Invalid audience');
+      // google-auth-library throws 'Wrong recipient' or 'audience' mismatch error
+      expect(result.error).toMatch(/audience|recipient/i);
     });
   });
 

@@ -9,6 +9,29 @@ export * from './sandbox';
 // Threat Intel Service exports
 export * from './intel-service';
 
+// Fallback system exports
+export {
+  executeWithFallback,
+  executeMultipleWithFallback,
+  recordSuccess,
+  recordFailure,
+  isCircuitOpen,
+  getCircuitStatus,
+  resetCircuit,
+  getAllCircuitStatuses,
+  getThreatIntelHealth,
+  isThreatIntelDegraded,
+  getDegradedServices,
+  getDefaultUrlCheckResult,
+  getDefaultDomainCheckResult,
+  getDefaultIpCheckResult,
+  DEFAULT_FALLBACK_CONFIG,
+  type FallbackConfig,
+  type FallbackResult,
+  type CircuitState,
+  type ServiceHealth,
+} from './fallback';
+
 // Feed exports
 export {
   checkUrlReputation,
@@ -92,6 +115,7 @@ export interface EmailThreatCheckResult {
 
 /**
  * Check all threat indicators in an email
+ * Uses graceful degradation when external APIs are unavailable
  */
 export async function checkEmailThreats(params: {
   urls: string[];
@@ -99,24 +123,57 @@ export async function checkEmailThreats(params: {
   headerIPs: string[];
 }): Promise<EmailThreatCheckResult> {
   const startTime = Date.now();
+  let degraded = false;
 
   // Import functions dynamically to avoid circular deps
   const { checkUrlReputation, checkDomainReputation } = await import('./feeds');
   const { checkDomainAge } = await import('./domain/age');
   const { checkIPReputation } = await import('./ip/blocklists');
 
-  // Check URLs in parallel
+  // Check URLs in parallel with error handling
   const urlResults = await Promise.all(
-    params.urls.slice(0, 50).map(url => checkUrlReputation(url)) // Limit to 50 URLs
+    params.urls.slice(0, 50).map(async (url) => {
+      try {
+        return await checkUrlReputation(url);
+      } catch (error) {
+        degraded = true;
+        console.warn(`[checkEmailThreats] URL check failed for ${url}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        return { url, isThreat: false, verdict: 'unknown', sources: [] };
+      }
+    })
   );
 
-  // Check sender domain age
-  const domainAgeResult = await checkDomainAge(params.senderDomain);
-  const domainReputationResult = await checkDomainReputation(params.senderDomain);
+  // Check sender domain age with fallback
+  let domainAgeResult: { ageInDays: number | null; riskScore: number; riskLevel: string };
+  try {
+    domainAgeResult = await checkDomainAge(params.senderDomain);
+  } catch (error) {
+    degraded = true;
+    console.warn(`[checkEmailThreats] Domain age check failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    domainAgeResult = { ageInDays: null, riskScore: 0, riskLevel: 'unknown' };
+  }
 
-  // Check IPs in parallel
+  // Check domain reputation with fallback
+  let domainReputationResult: { isThreat: boolean };
+  try {
+    domainReputationResult = await checkDomainReputation(params.senderDomain);
+  } catch (error) {
+    degraded = true;
+    console.warn(`[checkEmailThreats] Domain reputation check failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    domainReputationResult = { isThreat: false };
+  }
+
+  // Check IPs in parallel with error handling
   const ipResults = await Promise.all(
-    params.headerIPs.slice(0, 10).map(ip => checkIPReputation(ip)) // Limit to 10 IPs
+    params.headerIPs.slice(0, 10).map(async (ip) => {
+      try {
+        return await checkIPReputation(ip);
+      } catch (error) {
+        degraded = true;
+        console.warn(`[checkEmailThreats] IP check failed for ${ip}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        return { ip, isThreat: false, verdict: 'unknown' };
+      }
+    })
   );
 
   // Calculate overall risk
@@ -153,6 +210,11 @@ export async function checkEmailThreats(params: {
     overallVerdict = 'suspicious';
   } else {
     overallVerdict = 'clean';
+  }
+
+  // Log if system is degraded
+  if (degraded) {
+    console.warn('[checkEmailThreats] Operating in degraded mode - some threat intel APIs unavailable');
   }
 
   return {

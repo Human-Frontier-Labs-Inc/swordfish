@@ -14,9 +14,14 @@ vi.mock('@/lib/db', () => ({
   sql: vi.fn(),
 }));
 
-vi.mock('@/lib/nango/client', () => ({
-  getAccessToken: vi.fn(),
-}));
+// Token retrieval is handled by getGmailAccessToken in integration module
+vi.mock('@/lib/integrations/gmail', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    getGmailAccessToken: vi.fn().mockResolvedValue('mock-access-token'),
+  };
+});
 
 vi.mock('@/lib/db/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +34,6 @@ vi.mock('@/lib/notifications/service', () => ({
 
 // Import after mocking
 import { sql } from '@/lib/db';
-import { getAccessToken } from '@/lib/nango/client';
 import { logAuditEvent } from '@/lib/db/audit';
 
 // Types for test data
@@ -37,7 +41,7 @@ interface MockIntegration {
   id: string;
   tenant_id: string;
   type: string;
-  nango_connection_id: string | null;
+  connected_email: string | null;
   config: Record<string, unknown>;
   status: string;
 }
@@ -63,7 +67,7 @@ interface MockEmailVerdict {
 // Test constants
 const TEST_TENANT_ID = 'personal_test_user_001';
 const TEST_INTEGRATION_ID = 'int_gmail_001';
-const TEST_NANGO_CONNECTION_ID = 'nango_conn_001';
+const TEST_CONNECTED_EMAIL = 'user@example.com';
 const TEST_MESSAGE_ID = 'msg_12345abcdef';
 const TEST_EXTERNAL_MESSAGE_ID = '19bc5a61241b945f';
 const TEST_ACCESS_TOKEN = 'ya29.test_access_token';
@@ -79,8 +83,7 @@ describe('Gmail Email Remediation', () => {
     mockFetch = vi.fn();
     global.fetch = mockFetch;
 
-    // Default mock for getAccessToken
-    vi.mocked(getAccessToken).mockResolvedValue(TEST_ACCESS_TOKEN);
+    // Token retrieval is mocked via getGmailAccessToken in vi.mock block above
   });
 
   afterEach(() => {
@@ -252,7 +255,7 @@ describe('Gmail Email Remediation', () => {
       id: TEST_INTEGRATION_ID,
       tenant_id: TEST_TENANT_ID,
       type: 'gmail',
-      nango_connection_id: TEST_NANGO_CONNECTION_ID,
+      connected_email: TEST_CONNECTED_EMAIL,
       config: {},
       status: 'connected',
     };
@@ -275,9 +278,9 @@ describe('Gmail Email Remediation', () => {
 
     it('should quarantine email when verdict is quarantine', async () => {
       // Arrange
-      // Mock: Get integration with nango_connection_id
+      // Mock: Get connected integration
       vi.mocked(sql).mockResolvedValueOnce([
-        { nango_connection_id: TEST_NANGO_CONNECTION_ID },
+        { id: TEST_INTEGRATION_ID },
       ]);
 
       // Mock: Get email details from email_verdicts
@@ -335,7 +338,7 @@ describe('Gmail Email Remediation', () => {
       // Arrange - Note: Block verdict now quarantines instead of deleting
       // This allows users to review and release false positives
       vi.mocked(sql).mockResolvedValueOnce([
-        { nango_connection_id: TEST_NANGO_CONNECTION_ID },
+        { id: TEST_INTEGRATION_ID },
       ]);
       vi.mocked(sql).mockResolvedValueOnce([mockEmailVerdict]);
       vi.mocked(sql).mockResolvedValueOnce([]);
@@ -382,9 +385,9 @@ describe('Gmail Email Remediation', () => {
       );
     });
 
-    it('should return error when integration has no nango_connection_id', async () => {
-      // Arrange
-      vi.mocked(sql).mockResolvedValueOnce([{ nango_connection_id: null }]);
+    it('should return error when integration is not connected', async () => {
+      // Arrange - Return empty array (integration not found or not connected)
+      vi.mocked(sql).mockResolvedValueOnce([]);
 
       // Act
       const { autoRemediate } = await import('@/lib/workers/remediation');
@@ -400,7 +403,7 @@ describe('Gmail Email Remediation', () => {
 
       // Assert
       expect(result.success).toBe(false);
-      expect(result.error).toContain('No Nango connection');
+      expect(result.error).toContain('Integration not found or not connected');
     });
 
     it('should return error when integration not found', async () => {
@@ -427,7 +430,7 @@ describe('Gmail Email Remediation', () => {
     it('should write to threats table after successful remediation', async () => {
       // Arrange
       vi.mocked(sql).mockResolvedValueOnce([
-        { nango_connection_id: TEST_NANGO_CONNECTION_ID },
+        { id: TEST_INTEGRATION_ID },
       ]);
       vi.mocked(sql).mockResolvedValueOnce([mockEmailVerdict]);
       vi.mocked(sql).mockResolvedValueOnce([]); // No existing threat
@@ -477,7 +480,7 @@ describe('Gmail Email Remediation', () => {
     it('should update existing threat if already exists', async () => {
       // Arrange
       vi.mocked(sql).mockResolvedValueOnce([
-        { nango_connection_id: TEST_NANGO_CONNECTION_ID },
+        { id: TEST_INTEGRATION_ID },
       ]);
       vi.mocked(sql).mockResolvedValueOnce([mockEmailVerdict]);
       vi.mocked(sql).mockResolvedValueOnce([{ id: 'existing_threat_id' }]); // Existing threat
@@ -528,7 +531,7 @@ describe('Gmail Email Remediation', () => {
     it('should handle Gmail API rate limiting with retry', async () => {
       // Arrange
       vi.mocked(sql).mockResolvedValueOnce([
-        { nango_connection_id: TEST_NANGO_CONNECTION_ID },
+        { id: TEST_INTEGRATION_ID },
       ]);
       vi.mocked(sql).mockResolvedValueOnce([mockEmailVerdict]);
       vi.mocked(sql).mockResolvedValueOnce([]);
@@ -577,7 +580,7 @@ describe('Gmail Email Remediation', () => {
     it('should handle token expiration gracefully', async () => {
       // Arrange
       vi.mocked(sql).mockResolvedValueOnce([
-        { nango_connection_id: TEST_NANGO_CONNECTION_ID },
+        { id: TEST_INTEGRATION_ID },
       ]);
       vi.mocked(sql).mockResolvedValueOnce([mockEmailVerdict]);
       vi.mocked(sql).mockResolvedValueOnce([]);
@@ -635,7 +638,7 @@ describe('Gmail Email Remediation', () => {
           integration_id: TEST_INTEGRATION_ID,
           integration_type: 'gmail',
           status: 'pending',
-          nango_connection_id: TEST_NANGO_CONNECTION_ID,
+          connected_email: TEST_CONNECTED_EMAIL,
         },
       ]);
 
@@ -708,7 +711,7 @@ describe('Gmail Email Remediation', () => {
           integration_id: TEST_INTEGRATION_ID,
           integration_type: 'gmail',
           status: 'quarantined',
-          nango_connection_id: TEST_NANGO_CONNECTION_ID,
+          connected_email: TEST_CONNECTED_EMAIL,
         },
       ]);
 
@@ -763,7 +766,7 @@ describe('Gmail Email Remediation', () => {
           integration_id: TEST_INTEGRATION_ID,
           integration_type: 'gmail',
           status: 'quarantined',
-          nango_connection_id: TEST_NANGO_CONNECTION_ID,
+          connected_email: TEST_CONNECTED_EMAIL,
         },
       ]);
       vi.mocked(sql).mockResolvedValueOnce([]); // Update threat status
@@ -820,9 +823,9 @@ describe('Gmail Sync Pipeline Integration', () => {
 
 describe('Diagnostic Tests', () => {
   describe('Integration health checks', () => {
-    it('should verify nango_connection_id is populated', async () => {
+    it('should verify connected_email is populated', async () => {
       // This test helps diagnose the "test email not detected" issue
-      // Check that integrations table has nango_connection_id
+      // Check that integrations table has connected_email set
 
       vi.mocked(sql).mockResolvedValueOnce([
         {
@@ -830,7 +833,7 @@ describe('Diagnostic Tests', () => {
           tenant_id: TEST_TENANT_ID,
           type: 'gmail',
           status: 'connected',
-          nango_connection_id: TEST_NANGO_CONNECTION_ID, // Should NOT be null
+          connected_email: TEST_CONNECTED_EMAIL, // Should NOT be null
           config: {
             email: 'user@gmail.com',
             historyId: '12345',
@@ -839,7 +842,7 @@ describe('Diagnostic Tests', () => {
       ]);
 
       const result = await sql`SELECT * FROM integrations WHERE tenant_id = ${TEST_TENANT_ID}`;
-      expect(result[0].nango_connection_id).not.toBeNull();
+      expect(result[0].connected_email).not.toBeNull();
     });
 
     it('should verify Gmail watch is registered', async () => {

@@ -4,11 +4,52 @@
  * Aggregates intelligence from multiple threat feeds for URLs, domains, and IPs
  */
 
+import {
+  executeWithFallback,
+  getDefaultUrlCheckResult,
+  getDefaultDomainCheckResult,
+  getDefaultIpCheckResult,
+  type FallbackConfig,
+  DEFAULT_FALLBACK_CONFIG,
+} from './fallback';
+import { loggers } from '@/lib/logging/logger';
+
+const log = loggers.threatIntel;
+
+/**
+ * Per-service cache TTL configuration
+ * Different data types have different update frequencies:
+ * - Domain info: Changes infrequently, safe to cache longer
+ * - URL reputation: Can change as URLs get blacklisted
+ * - IP reputation: Changes frequently, needs shorter TTL
+ */
+export interface CacheTtlConfig {
+  /** URL reputation cache TTL in ms (default: 1 hour) */
+  urlTtlMs?: number;
+  /** Domain reputation cache TTL in ms (default: 24 hours - rarely changes) */
+  domainTtlMs?: number;
+  /** IP reputation cache TTL in ms (default: 15 minutes - changes frequently) */
+  ipTtlMs?: number;
+}
+
+/**
+ * Default cache TTLs optimized for each data type
+ */
+export const DEFAULT_CACHE_TTLS: Required<CacheTtlConfig> = {
+  urlTtlMs: 3600000,      // 1 hour - URLs can get blacklisted
+  domainTtlMs: 86400000,  // 24 hours - domain info rarely changes
+  ipTtlMs: 900000,        // 15 minutes - IP reputation changes frequently
+};
+
 export interface ThreatIntelConfig {
   apiKey: string;
   baseUrl?: string;
   feeds?: string[];
+  /** @deprecated Use cacheTtls instead for per-service TTLs */
   cacheTtlMs?: number;
+  /** Per-service cache TTL configuration */
+  cacheTtls?: CacheTtlConfig;
+  fallbackConfig?: Partial<FallbackConfig>;
 }
 
 export interface UrlCheckResult {
@@ -59,7 +100,8 @@ export class ThreatIntelService {
   private urlCache: Map<string, CacheEntry<UrlCheckResult>> = new Map();
   private domainCache: Map<string, CacheEntry<DomainCheckResult>> = new Map();
   private ipCache: Map<string, CacheEntry<IpCheckResult>> = new Map();
-  private cacheTtlMs: number;
+  private cacheTtls: Required<CacheTtlConfig>;
+  private fallbackConfig: FallbackConfig;
 
   constructor(config: ThreatIntelConfig) {
     this.config = {
@@ -67,37 +109,63 @@ export class ThreatIntelService {
       baseUrl: config.baseUrl || 'https://api.threatintel.example.com/v1',
       feeds: config.feeds || ['default'],
     };
-    this.cacheTtlMs = config.cacheTtlMs || 3600000; // 1 hour default
+    // Support both legacy single TTL and new per-service TTLs
+    if (config.cacheTtls) {
+      this.cacheTtls = { ...DEFAULT_CACHE_TTLS, ...config.cacheTtls };
+    } else if (config.cacheTtlMs) {
+      // Legacy: Use same TTL for all caches
+      this.cacheTtls = {
+        urlTtlMs: config.cacheTtlMs,
+        domainTtlMs: config.cacheTtlMs,
+        ipTtlMs: config.cacheTtlMs,
+      };
+    } else {
+      // Default: Use optimized per-service TTLs
+      this.cacheTtls = { ...DEFAULT_CACHE_TTLS };
+    }
+    this.fallbackConfig = { ...DEFAULT_FALLBACK_CONFIG, ...config.fallbackConfig };
   }
 
   /**
    * Check URL against threat intelligence feeds
+   * Uses fallback when API is unavailable
    */
   async checkUrl(url: string): Promise<UrlCheckResult> {
     // Check cache first
     const cached = this.urlCache.get(url);
-    if (cached && Date.now() - cached.timestamp < this.cacheTtlMs) {
+    if (cached && Date.now() - cached.timestamp < this.cacheTtls.urlTtlMs) {
       return cached.data;
     }
 
-    const response = await fetch(`${this.config.baseUrl}/url/check`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': this.config.apiKey,
+    const { data: result } = await executeWithFallback(
+      'threat-intel-service',
+      async () => {
+        const response = await fetch(`${this.config.baseUrl}/url/check`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': this.config.apiKey,
+          },
+          body: JSON.stringify({ url }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        return {
+          url: data.url || url,
+          isMalicious: data.threat_types?.length > 0 || data.risk_score > 70,
+          threatTypes: data.threat_types || [],
+          riskScore: data.risk_score || 0,
+          lastSeen: data.last_seen,
+        } as UrlCheckResult;
       },
-      body: JSON.stringify({ url }),
-    });
-
-    const data = await response.json();
-
-    const result: UrlCheckResult = {
-      url: data.url,
-      isMalicious: data.threat_types?.length > 0 || data.risk_score > 70,
-      threatTypes: data.threat_types || [],
-      riskScore: data.risk_score || 0,
-      lastSeen: data.last_seen,
-    };
+      () => getDefaultUrlCheckResult(url),
+      this.fallbackConfig
+    );
 
     // Cache result
     this.urlCache.set(url, {
@@ -110,33 +178,45 @@ export class ThreatIntelService {
 
   /**
    * Check domain reputation
+   * Uses fallback when API is unavailable
    */
   async checkDomain(domain: string): Promise<DomainCheckResult> {
     // Check cache first
     const cached = this.domainCache.get(domain);
-    if (cached && Date.now() - cached.timestamp < this.cacheTtlMs) {
+    if (cached && Date.now() - cached.timestamp < this.cacheTtls.domainTtlMs) {
       return cached.data;
     }
 
-    const response = await fetch(`${this.config.baseUrl}/domain/check`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': this.config.apiKey,
+    const { data: result } = await executeWithFallback(
+      'threat-intel-service',
+      async () => {
+        const response = await fetch(`${this.config.baseUrl}/domain/check`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': this.config.apiKey,
+          },
+          body: JSON.stringify({ domain }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        return {
+          domain: data.domain || domain,
+          isSuspicious: data.reputation_score < 30 || data.categories?.length > 0,
+          reputationScore: data.reputation_score || 50,
+          categories: data.categories || [],
+          registrar: data.registrar,
+          ageDays: data.age_days || 0,
+        } as DomainCheckResult;
       },
-      body: JSON.stringify({ domain }),
-    });
-
-    const data = await response.json();
-
-    const result: DomainCheckResult = {
-      domain: data.domain,
-      isSuspicious: data.reputation_score < 30 || data.categories?.length > 0,
-      reputationScore: data.reputation_score || 50,
-      categories: data.categories || [],
-      registrar: data.registrar,
-      ageDays: data.age_days || 0,
-    };
+      () => getDefaultDomainCheckResult(domain),
+      this.fallbackConfig
+    );
 
     // Cache result
     this.domainCache.set(domain, {
@@ -149,33 +229,45 @@ export class ThreatIntelService {
 
   /**
    * Check IP reputation
+   * Uses fallback when API is unavailable
    */
   async checkIp(ip: string): Promise<IpCheckResult> {
     // Check cache first
     const cached = this.ipCache.get(ip);
-    if (cached && Date.now() - cached.timestamp < this.cacheTtlMs) {
+    if (cached && Date.now() - cached.timestamp < this.cacheTtls.ipTtlMs) {
       return cached.data;
     }
 
-    const response = await fetch(`${this.config.baseUrl}/ip/check`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': this.config.apiKey,
+    const { data: result } = await executeWithFallback(
+      'threat-intel-service',
+      async () => {
+        const response = await fetch(`${this.config.baseUrl}/ip/check`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': this.config.apiKey,
+          },
+          body: JSON.stringify({ ip }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        return {
+          ip: data.ip || ip,
+          isProxy: data.is_proxy || false,
+          isTor: data.is_tor || false,
+          isDatacenter: data.is_datacenter || false,
+          abuseConfidence: data.abuse_confidence || 0,
+          country: data.country,
+        } as IpCheckResult;
       },
-      body: JSON.stringify({ ip }),
-    });
-
-    const data = await response.json();
-
-    const result: IpCheckResult = {
-      ip: data.ip,
-      isProxy: data.is_proxy || false,
-      isTor: data.is_tor || false,
-      isDatacenter: data.is_datacenter || false,
-      abuseConfidence: data.abuse_confidence || 0,
-      country: data.country,
-    };
+      () => getDefaultIpCheckResult(ip),
+      this.fallbackConfig
+    );
 
     // Cache result
     this.ipCache.set(ip, {
@@ -235,9 +327,10 @@ export class ThreatIntelService {
 
   /**
    * Batch check multiple indicators
+   * Returns a map of indicator -> result with unknown status for failed checks
    */
-  async batchCheck(indicators: string[]): Promise<Map<string, boolean>> {
-    const results = new Map<string, boolean>();
+  async batchCheck(indicators: string[]): Promise<Map<string, boolean | 'unknown'>> {
+    const results = new Map<string, boolean | 'unknown'>();
 
     // Process in parallel
     await Promise.all(
@@ -246,7 +339,10 @@ export class ThreatIntelService {
           const intel = await this.aggregateIntelligence(indicator);
           results.set(indicator, intel.isMalicious);
         } catch {
-          results.set(indicator, false); // Default to safe on error
+          // SECURITY FIX: Do NOT default to safe (false) on error
+          // Instead, mark as 'unknown' so callers can handle appropriately
+          results.set(indicator, 'unknown');
+          log.warn('Batch check failed, marking as unknown', { indicator });
         }
       })
     );
@@ -276,5 +372,31 @@ export class ThreatIntelService {
     this.urlCache.clear();
     this.domainCache.clear();
     this.ipCache.clear();
+  }
+
+  /**
+   * Get current cache TTL configuration
+   */
+  getCacheTtls(): Required<CacheTtlConfig> {
+    return { ...this.cacheTtls };
+  }
+
+  /**
+   * Get cache statistics for monitoring
+   */
+  getCacheStats(): {
+    urlCacheSize: number;
+    domainCacheSize: number;
+    ipCacheSize: number;
+    urlTtlMs: number;
+    domainTtlMs: number;
+    ipTtlMs: number;
+  } {
+    return {
+      urlCacheSize: this.urlCache.size,
+      domainCacheSize: this.domainCache.size,
+      ipCacheSize: this.ipCache.size,
+      ...this.cacheTtls,
+    };
   }
 }

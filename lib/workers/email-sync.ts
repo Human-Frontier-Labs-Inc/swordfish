@@ -87,7 +87,6 @@ export interface IntegrationRecord {
   tenant_id: string;
   type: string;
   config: Record<string, unknown>;
-  nango_connection_id: string | null;
   last_sync_at: Date | null;
 }
 
@@ -98,7 +97,7 @@ export async function runFullSync(): Promise<SyncResult[]> {
   console.log('Starting full email sync...');
 
   const integrations = await sql`
-    SELECT id, tenant_id, type, config, nango_connection_id, last_sync_at
+    SELECT id, tenant_id, type, config, last_sync_at
     FROM integrations
     WHERE status = 'connected'
     AND (config->>'syncEnabled')::boolean = true
@@ -163,24 +162,15 @@ async function syncO365Integration(
   let threatsFound = 0;
   let timedOut = false;
 
-  // Check for Nango connection
-  if (!integration.nango_connection_id) {
-    const syncError = categorizeError(new Error('No Nango connection configured'));
-    errors.push('No Nango connection configured');
-    detailedErrors.push(syncError);
-    await updateIntegrationError(integration.id, 'No Nango connection configured');
-    return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
-  }
-
-  // Get fresh token from Nango (handles refresh automatically)
+  // Get fresh token using direct OAuth (handles refresh automatically)
   let accessToken: string;
   try {
-    accessToken = await getO365AccessToken(integration.nango_connection_id);
+    accessToken = await getO365AccessToken(integration.tenant_id);
   } catch (error) {
     const syncError = categorizeError(error);
     errors.push(`Token retrieval failed: ${error}`);
     detailedErrors.push(syncError);
-    await updateIntegrationError(integration.id, 'Token retrieval failed');
+    await updateIntegrationError(integration.id, 'Token retrieval failed - reconnection required');
     return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
   }
 
@@ -265,12 +255,27 @@ async function syncO365Integration(
       }
     }
 
-    // Update last sync time (even if partial sync due to timeout)
-    await sql`
-      UPDATE integrations
-      SET last_sync_at = NOW(), error_message = ${timedOut ? 'Partial sync - timeout' : null}, updated_at = NOW()
-      WHERE id = ${integration.id}
-    `;
+    // SECURITY FIX: Only update last_sync_at on COMPLETE sync
+    // Updating on timeout would cause the next sync to miss unprocessed emails
+    if (!timedOut && errors.length === 0) {
+      // Full successful sync - safe to advance last_sync_at
+      await sql`
+        UPDATE integrations
+        SET last_sync_at = NOW(), error_message = NULL, updated_at = NOW()
+        WHERE id = ${integration.id}
+      `;
+    } else {
+      // Partial sync - do NOT advance last_sync_at to avoid missing emails
+      const errorSummary = timedOut
+        ? `Partial sync - timeout after ${emailsProcessed} emails`
+        : `Partial sync - ${errors.length} errors`;
+      await sql`
+        UPDATE integrations
+        SET error_message = ${errorSummary}, updated_at = NOW()
+        WHERE id = ${integration.id}
+      `;
+      console.warn(`[O365 Sync] ${errorSummary} - last_sync_at NOT advanced to ensure no emails missed`);
+    }
 
     console.log(`[O365 Sync] Completed: ${emailsProcessed} processed, ${emailsSkipped} skipped, ${errors.length} errors`);
   } catch (error) {
@@ -317,24 +322,15 @@ async function syncGmailIntegration(
   let threatsFound = 0;
   let timedOut = false;
 
-  // Check for Nango connection
-  if (!integration.nango_connection_id) {
-    const syncError = categorizeError(new Error('No Nango connection configured'));
-    errors.push('No Nango connection configured');
-    detailedErrors.push(syncError);
-    await updateIntegrationError(integration.id, 'No Nango connection configured');
-    return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
-  }
-
-  // Get fresh token from Nango (handles refresh automatically)
+  // Get fresh token using direct OAuth (handles refresh automatically)
   let accessToken: string;
   try {
-    accessToken = await getGmailAccessToken(integration.nango_connection_id);
+    accessToken = await getGmailAccessToken(integration.tenant_id);
   } catch (error) {
     const syncError = categorizeError(error);
     errors.push(`Token retrieval failed: ${error}`);
     detailedErrors.push(syncError);
-    await updateIntegrationError(integration.id, 'Token retrieval failed');
+    await updateIntegrationError(integration.id, 'Token retrieval failed - reconnection required');
     return createResult(integration, emailsProcessed, emailsSkipped, threatsFound, errors, detailedErrors, startTime, timedOut);
   }
 
@@ -428,12 +424,27 @@ async function syncGmailIntegration(
       }
     }
 
-    // Update last sync time (even if partial sync due to timeout)
-    await sql`
-      UPDATE integrations
-      SET last_sync_at = NOW(), error_message = ${timedOut ? 'Partial sync - timeout' : null}, updated_at = NOW()
-      WHERE id = ${integration.id}
-    `;
+    // SECURITY FIX: Only update last_sync_at on COMPLETE sync
+    // Updating on timeout would cause the next sync to miss unprocessed emails
+    if (!timedOut && errors.length === 0) {
+      // Full successful sync - safe to advance last_sync_at
+      await sql`
+        UPDATE integrations
+        SET last_sync_at = NOW(), error_message = NULL, updated_at = NOW()
+        WHERE id = ${integration.id}
+      `;
+    } else {
+      // Partial sync - do NOT advance last_sync_at to avoid missing emails
+      const errorSummary = timedOut
+        ? `Partial sync - timeout after ${emailsProcessed} emails`
+        : `Partial sync - ${errors.length} errors`;
+      await sql`
+        UPDATE integrations
+        SET error_message = ${errorSummary}, updated_at = NOW()
+        WHERE id = ${integration.id}
+      `;
+      console.warn(`[Gmail Sync] ${errorSummary} - last_sync_at NOT advanced to ensure no emails missed`);
+    }
 
     console.log(`[Gmail Sync] Completed: ${emailsProcessed} processed, ${emailsSkipped} skipped, ${errors.length} errors`);
   } catch (error) {
@@ -517,7 +528,7 @@ function createResult(
  */
 export async function syncTenant(tenantId: string): Promise<SyncResult[]> {
   const integrations = await sql`
-    SELECT id, tenant_id, type, config, nango_connection_id, last_sync_at
+    SELECT id, tenant_id, type, config, last_sync_at
     FROM integrations
     WHERE tenant_id = ${tenantId}
     AND status = 'connected'

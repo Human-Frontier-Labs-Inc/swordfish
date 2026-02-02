@@ -223,12 +223,12 @@ describe('Database Schema', () => {
     });
   });
 
-  describe('Integrations Table - Nango Support', () => {
-    it('should have nango_connection_id column', async () => {
+  describe('Integrations Table - Direct OAuth Support', () => {
+    it('should have connected_email column', async () => {
       try {
         const result = await sql`
           SELECT column_name FROM information_schema.columns
-          WHERE table_name = 'integrations' AND column_name = 'nango_connection_id'
+          WHERE table_name = 'integrations' AND column_name = 'connected_email'
         `;
         expect(result.length).toBe(1);
       } catch {

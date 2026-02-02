@@ -49,6 +49,9 @@ export function parseEmail(rawEmail: string): ParsedEmail {
   // Parse body
   const bodyContent = lines.slice(headerEndIndex).join('\n');
 
+  // Parse MIME multipart content (including attachments)
+  const { body, attachments } = parseMimeContent(bodyContent, headers['content-type']);
+
   return {
     messageId: headers['message-id'] || generateMessageId(),
     subject: decodeHeader(headers['subject'] || ''),
@@ -58,8 +61,8 @@ export function parseEmail(rawEmail: string): ParsedEmail {
     cc: headers['cc'] ? parseEmailAddressList(headers['cc']) : undefined,
     date: parseDate(headers['date']),
     headers,
-    body: parseBody(bodyContent, headers['content-type']),
-    attachments: [], // TODO: Parse MIME attachments
+    body,
+    attachments,
     rawHeaders: lines.slice(0, headerEndIndex).join('\n'),
   };
 }
@@ -156,20 +159,62 @@ export function parseAuthenticationResults(header: string): AuthenticationResult
 // Helper functions
 
 function parseEmailAddress(raw: string): EmailAddress {
-  // Handle format: "Display Name" <email@domain.com> or just email@domain.com
-  const match = raw.match(/^(?:"?([^"<]*)"?\s*)?<?([^<>\s]+@[^<>\s]+)>?$/);
+  const trimmed = raw.trim();
 
-  if (match) {
-    const address = match[2].toLowerCase();
+  // Format 1: "Display Name" <email@domain.com>
+  const quotedMatch = trimmed.match(/^"([^"]+)"\s*<([^<>\s]+@[^<>\s]+)>$/);
+  if (quotedMatch) {
+    const address = quotedMatch[2].toLowerCase();
     return {
       address,
-      displayName: match[1]?.trim(),
+      displayName: quotedMatch[1].trim(),
       domain: extractDomain(address),
     };
   }
 
-  // Fallback
-  const address = raw.trim().toLowerCase();
+  // Format 2: Display Name <email@domain.com>
+  const angleMatch = trimmed.match(/^([^<]+)<([^<>\s]+@[^<>\s]+)>$/);
+  if (angleMatch) {
+    const address = angleMatch[2].toLowerCase();
+    return {
+      address,
+      displayName: angleMatch[1].trim(),
+      domain: extractDomain(address),
+    };
+  }
+
+  // Format 3: <email@domain.com>
+  const bracketOnlyMatch = trimmed.match(/^<([^<>\s]+@[^<>\s]+)>$/);
+  if (bracketOnlyMatch) {
+    const address = bracketOnlyMatch[1].toLowerCase();
+    return {
+      address,
+      domain: extractDomain(address),
+    };
+  }
+
+  // Format 4: Simple email@domain.com
+  const simpleMatch = trimmed.match(/^([^\s@]+@[^\s@]+)$/);
+  if (simpleMatch) {
+    const address = simpleMatch[1].toLowerCase();
+    return {
+      address,
+      domain: extractDomain(address),
+    };
+  }
+
+  // Fallback - try to extract any email-like pattern
+  const emailMatch = trimmed.match(/([^\s<>@]+@[^\s<>@]+)/);
+  if (emailMatch) {
+    const address = emailMatch[1].toLowerCase();
+    return {
+      address,
+      domain: extractDomain(address),
+    };
+  }
+
+  // Last resort fallback
+  const address = trimmed.toLowerCase();
   return {
     address,
     domain: extractDomain(address),
@@ -212,6 +257,223 @@ function decodeHeader(header: string): string {
 function parseBody(content: string, contentType?: string): { text?: string; html?: string } {
   const isHtml = contentType?.toLowerCase().includes('text/html');
   return isHtml ? { html: content } : { text: content };
+}
+
+/**
+ * Parse MIME multipart content to extract body and attachments
+ */
+function parseMimeContent(
+  content: string,
+  contentType?: string
+): { body: { text?: string; html?: string }; attachments: Attachment[] } {
+  const attachments: Attachment[] = [];
+  let text: string | undefined;
+  let html: string | undefined;
+
+  // Check if this is multipart content
+  if (!contentType?.toLowerCase().includes('multipart/')) {
+    // Not multipart - simple body
+    return {
+      body: parseBody(content, contentType),
+      attachments: [],
+    };
+  }
+
+  // Extract boundary from content-type
+  const boundaryMatch = contentType.match(/boundary=["']?([^"'\s;]+)["']?/i);
+  if (!boundaryMatch) {
+    return {
+      body: parseBody(content, contentType),
+      attachments: [],
+    };
+  }
+
+  const boundary = boundaryMatch[1];
+  const parts = splitMimeParts(content, boundary);
+
+  for (const partContent of parts) {
+    const parsed = parseMimePart(partContent);
+    if (!parsed) continue;
+
+    const { partHeaders, partBody, isAttachment, filename, mimeType, encoding } = parsed;
+
+    if (isAttachment && filename) {
+      // This is an attachment
+      const decodedContent = decodePartContent(partBody, encoding);
+      attachments.push({
+        filename: decodeHeader(filename),
+        contentType: mimeType || 'application/octet-stream',
+        size: decodedContent.length,
+        content: decodedContent,
+      });
+    } else if (mimeType?.includes('multipart/')) {
+      // Nested multipart - recursively parse
+      const nested = parseMimeContent(partBody, partHeaders['content-type']);
+      if (nested.body.text && !text) text = nested.body.text;
+      if (nested.body.html && !html) html = nested.body.html;
+      attachments.push(...nested.attachments);
+    } else if (mimeType?.includes('text/plain') && !text) {
+      text = decodePartContent(partBody, encoding).toString('utf-8');
+    } else if (mimeType?.includes('text/html') && !html) {
+      html = decodePartContent(partBody, encoding).toString('utf-8');
+    }
+  }
+
+  return { body: { text, html }, attachments };
+}
+
+/**
+ * Split MIME content by boundary
+ */
+function splitMimeParts(content: string, boundary: string): string[] {
+  const parts: string[] = [];
+  const delimiter = `--${boundary}`;
+  const endDelimiter = `--${boundary}--`;
+
+  // Split by boundary
+  const segments = content.split(delimiter);
+
+  for (let i = 1; i < segments.length; i++) {
+    let part = segments[i];
+
+    // Skip the ending delimiter segment
+    if (part.trim().startsWith('--') || part.trim() === '') {
+      continue;
+    }
+
+    // Remove trailing delimiter markers
+    const endIndex = part.indexOf(endDelimiter);
+    if (endIndex !== -1) {
+      part = part.substring(0, endIndex);
+    }
+
+    // Remove leading newlines
+    part = part.replace(/^[\r\n]+/, '');
+
+    if (part.trim()) {
+      parts.push(part);
+    }
+  }
+
+  return parts;
+}
+
+/**
+ * Parse a single MIME part
+ */
+function parseMimePart(partContent: string): {
+  partHeaders: Record<string, string>;
+  partBody: string;
+  isAttachment: boolean;
+  filename?: string;
+  mimeType?: string;
+  encoding?: string;
+} | null {
+  const lines = partContent.split(/\r?\n/);
+  const partHeaders: Record<string, string> = {};
+  let headerEndIndex = 0;
+
+  // Parse part headers
+  let currentHeader = '';
+  let currentValue = '';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line === '') {
+      if (currentHeader) {
+        partHeaders[currentHeader.toLowerCase()] = currentValue.trim();
+      }
+      headerEndIndex = i + 1;
+      break;
+    }
+
+    if (/^\s/.test(line)) {
+      currentValue += ' ' + line.trim();
+      continue;
+    }
+
+    if (currentHeader) {
+      partHeaders[currentHeader.toLowerCase()] = currentValue.trim();
+    }
+
+    const colonIndex = line.indexOf(':');
+    if (colonIndex > 0) {
+      currentHeader = line.substring(0, colonIndex);
+      currentValue = line.substring(colonIndex + 1).trim();
+    }
+  }
+
+  const partBody = lines.slice(headerEndIndex).join('\n');
+  const contentType = partHeaders['content-type'] || '';
+  const contentDisposition = partHeaders['content-disposition'] || '';
+  const encoding = partHeaders['content-transfer-encoding'] || '';
+
+  // Check if this is an attachment
+  const isAttachment =
+    contentDisposition.toLowerCase().includes('attachment') ||
+    contentDisposition.toLowerCase().includes('inline');
+
+  // Extract filename
+  let filename: string | undefined;
+  const filenameMatch =
+    contentDisposition.match(/filename\*?=["']?(?:utf-8'')?([^"';\s]+)["']?/i) ||
+    contentType.match(/name=["']?([^"';\s]+)["']?/i);
+  if (filenameMatch) {
+    filename = decodeURIComponent(filenameMatch[1]);
+  }
+
+  // Extract MIME type
+  const mimeTypeMatch = contentType.match(/^([^;\s]+)/);
+  const mimeType = mimeTypeMatch ? mimeTypeMatch[1].toLowerCase() : undefined;
+
+  return {
+    partHeaders,
+    partBody,
+    isAttachment: isAttachment || !!filename,
+    filename,
+    mimeType,
+    encoding: encoding.toLowerCase(),
+  };
+}
+
+/**
+ * Decode MIME part content based on encoding
+ */
+function decodePartContent(content: string, encoding?: string): Buffer {
+  if (!encoding || encoding === '7bit' || encoding === '8bit') {
+    return Buffer.from(content, 'utf-8');
+  }
+
+  if (encoding === 'base64') {
+    // Remove whitespace from base64 content
+    const cleaned = content.replace(/[\r\n\s]/g, '');
+    try {
+      return Buffer.from(cleaned, 'base64');
+    } catch {
+      return Buffer.from(content, 'utf-8');
+    }
+  }
+
+  if (encoding === 'quoted-printable') {
+    return decodeQuotedPrintable(content);
+  }
+
+  return Buffer.from(content, 'utf-8');
+}
+
+/**
+ * Decode quoted-printable encoded content
+ */
+function decodeQuotedPrintable(content: string): Buffer {
+  const decoded = content
+    // Handle soft line breaks
+    .replace(/=\r?\n/g, '')
+    // Decode hex sequences
+    .replace(/=([0-9A-F]{2})/gi, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    );
+  return Buffer.from(decoded, 'utf-8');
 }
 
 function parseGraphAttachments(attachments: unknown[] | undefined): Attachment[] {

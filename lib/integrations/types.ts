@@ -10,7 +10,7 @@ export interface Integration {
   tenantId: string;
   type: IntegrationType;
   status: IntegrationStatus;
-  nangoConnectionId: string | null; // Nango connection ID for OAuth token management
+  connectedEmail: string | null; // Verified email address for this integration
   config: IntegrationConfig;
   lastSyncAt: Date | null;
   errorMessage: string | null;

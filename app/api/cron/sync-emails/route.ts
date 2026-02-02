@@ -19,7 +19,6 @@ interface IntegrationRecord {
   tenant_id: string;
   type: string;
   config: Record<string, unknown>;
-  nango_connection_id: string | null;
   last_sync_at: Date | null;
   tenant_name: string;
 }
@@ -39,14 +38,13 @@ export async function GET(request: NextRequest) {
     // Find active integrations that need sync
     // Only get integrations where syncEnabled is true in config
     // Use LEFT JOIN matching tenant_id against both clerk_org_id and id::text
-    // Include integrations missing nango_connection_id for auto-healing
+    // Now uses direct OAuth - no Nango dependency
     const integrations = await sql`
       SELECT
         i.id,
         i.tenant_id::text as tenant_id,
         i.type,
         i.config,
-        i.nango_connection_id,
         i.last_sync_at,
         COALESCE(t.name, i.tenant_id::text) as tenant_name
       FROM integrations i
@@ -58,55 +56,10 @@ export async function GET(request: NextRequest) {
       LIMIT ${MAX_INTEGRATIONS_PER_RUN}
     ` as IntegrationRecord[];
 
-    // Auto-heal integrations missing Nango connection IDs
-    const integrationsToHeal = integrations.filter(i => !i.nango_connection_id);
-    if (integrationsToHeal.length > 0) {
-      console.log(`[Cron] Auto-healing ${integrationsToHeal.length} integrations missing Nango connection...`);
-      try {
-        const nangoResponse = await fetch('https://api.nango.dev/connections', {
-          headers: {
-            'Authorization': `Bearer ${process.env.NANGO_SECRET_KEY}`,
-          },
-        });
+    // All connected integrations are valid (direct OAuth handles token refresh)
+    const validIntegrations = integrations;
 
-        if (nangoResponse.ok) {
-          const { connections } = await nangoResponse.json() as {
-            connections: Array<{
-              connection_id: string;
-              provider_config_key: string;
-              end_user?: { id: string };
-            }>
-          };
-
-          for (const integration of integrationsToHeal) {
-            const providerKey = integration.type === 'gmail' ? 'google-mail' : integration.type === 'outlook' ? 'microsoft-365' : null;
-            if (!providerKey) continue;
-
-            const match = connections.find(
-              c => c.end_user?.id === integration.tenant_id && c.provider_config_key === providerKey
-            );
-
-            if (match) {
-              await sql`
-                UPDATE integrations
-                SET nango_connection_id = ${match.connection_id},
-                    updated_at = NOW()
-                WHERE id = ${integration.id}
-              `;
-              integration.nango_connection_id = match.connection_id;
-              console.log(`[Cron] Auto-healed integration ${integration.id} with Nango connection ${match.connection_id}`);
-            }
-          }
-        }
-      } catch (healError) {
-        console.error('[Cron] Auto-heal error:', healError);
-      }
-    }
-
-    // Filter to only integrations that now have Nango connections
-    const validIntegrations = integrations.filter(i => i.nango_connection_id);
-
-    console.log(`[Cron] Found ${validIntegrations.length} integrations to sync (${integrationsToHeal.length} auto-healed)`);
+    console.log(`[Cron] Found ${validIntegrations.length} integrations to sync`);
 
     const results: SyncResult[] = [];
     const errors: string[] = [];
@@ -123,13 +76,12 @@ export async function GET(request: NextRequest) {
       try {
         console.log(`[Cron] Syncing ${integration.type} for tenant ${integration.tenant_id}`);
 
-        // Actually sync emails using the worker
+        // Actually sync emails using the worker (direct OAuth - no Nango)
         const result = await syncIntegration({
           id: integration.id,
           tenant_id: integration.tenant_id,
           type: integration.type,
           config: integration.config,
-          nango_connection_id: integration.nango_connection_id,
           last_sync_at: integration.last_sync_at,
         });
 
@@ -160,7 +112,6 @@ export async function GET(request: NextRequest) {
       success: true,
       synced: results.length,
       total: validIntegrations.length,
-      autoHealed: integrationsToHeal.length,
       totalEmailsProcessed: results.reduce((sum, r) => sum + r.emailsProcessed, 0),
       totalThreatsFound: results.reduce((sum, r) => sum + r.threatsFound, 0),
       duration: totalDuration,

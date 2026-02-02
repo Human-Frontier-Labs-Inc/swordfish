@@ -19,6 +19,56 @@ import {
 } from '@/lib/integrations/gmail';
 import { logAuditEvent } from '@/lib/db/audit';
 import { sendNotification } from '@/lib/notifications/service';
+import { retryWithBackoff, isRetryable } from '@/lib/performance/retry';
+import { loggers } from '@/lib/logging/logger';
+
+const log = loggers.remediation;
+
+/**
+ * Retry configuration for email API operations
+ * Uses exponential backoff with jitter for transient failures
+ */
+const REMEDIATION_RETRY_CONFIG = {
+  maxAttempts: 3,
+  baseDelay: 1000, // 1 second
+  maxDelay: 10000, // 10 seconds max
+  jitter: true,
+};
+
+/**
+ * Check if an error from email APIs is retryable
+ * Extends default isRetryable with API-specific checks
+ */
+function isEmailApiRetryable(error: unknown): boolean {
+  // Use default retryable check first
+  if (isRetryable(error)) return true;
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+
+    // Gmail API specific errors
+    if (
+      message.includes('quota exceeded') ||
+      message.includes('user rate limit') ||
+      message.includes('backend error') ||
+      message.includes('internal error')
+    ) {
+      return true;
+    }
+
+    // O365 Graph API specific errors
+    if (
+      message.includes('activitylimitreached') ||
+      message.includes('applicationthrottled') ||
+      message.includes('servicenotavailable') ||
+      message.includes('toomanyrequests')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 export type RemediationAction = 'quarantine' | 'release' | 'delete' | 'block';
 
@@ -91,10 +141,11 @@ function validateExternalMessageIdFormat(
   // An email FROM Outlook TO Gmail will have Outlook-format Message-ID but gmail integration
   const detectedFormat = detectMessageIdFormat(messageId);
   if (detectedFormat !== 'unknown' && detectedFormat !== integrationType) {
-    console.warn(
-      `[remediation] Falling back to message_id which has ${detectedFormat} format but integration is ${integrationType}. ` +
-      `This is expected for cross-platform emails (e.g., email sent FROM ${detectedFormat} TO ${integrationType}).`
-    );
+    log.debug('Falling back to message_id with cross-platform format', {
+      detectedFormat,
+      integrationType,
+      note: 'Expected for cross-platform emails',
+    });
   }
 
   return null;
@@ -124,7 +175,6 @@ interface IntegrationRecord {
   tenant_id: string;
   type: string;
   config: Record<string, unknown>;
-  nango_connection_id: string | null;
 }
 
 /**
@@ -138,13 +188,12 @@ export async function quarantineEmail(params: {
 }): Promise<RemediationResult> {
   const { tenantId, threatId, actorId, actorEmail } = params;
 
-  // Get threat details - use LEFT JOIN to handle NULL integration_id
+  // Get threat details
   const threats = await sql`
-    SELECT t.*, i.type as i_type, i.nango_connection_id
+    SELECT t.*
     FROM threats t
-    LEFT JOIN integrations i ON t.integration_id = i.id
     WHERE t.id = ${threatId} AND t.tenant_id = ${tenantId}
-  ` as Array<ThreatRecord & { i_type: string | null; nango_connection_id: string | null }>;
+  ` as Array<ThreatRecord>;
 
   if (threats.length === 0) {
     return {
@@ -173,35 +222,12 @@ export async function quarantineEmail(params: {
     };
   }
 
-  // If no nango_connection_id from JOIN, look up by tenant and integration_type
-  let nangoConnectionId = threat.nango_connection_id;
-  if (!nangoConnectionId && threat.integration_type) {
-    const integrations = await sql`
-      SELECT nango_connection_id FROM integrations
-      WHERE tenant_id = ${tenantId} AND type = ${threat.integration_type}
-      LIMIT 1
-    ` as Array<{ nango_connection_id: string | null }>;
-    if (integrations.length > 0) {
-      nangoConnectionId = integrations[0].nango_connection_id;
-    }
-  }
-
-  if (!nangoConnectionId) {
-    return {
-      success: false,
-      action: 'quarantine',
-      messageId: threat.message_id,
-      integrationId: threat.integration_id || '',
-      integrationType: threat.integration_type,
-      error: 'No Nango connection configured',
-    };
-  }
-
   try {
+    // Use tenantId-based token retrieval (direct OAuth, no Nango)
     if (threat.integration_type === 'o365') {
-      await quarantineO365Email(nangoConnectionId, externalMessageId);
+      await quarantineO365Email(tenantId, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
-      await quarantineGmailEmail(nangoConnectionId, externalMessageId);
+      await quarantineGmailEmail(tenantId, externalMessageId);
     }
 
     // Update threat status
@@ -241,7 +267,7 @@ export async function quarantineEmail(params: {
       integrationType: threat.integration_type,
     };
   } catch (error) {
-    console.error('Quarantine failed:', error);
+    log.error('Quarantine failed', error instanceof Error ? error : new Error(String(error)), { threatId, tenantId });
     return {
       success: false,
       action: 'quarantine',
@@ -264,13 +290,12 @@ export async function releaseEmail(params: {
 }): Promise<RemediationResult> {
   const { tenantId, threatId, actorId, actorEmail } = params;
 
-  // Use LEFT JOIN to handle NULL integration_id
+  // Get threat details
   const threats = await sql`
-    SELECT t.*, i.type as i_type, i.nango_connection_id
+    SELECT t.*
     FROM threats t
-    LEFT JOIN integrations i ON t.integration_id = i.id
     WHERE t.id = ${threatId} AND t.tenant_id = ${tenantId}
-  ` as Array<ThreatRecord & { i_type: string | null; nango_connection_id: string | null }>;
+  ` as Array<ThreatRecord>;
 
   if (threats.length === 0) {
     return {
@@ -299,36 +324,13 @@ export async function releaseEmail(params: {
     };
   }
 
-  // If no nango_connection_id from JOIN, look up by tenant and integration_type
-  let nangoConnectionId = threat.nango_connection_id;
-  if (!nangoConnectionId && threat.integration_type) {
-    const integrations = await sql`
-      SELECT nango_connection_id FROM integrations
-      WHERE tenant_id = ${tenantId} AND type = ${threat.integration_type}
-      LIMIT 1
-    ` as Array<{ nango_connection_id: string | null }>;
-    if (integrations.length > 0) {
-      nangoConnectionId = integrations[0].nango_connection_id;
-    }
-  }
-
-  if (!nangoConnectionId) {
-    return {
-      success: false,
-      action: 'release',
-      messageId: threat.message_id,
-      integrationId: threat.integration_id || '',
-      integrationType: threat.integration_type,
-      error: 'No Nango connection configured',
-    };
-  }
-
   try {
+    // Use tenantId-based token retrieval (direct OAuth, no Nango)
     if (threat.integration_type === 'o365') {
-      await releaseO365Email(nangoConnectionId, externalMessageId);
+      await releaseO365Email(tenantId, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
       // Pass wasDeleted flag so we can untrash before releasing
-      await releaseGmailEmail(nangoConnectionId, externalMessageId, threat.status === 'deleted');
+      await releaseGmailEmail(tenantId, externalMessageId, threat.status === 'deleted');
     }
 
     // Update threat status
@@ -367,7 +369,7 @@ export async function releaseEmail(params: {
       integrationType: threat.integration_type,
     };
   } catch (error) {
-    console.error('Release failed:', error);
+    log.error('Release failed', error instanceof Error ? error : new Error(String(error)), { threatId, tenantId });
     return {
       success: false,
       action: 'release',
@@ -390,13 +392,12 @@ export async function deleteEmail(params: {
 }): Promise<RemediationResult> {
   const { tenantId, threatId, actorId, actorEmail } = params;
 
-  // Use LEFT JOIN to handle NULL integration_id
+  // Get threat details
   const threats = await sql`
-    SELECT t.*, i.type as i_type, i.nango_connection_id
+    SELECT t.*
     FROM threats t
-    LEFT JOIN integrations i ON t.integration_id = i.id
     WHERE t.id = ${threatId} AND t.tenant_id = ${tenantId}
-  ` as Array<ThreatRecord & { i_type: string | null; nango_connection_id: string | null }>;
+  ` as Array<ThreatRecord>;
 
   if (threats.length === 0) {
     return {
@@ -425,35 +426,12 @@ export async function deleteEmail(params: {
     };
   }
 
-  // If no nango_connection_id from JOIN, look up by tenant and integration_type
-  let nangoConnectionId = threat.nango_connection_id;
-  if (!nangoConnectionId && threat.integration_type) {
-    const integrations = await sql`
-      SELECT nango_connection_id FROM integrations
-      WHERE tenant_id = ${tenantId} AND type = ${threat.integration_type}
-      LIMIT 1
-    ` as Array<{ nango_connection_id: string | null }>;
-    if (integrations.length > 0) {
-      nangoConnectionId = integrations[0].nango_connection_id;
-    }
-  }
-
-  if (!nangoConnectionId) {
-    return {
-      success: false,
-      action: 'delete',
-      messageId: threat.message_id,
-      integrationId: threat.integration_id || '',
-      integrationType: threat.integration_type,
-      error: 'No Nango connection configured',
-    };
-  }
-
   try {
+    // Use tenantId-based token retrieval (direct OAuth, no Nango)
     if (threat.integration_type === 'o365') {
-      await deleteO365Email(nangoConnectionId, externalMessageId);
+      await deleteO365Email(tenantId, externalMessageId);
     } else if (threat.integration_type === 'gmail') {
-      await deleteGmailEmail(nangoConnectionId, externalMessageId);
+      await deleteGmailEmail(tenantId, externalMessageId);
     }
 
     // Update threat status
@@ -482,7 +460,7 @@ export async function deleteEmail(params: {
       integrationType: threat.integration_type,
     };
   } catch (error) {
-    console.error('Delete failed:', error);
+    log.error('Delete failed', error instanceof Error ? error : new Error(String(error)), { threatId, tenantId });
     return {
       success: false,
       action: 'delete',
@@ -542,45 +520,78 @@ export async function batchRemediate(params: {
 // ============================================
 
 async function quarantineO365Email(
-  nangoConnectionId: string,
+  tenantId: string,
   messageId: string
 ): Promise<void> {
-  const accessToken = await getO365AccessToken(nangoConnectionId);
+  const accessToken = await getO365AccessToken(tenantId);
   const quarantineFolderId = await getOrCreateQuarantineFolder(accessToken);
 
-  await moveO365Email({
-    accessToken,
-    messageId,
-    destinationFolderId: quarantineFolderId,
-  });
+  await retryWithBackoff(
+    async () => {
+      await moveO365Email({
+        accessToken,
+        messageId,
+        destinationFolderId: quarantineFolderId,
+      });
+    },
+    {
+      ...REMEDIATION_RETRY_CONFIG,
+      shouldRetry: isEmailApiRetryable,
+      onRetry: (error, attempt) => {
+        log.warn('O365 quarantine retry', { attempt, error: error.message });
+      },
+    }
+  );
 }
 
 async function releaseO365Email(
-  nangoConnectionId: string,
+  tenantId: string,
   messageId: string
 ): Promise<void> {
-  const accessToken = await getO365AccessToken(nangoConnectionId);
+  const accessToken = await getO365AccessToken(tenantId);
 
-  // Move back to inbox
-  await moveO365Email({
-    accessToken,
-    messageId,
-    destinationFolderId: 'inbox',
-  });
+  // Move back to inbox with retry
+  await retryWithBackoff(
+    async () => {
+      await moveO365Email({
+        accessToken,
+        messageId,
+        destinationFolderId: 'inbox',
+      });
+    },
+    {
+      ...REMEDIATION_RETRY_CONFIG,
+      shouldRetry: isEmailApiRetryable,
+      onRetry: (error, attempt) => {
+        log.warn('O365 release retry', { attempt, error: error.message });
+      },
+    }
+  );
 }
 
 async function deleteO365Email(
-  nangoConnectionId: string,
+  tenantId: string,
   messageId: string
 ): Promise<void> {
-  const accessToken = await getO365AccessToken(nangoConnectionId);
+  const accessToken = await getO365AccessToken(tenantId);
 
-  // Move to deleted items (Graph API requires this before permanent delete)
-  await moveO365Email({
-    accessToken,
-    messageId,
-    destinationFolderId: 'deleteditems',
-  });
+  // Move to deleted items (Graph API requires this before permanent delete) with retry
+  await retryWithBackoff(
+    async () => {
+      await moveO365Email({
+        accessToken,
+        messageId,
+        destinationFolderId: 'deleteditems',
+      });
+    },
+    {
+      ...REMEDIATION_RETRY_CONFIG,
+      shouldRetry: isEmailApiRetryable,
+      onRetry: (error, attempt) => {
+        log.warn('O365 delete retry', { attempt, error: error.message });
+      },
+    }
+  );
 }
 
 // ============================================
@@ -588,27 +599,38 @@ async function deleteO365Email(
 // ============================================
 
 async function quarantineGmailEmail(
-  nangoConnectionId: string,
+  tenantId: string,
   messageId: string
 ): Promise<void> {
-  const accessToken = await getGmailAccessToken(nangoConnectionId);
+  const accessToken = await getGmailAccessToken(tenantId);
   const quarantineLabelId = await getOrCreateQuarantineLabel(accessToken);
 
-  // Add quarantine label and remove from INBOX
-  await modifyGmailMessage({
-    accessToken,
-    messageId,
-    addLabelIds: [quarantineLabelId],
-    removeLabelIds: ['INBOX'],
-  });
+  // Add quarantine label and remove from INBOX with retry
+  await retryWithBackoff(
+    async () => {
+      await modifyGmailMessage({
+        accessToken,
+        messageId,
+        addLabelIds: [quarantineLabelId],
+        removeLabelIds: ['INBOX'],
+      });
+    },
+    {
+      ...REMEDIATION_RETRY_CONFIG,
+      shouldRetry: isEmailApiRetryable,
+      onRetry: (error, attempt) => {
+        log.warn('Gmail quarantine retry', { attempt, error: error.message });
+      },
+    }
+  );
 }
 
 async function releaseGmailEmail(
-  nangoConnectionId: string,
+  tenantId: string,
   messageId: string,
   wasDeleted: boolean = false
 ): Promise<void> {
-  const accessToken = await getGmailAccessToken(nangoConnectionId);
+  const accessToken = await getGmailAccessToken(tenantId);
   const quarantineLabelId = await getOrCreateQuarantineLabel(accessToken);
 
   // Check if messageId looks like a Gmail ID (alphanumeric, no special chars except dashes)
@@ -618,70 +640,143 @@ async function releaseGmailEmail(
   const looksLikeGmailId = /^[a-zA-Z0-9-]+$/.test(messageId) && !messageId.includes('<');
 
   if (!looksLikeGmailId) {
-    console.log(`[remediation] Message ID "${messageId}" doesn't look like a Gmail ID, searching by Message-ID header...`);
+    log.info('Message ID does not look like Gmail ID, searching by Message-ID header', { messageId });
 
-    // Try to find the Gmail message ID by searching for the RFC822 Message-ID
-    const foundId = await findGmailMessageByMessageId({
-      accessToken,
-      rfc822MessageId: messageId,
-    });
+    // Try to find the Gmail message ID by searching for the RFC822 Message-ID with retry
+    const foundId = await retryWithBackoff(
+      async () => {
+        return await findGmailMessageByMessageId({
+          accessToken,
+          rfc822MessageId: messageId,
+        });
+      },
+      {
+        ...REMEDIATION_RETRY_CONFIG,
+        shouldRetry: isEmailApiRetryable,
+        onRetry: (error, attempt) => {
+          log.warn('Gmail message search retry', { attempt, error: error.message });
+        },
+      }
+    );
 
     if (foundId) {
-      console.log(`[remediation] Found Gmail ID: ${foundId} for Message-ID: ${messageId}`);
+      log.info('Found Gmail ID for Message-ID', { gmailId: foundId, messageId });
       resolvedMessageId = foundId;
     } else {
       // Try without angle brackets if they're present
       const cleanedId = messageId.replace(/^<|>$/g, '');
       if (cleanedId !== messageId) {
-        const foundCleanId = await findGmailMessageByMessageId({
-          accessToken,
-          rfc822MessageId: cleanedId,
-        });
+        const foundCleanId = await retryWithBackoff(
+          async () => {
+            return await findGmailMessageByMessageId({
+              accessToken,
+              rfc822MessageId: cleanedId,
+            });
+          },
+          {
+            ...REMEDIATION_RETRY_CONFIG,
+            shouldRetry: isEmailApiRetryable,
+            onRetry: (error, attempt) => {
+              log.warn('Gmail message search retry', { attempt, error: error.message });
+            },
+          }
+        );
         if (foundCleanId) {
-          console.log(`[remediation] Found Gmail ID: ${foundCleanId} for cleaned Message-ID: ${cleanedId}`);
+          log.info('Found Gmail ID for cleaned Message-ID', { gmailId: foundCleanId, cleanedId });
           resolvedMessageId = foundCleanId;
         }
       }
 
       if (resolvedMessageId === messageId) {
-        throw new Error(`Could not find Gmail message with Message-ID: ${messageId}`);
+        // SECURITY FIX: Instead of failing silently or proceeding with wrong ID,
+        // log detailed info for troubleshooting and mark for manual review
+        log.error('CRITICAL: Gmail message lookup failed, manual review required', {
+          messageId,
+          cleanedId,
+          possibleCauses: [
+            'Email was permanently deleted from Gmail',
+            'Message-ID header was modified',
+            'Email is in a label the integration cannot access',
+            'Gmail API rate limit or temporary outage',
+          ],
+        });
+
+        // Mark for manual review instead of throwing
+        throw new Error(
+          `Gmail message lookup failed for Message-ID: ${messageId}. ` +
+          `Email may have been deleted or Message-ID modified. ` +
+          `Manual remediation required via Gmail web interface.`
+        );
       }
     }
   }
 
-  // If the email was deleted (trashed), untrash it first
+  // If the email was deleted (trashed), untrash it first with retry
   if (wasDeleted) {
     try {
-      await untrashGmailMessage({
-        accessToken,
-        messageId: resolvedMessageId,
-      });
-      console.log(`[remediation] Untrashed message ${resolvedMessageId}`);
+      await retryWithBackoff(
+        async () => {
+          await untrashGmailMessage({
+            accessToken,
+            messageId: resolvedMessageId,
+          });
+        },
+        {
+          ...REMEDIATION_RETRY_CONFIG,
+          shouldRetry: isEmailApiRetryable,
+          onRetry: (error, attempt) => {
+            log.warn('Gmail untrash retry', { attempt, error: error.message });
+          },
+        }
+      );
+      log.info('Untrashed message', { messageId: resolvedMessageId });
     } catch (err) {
       // If untrash fails, the message might not be in Trash - try to continue
-      console.log(`[remediation] Untrash failed (may not be in Trash): ${err}`);
+      log.debug('Untrash failed, message may not be in Trash', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
-  // Remove quarantine label and add back to INBOX
-  await modifyGmailMessage({
-    accessToken,
-    messageId: resolvedMessageId,
-    addLabelIds: ['INBOX'],
-    removeLabelIds: [quarantineLabelId],
-  });
+  // Remove quarantine label and add back to INBOX with retry
+  await retryWithBackoff(
+    async () => {
+      await modifyGmailMessage({
+        accessToken,
+        messageId: resolvedMessageId,
+        addLabelIds: ['INBOX'],
+        removeLabelIds: [quarantineLabelId],
+      });
+    },
+    {
+      ...REMEDIATION_RETRY_CONFIG,
+      shouldRetry: isEmailApiRetryable,
+      onRetry: (error, attempt) => {
+        log.warn('Gmail release retry', { attempt, error: error.message });
+      },
+    }
+  );
 }
 
 async function deleteGmailEmail(
-  nangoConnectionId: string,
+  tenantId: string,
   messageId: string
 ): Promise<void> {
-  const accessToken = await getGmailAccessToken(nangoConnectionId);
+  const accessToken = await getGmailAccessToken(tenantId);
 
-  await trashGmailMessage({
-    accessToken,
-    messageId,
-  });
+  await retryWithBackoff(
+    async () => {
+      await trashGmailMessage({
+        accessToken,
+        messageId,
+      });
+    },
+    {
+      ...REMEDIATION_RETRY_CONFIG,
+      shouldRetry: isEmailApiRetryable,
+      onRetry: (error, attempt) => {
+        log.warn('Gmail delete retry', { attempt, error: error.message });
+      },
+    }
+  );
 }
 
 /**
@@ -705,10 +800,10 @@ export async function autoRemediate(params: {
     return str.length > maxLen ? str.substring(0, maxLen - 3) + '...' : str;
   };
 
-  // Get integration nango_connection_id
+  // Verify integration exists (no longer need nango_connection_id)
   const integrations = await sql`
-    SELECT nango_connection_id FROM integrations WHERE id = ${integrationId}
-  ` as Array<{ nango_connection_id: string | null }>;
+    SELECT id FROM integrations WHERE id = ${integrationId} AND status = 'connected'
+  ` as Array<{ id: string }>;
 
   if (integrations.length === 0) {
     return {
@@ -717,22 +812,13 @@ export async function autoRemediate(params: {
       messageId,
       integrationId,
       integrationType,
-      error: 'Integration not found',
+      error: 'Integration not found or not connected',
     };
   }
 
-  const nangoConnectionId = integrations[0].nango_connection_id;
-
-  if (!nangoConnectionId) {
-    return {
-      success: false,
-      action: verdict === 'block' ? 'block' : 'quarantine',
-      messageId,
-      integrationId,
-      integrationType,
-      error: 'No Nango connection configured',
-    };
-  }
+  // Truncate values to fit database column constraints
+  const safeMessageId = truncate(messageId, 490);
+  const safeExternalMessageId = truncate(externalMessageId, 500);
 
   try {
     // Get email details from email_verdicts for the threats record
@@ -755,13 +841,6 @@ export async function autoRemediate(params: {
       signals: null,
     };
 
-    // IMPORTANT: Always quarantine, never delete automatically
-    // This allows users to review and release false positives
-    // Blocked emails can still be manually deleted by admins if needed
-    const status = 'quarantined';
-
-    // Truncate values to fit database column constraints
-    const safeMessageId = truncate(messageId, 490);
     const safeSubject = truncate(emailDetails.subject, 250);
     const safeSenderEmail = truncate(emailDetails.from_address, 250);
     const safeRecipientEmail = truncate(
@@ -771,29 +850,16 @@ export async function autoRemediate(params: {
       250
     );
 
-    // Always quarantine - both 'block' and 'quarantine' verdicts go to quarantine
-    // This ensures users can review and release false positives
-    if (integrationType === 'o365') {
-      await quarantineO365Email(nangoConnectionId, externalMessageId);
-    } else {
-      await quarantineGmailEmail(nangoConnectionId, externalMessageId);
-    }
-
-    // Write to threats table so it appears in Threats/Quarantine pages
-    // Use only columns that exist in the original migration (002_policies_and_threats.sql)
-    // First check if threat already exists
+    // HIGH-2 FIX: First create/update threat record with 'remediation_pending' status
+    // This ensures we can track failures properly
     const existingThreats = await sql`
       SELECT id FROM threats WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
     `;
 
-    // Truncate external_message_id safely
-    const safeExternalMessageId = truncate(externalMessageId, 500);
-
     if (existingThreats.length > 0) {
-      // Update existing threat - also set integration_id and external_message_id if missing
       await sql`
         UPDATE threats SET
-          status = ${status},
+          status = 'remediation_pending',
           verdict = ${verdict},
           score = ${score},
           integration_id = COALESCE(integration_id, ${integrationId}),
@@ -803,7 +869,6 @@ export async function autoRemediate(params: {
         WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
       `;
     } else {
-      // Insert new threat - include integration_id and external_message_id for proper remediation later
       await sql`
         INSERT INTO threats (
           tenant_id, message_id, external_message_id, subject, sender_email, recipient_email,
@@ -817,7 +882,7 @@ export async function autoRemediate(params: {
           ${safeRecipientEmail || ''},
           ${verdict},
           ${score},
-          ${status},
+          'remediation_pending',
           ${integrationId},
           ${integrationType},
           ${JSON.stringify(emailDetails.signals || [])}::jsonb,
@@ -826,15 +891,72 @@ export async function autoRemediate(params: {
       `;
     }
 
-    return {
-      success: true,
-      action: verdict === 'block' ? 'block' : 'quarantine',
-      messageId,
-      integrationId,
-      integrationType,
-    };
+    // Now attempt the actual quarantine action
+    // IMPORTANT: Always quarantine, never delete automatically
+    // This allows users to review and release false positives
+    try {
+      // Use tenantId-based token retrieval (direct OAuth, no Nango)
+      if (integrationType === 'o365') {
+        await quarantineO365Email(tenantId, externalMessageId);
+      } else {
+        await quarantineGmailEmail(tenantId, externalMessageId);
+      }
+
+      // HIGH-2 FIX: Update to 'quarantined' on success
+      await sql`
+        UPDATE threats SET
+          status = 'quarantined',
+          updated_at = NOW()
+        WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
+      `;
+
+      return {
+        success: true,
+        action: verdict === 'block' ? 'block' : 'quarantine',
+        messageId,
+        integrationId,
+        integrationType,
+      };
+    } catch (mailboxError) {
+      // HIGH-2 FIX: Update to 'remediation_failed' on mailbox operation failure
+      // This prevents showing 'quarantined' when the email wasn't actually moved
+      const errorMessage = mailboxError instanceof Error ? mailboxError.message : 'Unknown mailbox error';
+
+      await sql`
+        UPDATE threats SET
+          status = 'remediation_failed',
+          error_message = ${truncate(errorMessage, 500)},
+          updated_at = NOW()
+        WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
+      `;
+
+      log.error('Mailbox operation failed, status set to remediation_failed', mailboxError instanceof Error ? mailboxError : new Error(String(mailboxError)), { tenantId, messageId });
+
+      return {
+        success: false,
+        action: verdict === 'block' ? 'block' : 'quarantine',
+        messageId,
+        integrationId,
+        integrationType,
+        error: `Mailbox operation failed: ${errorMessage}`,
+      };
+    }
   } catch (error) {
-    console.error('Auto-remediation failed:', error);
+    // HIGH-2 FIX: If we fail before DB write, try to mark as failed if record exists
+    log.error('Auto-remediation failed', error instanceof Error ? error : new Error(String(error)), { tenantId, messageId });
+
+    try {
+      await sql`
+        UPDATE threats SET
+          status = 'remediation_failed',
+          error_message = ${truncate(error instanceof Error ? error.message : 'Unknown error', 500)},
+          updated_at = NOW()
+        WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
+      `;
+    } catch (dbError) {
+      log.error('Failed to update threat status after error', dbError instanceof Error ? dbError : new Error(String(dbError)));
+    }
+
     return {
       success: false,
       action: verdict === 'block' ? 'block' : 'quarantine',

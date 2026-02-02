@@ -10,7 +10,7 @@ interface MockIntegration {
   id: string;
   tenant_id: string;
   type: 'o365' | 'gmail';
-  nango_connection_id: string | null;
+  connected_email: string | null;
   config: {
     syncEnabled: boolean;
     email?: string;
@@ -93,6 +93,12 @@ vi.mock('@/lib/db/audit', () => ({
 }));
 
 // Mock Nango client for token management
+// Legacy mock - no longer using Nango client
+vi.mock('@/lib/oauth', () => ({
+  getAccessToken: vi.fn(),
+  findIntegrationByEmail: vi.fn(),
+}));
+
 vi.mock('@/lib/nango/client', () => ({
   getAccessToken: vi.fn().mockResolvedValue('test-access-token'),
 }));
@@ -126,7 +132,7 @@ describe('Email Sync Worker', () => {
         id: 'int-1',
         tenant_id: 'tenant-1',
         type: 'o365',
-        nango_connection_id: 'nango-conn-1',
+        connected_email: 'user1@example.com',
         config: {
           syncEnabled: true,
         },
@@ -138,7 +144,7 @@ describe('Email Sync Worker', () => {
       expect(result.type).toBe('o365');
       expect(result.tenantId).toBe('tenant-1');
       expect(result.integrationId).toBe('int-1');
-      expect(getO365AccessToken).toHaveBeenCalledWith('nango-conn-1');
+      expect(getO365AccessToken).toHaveBeenCalledWith('tenant-1');
       expect(listO365Emails).toHaveBeenCalled();
     });
 
@@ -150,7 +156,7 @@ describe('Email Sync Worker', () => {
         id: 'int-2',
         tenant_id: 'tenant-2',
         type: 'gmail',
-        nango_connection_id: 'nango-conn-2',
+        connected_email: 'user2@example.com',
         config: {
           syncEnabled: true,
           email: 'test@gmail.com',
@@ -162,7 +168,7 @@ describe('Email Sync Worker', () => {
 
       expect(result.type).toBe('gmail');
       expect(result.tenantId).toBe('tenant-2');
-      expect(getGmailAccessToken).toHaveBeenCalledWith('nango-conn-2');
+      expect(getGmailAccessToken).toHaveBeenCalledWith('tenant-2');
       expect(listGmailMessages).toHaveBeenCalled();
     });
 
@@ -173,7 +179,7 @@ describe('Email Sync Worker', () => {
         id: 'int-3',
         tenant_id: 'tenant-3',
         type: 'unknown',
-        nango_connection_id: 'nango-conn-3',
+        connected_email: 'user3@example.com',
         config: { syncEnabled: true },
         last_sync_at: null,
       };
@@ -183,14 +189,20 @@ describe('Email Sync Worker', () => {
       );
     });
 
-    it('should return error when nango_connection_id is missing for O365', async () => {
+    it('should handle O365 integration sync failure gracefully', async () => {
       const { syncIntegration } = await import('@/lib/workers/email-sync');
+
+      // Mock token retrieval to fail
+      const { getO365AccessToken } = await import('@/lib/integrations/o365');
+      (getO365AccessToken as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('No connected o365 integration for tenant tenant-4')
+      );
 
       const mockIntegration: MockIntegration = {
         id: 'int-4',
         tenant_id: 'tenant-4',
         type: 'o365',
-        nango_connection_id: null, // Missing Nango connection
+        connected_email: 'user@example.com',
         config: {
           syncEnabled: true,
         },
@@ -200,17 +212,22 @@ describe('Email Sync Worker', () => {
       const result = await syncIntegration(mockIntegration as any);
 
       expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0]).toContain('No Nango connection configured');
     });
 
-    it('should return error when nango_connection_id is missing for Gmail', async () => {
+    it('should handle Gmail integration sync failure gracefully', async () => {
       const { syncIntegration } = await import('@/lib/workers/email-sync');
+
+      // Mock token retrieval to fail
+      const { getGmailAccessToken } = await import('@/lib/integrations/gmail');
+      (getGmailAccessToken as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('No connected gmail integration for tenant tenant-5')
+      );
 
       const mockIntegration: MockIntegration = {
         id: 'int-5',
         tenant_id: 'tenant-5',
         type: 'gmail',
-        nango_connection_id: null, // Missing Nango connection
+        connected_email: 'user@example.com',
         config: {
           syncEnabled: true,
         },
@@ -220,7 +237,6 @@ describe('Email Sync Worker', () => {
       const result = await syncIntegration(mockIntegration as any);
 
       expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0]).toContain('No Nango connection configured');
     });
   });
 
@@ -229,13 +245,13 @@ describe('Email Sync Worker', () => {
       const { syncTenant } = await import('@/lib/workers/email-sync');
       const { sql } = await import('@/lib/db');
 
-      // Mock returning integrations with nango_connection_id
+      // Mock returning connected integrations
       vi.mocked(sql).mockResolvedValueOnce([
         {
           id: 'int-1',
           tenant_id: 'tenant-1',
           type: 'gmail',
-          nango_connection_id: 'nango-conn-1',
+          connected_email: 'user1@example.com',
           config: {
             syncEnabled: true,
           },
@@ -288,7 +304,7 @@ describe('Email Sync Worker', () => {
         id: 'int-6',
         tenant_id: 'tenant-6',
         type: 'o365',
-        nango_connection_id: 'nango-conn-6',
+        connected_email: 'user6@example.com',
         config: {
           syncEnabled: true,
         },
@@ -311,7 +327,7 @@ describe('Email Sync Worker', () => {
         id: 'int-7',
         tenant_id: 'tenant-7',
         type: 'o365',
-        nango_connection_id: 'nango-conn-7',
+        connected_email: 'user7@example.com',
         config: {
           syncEnabled: true,
         },
@@ -353,7 +369,7 @@ describe('Email Sync Worker', () => {
         id: 'int-9',
         tenant_id: 'tenant-9',
         type: 'gmail',
-        nango_connection_id: 'nango-conn-9',
+        connected_email: 'user9@example.com',
         config: {
           syncEnabled: true,
           email: 'test@gmail.com',
@@ -376,7 +392,7 @@ describe('Email Sync Worker', () => {
         id: 'int-10',
         tenant_id: 'tenant-10',
         type: 'gmail',
-        nango_connection_id: 'nango-conn-10',
+        connected_email: 'user10@example.com',
         config: {
           syncEnabled: true,
           email: 'test@gmail.com',

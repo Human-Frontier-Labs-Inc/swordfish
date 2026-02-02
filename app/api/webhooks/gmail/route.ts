@@ -1,6 +1,9 @@
 /**
  * Gmail Push Notification Webhook
  * Receives notifications from Google Pub/Sub when new emails arrive
+ *
+ * SECURITY: Uses connected_email column for tenant isolation.
+ * No longer depends on Nango - uses direct OAuth token management.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,10 +18,12 @@ import { autoRemediate } from '@/lib/workers/remediation';
 import { validateGooglePubSub, checkRateLimit } from '@/lib/webhooks/validation';
 import { processGmailHistoryForUser, getGmailTokenForUser } from '@/lib/integrations/domain-wide/google-workspace';
 import { getDomainUserByEmail, incrementDomainUserStats, getActiveDomainConfigs } from '@/lib/integrations/domain-wide/storage';
-import { nango, getNangoIntegrationKey } from '@/lib/nango/client';
+import { findIntegrationByEmail } from '@/lib/oauth';
 import { enqueueGmailJob, isGmailQueueConfigured } from '@/lib/queue/gmail';
+import { loggers } from '@/lib/logging/logger';
 
 const WEBHOOK_AUDIENCE = process.env.GOOGLE_WEBHOOK_AUDIENCE;
+const log = loggers.webhook;
 
 // Export for Vercel configuration
 // Use a slightly higher timeout, but keep processing lightweight by skipping LLM.
@@ -65,7 +70,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!validation.valid) {
-      console.warn('[Gmail Webhook] Validation failed:', validation.error);
+      log.warn('Gmail webhook validation failed', { error: validation.error });
       // In production, you might want to reject invalid requests
       // For now, log and continue to avoid breaking during development
       if (process.env.NODE_ENV === 'production' && process.env.STRICT_WEBHOOK_VALIDATION === 'true') {
@@ -82,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     const { emailAddress, historyId } = notificationData;
 
-    console.log(`Gmail notification for ${emailAddress}, history: ${historyId}`);
+    log.info('Gmail notification received', { emailAddress, historyId });
 
     // First, check if this email is from a domain-wide monitoring config
     const domainConfigs = await getActiveDomainConfigs();
@@ -92,89 +97,48 @@ export async function POST(request: NextRequest) {
       const domainUser = await getDomainUserByEmail(domainConfig.id, emailAddress);
       if (domainUser && domainUser.isMonitored) {
         // Process via domain-wide path
-        console.log(`Processing domain-wide Gmail notification for ${emailAddress}`);
+        log.info('Processing domain-wide Gmail notification', { emailAddress });
         return await processDomainWideGmail(domainConfig.id, domainConfig.tenantId, emailAddress, historyId);
       }
     }
 
-    // Fall back to individual integration
-    let integrations = await sql`
-      SELECT id, tenant_id, config, nango_connection_id
-      FROM integrations
-      WHERE type = 'gmail'
-      AND status = 'connected'
-      AND config->>'email' = ${emailAddress}
-    `;
+    // SECURITY: Look up integration by connected_email column (verified during OAuth)
+    // This is the secure approach - only uses emails that were validated during OAuth callback
+    const integrationMatch = await findIntegrationByEmail(emailAddress.toLowerCase(), 'gmail');
 
-    // If no match by email, try simpler fallback: get ALL gmail integrations
-    // For most users, there's only one Gmail account connected
-    if (integrations.length === 0) {
-      console.log(`[Gmail Webhook] No integration found by email, trying fallback lookup...`);
+    let integrations: Array<{
+      id: unknown;
+      tenant_id: unknown;
+      config: unknown;
+    }> = [];
 
-      // Get ALL connected Gmail integrations (should only be 1-2 in most cases)
-      const allGmailIntegrations = await sql`
-        SELECT id, tenant_id, config, nango_connection_id
+    if (integrationMatch) {
+      // Found integration by verified connected_email
+      const result = await sql`
+        SELECT id, tenant_id, config
         FROM integrations
-        WHERE type = 'gmail'
+        WHERE id = ${integrationMatch.integrationId}
+        AND type = 'gmail'
         AND status = 'connected'
-        AND nango_connection_id IS NOT NULL
-      `;
-
-      console.log(`[Gmail Webhook] Found ${allGmailIntegrations.length} total Gmail integrations`);
-
-      // Try to match by checking each integration's Nango connection
-      for (const integration of allGmailIntegrations) {
-        try {
-          // Use Nango SDK to get connection details (use correct provider key: 'google')
-          const providerKey = getNangoIntegrationKey('gmail'); // Returns 'google'
-          const connection = await nango.getConnection(providerKey, integration.nango_connection_id);
-
-          // Check if this connection's email matches
-          const connEmail = connection.connection_config?.email || connection.end_user?.email;
-
-          console.log(`[Gmail Webhook] Integration ${integration.id} has email: ${connEmail}`);
-
-          if (connEmail === emailAddress) {
-            console.log(`[Gmail Webhook] Match found! Updating integration config...`);
-
-            // Update the integration with the email for future fast lookups
-            await sql`
-              UPDATE integrations
-              SET config = config || ${JSON.stringify({ email: emailAddress })}::jsonb,
-                  updated_at = NOW()
-              WHERE id = ${integration.id}
-            `;
-
-            // Use this integration
-            integrations = [integration];
-            console.log(`[Gmail Webhook] Auto-healed integration for ${emailAddress}`);
-            break;
-          }
-        } catch (e) {
-          console.warn(`[Gmail Webhook] Failed to check integration ${integration.id}:`, e);
-        }
-      }
-
-      // SECURITY: Do NOT fall back to using a single integration without verification
-      // This would cause cross-tenant data leakage if multiple users have Gmail integrations
-      // and the email address doesn't match. Log a warning for debugging but reject the webhook.
-      if (integrations.length === 0) {
-        console.warn(
-          `[Gmail Webhook] SECURITY: No verified integration found for ${emailAddress}. ` +
-          `Found ${allGmailIntegrations.length} total Gmail integrations but none matched. ` +
-          `This webhook will be ignored to prevent cross-tenant data leakage.`
-        );
-      }
+      ` as Array<{ id: unknown; tenant_id: unknown; config: unknown }>;
+      integrations = result;
     }
 
     if (integrations.length === 0) {
-      console.log(`No active integration found for ${emailAddress}`);
+      // SECURITY: No fallback - only process emails for verified integrations
+      log.warn('SECURITY: No verified integration found, ignoring to prevent cross-tenant data leakage', {
+        emailAddress,
+        alertType: 'cross_tenant_prevention',
+      });
+    }
+
+    if (integrations.length === 0) {
+      log.info('No active integration found', { emailAddress });
       return NextResponse.json({ status: 'ignored' });
     }
 
     const integration = integrations[0];
     const tenantId = integration.tenant_id as string;
-    const nangoConnectionId = integration.nango_connection_id as string | null;
     const config = integration.config as {
       historyId: string;
     };
@@ -194,7 +158,7 @@ export async function POST(request: NextRequest) {
           jobId: job.id,
         });
       } catch (queueError) {
-        console.error('[Gmail Webhook] Queue enqueue failed:', queueError);
+        log.error('Queue enqueue failed', queueError instanceof Error ? queueError : new Error(String(queueError)));
         return NextResponse.json(
           { status: 'queue_error', error: 'Failed to enqueue job' },
           { status: 200 }
@@ -202,82 +166,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get fresh token from Nango (handles refresh automatically)
-    let activeNangoConnectionId = nangoConnectionId;
-
-    if (!activeNangoConnectionId) {
-      // Auto-healing: Try to find and link the Nango connection
-      console.log(`[Gmail Webhook] No Nango connection for integration ${integration.id}, attempting auto-heal...`);
-
-      const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-      if (!nangoSecretKey) {
-        console.error('[Gmail Webhook] Auto-heal failed: NANGO_SECRET_KEY not configured');
-        return NextResponse.json({ error: 'No Nango connection configured' }, { status: 500 });
-      }
-
-      try {
-        const nangoResponse = await fetch('https://api.nango.dev/connections', {
-          headers: {
-            'Authorization': `Bearer ${nangoSecretKey}`,
-          },
-        });
-
-        if (nangoResponse.ok) {
-          const { connections } = await nangoResponse.json() as {
-            connections: Array<{
-              connection_id: string;
-              provider_config_key: string;
-              end_user?: { id: string; email?: string };
-              metadata?: { email?: string };
-            }>
-          };
-
-          console.log(`[Gmail Webhook] Found ${connections.length} Nango connections, looking for tenant ${tenantId} or email ${emailAddress}`);
-
-          // Find connection for this tenant with google provider
-          const providerKey = getNangoIntegrationKey('gmail'); // Returns 'google'
-          let gmailConnection = connections.find(
-            c => c.end_user?.id === tenantId && c.provider_config_key === providerKey
-          );
-
-          // Fallback: try matching by email address in metadata or end_user
-          if (!gmailConnection) {
-            gmailConnection = connections.find(
-              c => c.provider_config_key === providerKey &&
-                   (c.end_user?.email === emailAddress || c.metadata?.email === emailAddress)
-            );
-            if (gmailConnection) {
-              console.log(`[Gmail Webhook] Found connection by email fallback`);
-            }
-          }
-
-          if (gmailConnection) {
-            // Update integration with the found connection ID
-            await sql`
-              UPDATE integrations
-              SET nango_connection_id = ${gmailConnection.connection_id},
-                  updated_at = NOW()
-              WHERE id = ${integration.id}
-            `;
-            activeNangoConnectionId = gmailConnection.connection_id;
-            console.log(`[Gmail Webhook] Auto-healed: linked Nango connection ${activeNangoConnectionId}`);
-          } else {
-            console.warn(`[Gmail Webhook] No matching Nango connection found. Available: ${JSON.stringify(connections.map(c => ({ id: c.connection_id, key: c.provider_config_key, endUserId: c.end_user?.id })))}`);
-          }
-        } else {
-          console.error(`[Gmail Webhook] Nango API error: ${nangoResponse.status} ${nangoResponse.statusText}`);
-        }
-      } catch (healError) {
-        console.error('[Gmail Webhook] Auto-heal failed:', healError);
-      }
-
-      if (!activeNangoConnectionId) {
-        console.warn(`[Gmail Webhook] No Nango connection for integration ${integration.id} and auto-heal failed`);
-        return NextResponse.json({ error: 'No Nango connection configured' }, { status: 500 });
-      }
-    }
-
-    const accessToken = await getGmailAccessToken(activeNangoConnectionId);
+    // Get fresh token using direct OAuth token manager (handles refresh automatically)
+    const accessToken = await getGmailAccessToken(tenantId);
 
     // Get history since last sync
     const startHistoryId = config.historyId || historyId;
@@ -297,22 +187,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`Found ${newMessageIds.size} new messages`);
+    log.info('Found new messages', { count: newMessageIds.size, tenantId });
 
     // Analyze each new message
     let processedCount = 0;
     for (const messageId of newMessageIds) {
       // Stop early if we're close to Vercel's timeout
       if (Date.now() - startTime > WEBHOOK_TIME_BUDGET_MS) {
-        console.log('[Gmail Webhook] Time budget reached, stopping early');
+        log.info('Time budget reached, stopping early', { processedCount, elapsedMs: Date.now() - startTime });
         break;
       }
 
       // Hard cap per invocation to avoid massive batches
       if (processedCount >= MAX_MESSAGES_PER_WEBHOOK) {
-        console.log(
-          `[Gmail Webhook] Message limit reached (${MAX_MESSAGES_PER_WEBHOOK}), stopping early`
-        );
+        log.info('Message limit reached, stopping early', { limit: MAX_MESSAGES_PER_WEBHOOK });
         break;
       }
 
@@ -363,7 +251,7 @@ export async function POST(request: NextRequest) {
 
         processedCount++;
       } catch (error) {
-        console.error(`Failed to process message ${messageId}:`, error);
+        log.error('Failed to process message', error instanceof Error ? error : new Error(String(error)), { messageId });
       }
     }
 
@@ -396,7 +284,7 @@ export async function POST(request: NextRequest) {
       messagesProcessed: processedCount,
     });
   } catch (error) {
-    console.error('Gmail webhook error:', error);
+    log.error('Gmail webhook error', error instanceof Error ? error : new Error(String(error)));
 
     // If Neon is saturated with connection attempts, don't keep failing
     // the webhook and triggering aggressive retries from Gmail. Instead,
@@ -446,7 +334,7 @@ async function processDomainWideGmail(
     // Get new messages from history
     const { messageIds, newHistoryId } = await processGmailHistoryForUser(configId, userEmail, historyId);
 
-    console.log(`Domain-wide: Found ${messageIds.length} new messages for ${userEmail}`);
+    log.info('Domain-wide: Found new messages', { count: messageIds.length, userEmail });
 
     const accessToken = await getGmailTokenForUser(configId, userEmail);
     let processedCount = 0;
@@ -479,7 +367,7 @@ async function processDomainWideGmail(
 
         processedCount++;
       } catch (msgError) {
-        console.error(`Failed to process domain-wide message ${messageId}:`, msgError);
+        log.error('Failed to process domain-wide message', msgError instanceof Error ? msgError : new Error(String(msgError)), { messageId });
       }
     }
 
@@ -498,7 +386,7 @@ async function processDomainWideGmail(
       domainWide: true,
     });
   } catch (error) {
-    console.error('Domain-wide Gmail processing error:', error);
+    log.error('Domain-wide Gmail processing error', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
   }
 }

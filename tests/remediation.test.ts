@@ -41,13 +41,23 @@ import { releaseEmail, deleteEmail, quarantineEmail } from '@/lib/workers/remedi
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
 describe('Remediation Service', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    // Re-establish default mock implementations after reset
+    const gmail = await import('@/lib/integrations/gmail');
+    vi.mocked(gmail.findGmailMessageByMessageId).mockResolvedValue('gmail-msg-id-123');
+    vi.mocked(gmail.getOrCreateQuarantineLabel).mockResolvedValue('Label_123');
+    vi.mocked(gmail.getGmailAccessToken).mockResolvedValue('mock-token');
+
+    const o365 = await import('@/lib/integrations/o365');
+    vi.mocked(o365.getOrCreateQuarantineFolder).mockResolvedValue('folder-123');
+    vi.mocked(o365.getO365AccessToken).mockResolvedValue('mock-token');
   });
 
   describe('releaseEmail', () => {
     it('should successfully release email when integration_id is NULL but integration exists', async () => {
-      // Mock: Threat with NULL integration_id
+      // Mock 1: Threat query
+      // Mock 2: Update threat status (no integration lookup - uses tenant-based tokens)
       mockSql
         .mockResolvedValueOnce([{
           id: 'threat-123',
@@ -57,13 +67,8 @@ describe('Remediation Service', () => {
           integration_id: null, // NULL integration_id
           integration_type: 'gmail',
           status: 'quarantined',
-          nango_connection_id: null, // NULL because LEFT JOIN with NULL integration_id
+          connected_email: null,
         }])
-        // Mock: Fallback integration lookup
-        .mockResolvedValueOnce([{
-          nango_connection_id: 'nango-conn-123',
-        }])
-        // Mock: Update threat status
         .mockResolvedValueOnce([]);
 
       const result = await releaseEmail({
@@ -78,20 +83,22 @@ describe('Remediation Service', () => {
       expect(modifyGmailMessage).toHaveBeenCalled();
     });
 
-    it('should fail gracefully when no integration exists', async () => {
-      mockSql
-        .mockResolvedValueOnce([{
-          id: 'threat-123',
-          tenant_id: 'tenant-abc',
-          message_id: 'msg-id-123',
-          external_message_id: null,
-          integration_id: null,
-          integration_type: 'gmail',
-          status: 'quarantined',
-          nango_connection_id: null,
-        }])
-        // Mock: No integration found
-        .mockResolvedValueOnce([]);
+    it('should fail gracefully when token retrieval fails', async () => {
+      // Mock 1: Threat query - returns valid threat
+      mockSql.mockResolvedValueOnce([{
+        id: 'threat-123',
+        tenant_id: 'tenant-abc',
+        message_id: 'msg-id-123',
+        external_message_id: null,
+        integration_id: null,
+        integration_type: 'gmail',
+        status: 'quarantined',
+        connected_email: null,
+      }]);
+
+      // Mock getGmailAccessToken to throw an error
+      const gmail = await import('@/lib/integrations/gmail');
+      vi.mocked(gmail.getGmailAccessToken).mockRejectedValueOnce(new Error('No connected integration'));
 
       const result = await releaseEmail({
         tenantId: 'tenant-abc',
@@ -101,7 +108,7 @@ describe('Remediation Service', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('No Nango connection configured');
+      expect(result.error).toContain('No connected integration');
     });
 
     it('should use external_message_id when available', async () => {
@@ -114,7 +121,7 @@ describe('Remediation Service', () => {
           integration_id: 'int-123',
           integration_type: 'gmail',
           status: 'quarantined',
-          nango_connection_id: 'nango-conn-123',
+          connected_email: 'user@example.com',
         }])
         .mockResolvedValueOnce([]);
 
@@ -150,6 +157,8 @@ describe('Remediation Service', () => {
 
   describe('deleteEmail', () => {
     it('should successfully delete email with proper integration', async () => {
+      // Mock 1: Threat query
+      // Mock 2: Update threat status (no integration lookup - uses tenant-based tokens)
       mockSql
         .mockResolvedValueOnce([{
           id: 'threat-123',
@@ -159,10 +168,7 @@ describe('Remediation Service', () => {
           integration_id: null,
           integration_type: 'gmail',
           status: 'quarantined',
-          nango_connection_id: null,
-        }])
-        .mockResolvedValueOnce([{
-          nango_connection_id: 'nango-conn-123',
+          connected_email: null,
         }])
         .mockResolvedValueOnce([]);
 
@@ -188,7 +194,7 @@ describe('Remediation Service', () => {
           integration_id: 'int-456',
           integration_type: 'o365',
           status: 'quarantined',
-          nango_connection_id: 'nango-o365',
+          connected_email: 'user@company.onmicrosoft.com',
         }])
         .mockResolvedValueOnce([]);
 
@@ -210,6 +216,8 @@ describe('Remediation Service', () => {
 
   describe('quarantineEmail', () => {
     it('should successfully quarantine email', async () => {
+      // Mock 1: Threat query
+      // Mock 2: Update query (no integration lookup needed - uses tenant-based tokens)
       mockSql
         .mockResolvedValueOnce([{
           id: 'threat-123',
@@ -219,10 +227,7 @@ describe('Remediation Service', () => {
           integration_id: null,
           integration_type: 'gmail',
           status: 'active',
-          nango_connection_id: null,
-        }])
-        .mockResolvedValueOnce([{
-          nango_connection_id: 'nango-conn-123',
+          connected_email: null,
         }])
         .mockResolvedValueOnce([]);
 
@@ -241,6 +246,8 @@ describe('Remediation Service', () => {
 
   describe('Data Integrity Scenarios', () => {
     it('should handle missing external_message_id by using message_id', async () => {
+      // Mock 1: Threat query
+      // Mock 2: Update query (no integration lookup needed - uses tenant-based tokens)
       mockSql
         .mockResolvedValueOnce([{
           id: 'threat-123',
@@ -250,10 +257,7 @@ describe('Remediation Service', () => {
           integration_id: null,
           integration_type: 'gmail',
           status: 'quarantined',
-          nango_connection_id: null,
-        }])
-        .mockResolvedValueOnce([{
-          nango_connection_id: 'nango-conn-123',
+          connected_email: null,
         }])
         .mockResolvedValueOnce([]);
 
@@ -276,6 +280,8 @@ describe('Remediation Service', () => {
       // This tests the scenario where message_id (RFC 5322 header) is from Outlook
       // but email was received via Gmail. This is NORMAL for cross-platform emails.
       // e.g., email sent FROM Outlook TO Gmail has Outlook-format Message-ID header.
+      // Mock 1: Threat query
+      // Mock 2: Update query (no integration lookup needed - uses tenant-based tokens)
       mockSql
         .mockResolvedValueOnce([{
           id: 'threat-123',
@@ -285,12 +291,9 @@ describe('Remediation Service', () => {
           integration_id: null,
           integration_type: 'gmail', // Received via Gmail - this is correct!
           status: 'quarantined',
-          nango_connection_id: null,
+          connected_email: null,
         }])
-        .mockResolvedValueOnce([{
-          nango_connection_id: 'nango-conn-123',
-        }])
-        .mockResolvedValueOnce([]); // status update
+        .mockResolvedValueOnce([]);
 
       // The remediation should proceed - the message_id format doesn't need to match
       // integration type since message_id is the RFC 5322 header from the SENDING server
@@ -315,6 +318,7 @@ describe('Remediation Service', () => {
     it('should reject when external_message_id format mismatches integration type', async () => {
       // This tests a REAL data integrity issue - when external_message_id
       // (the platform API message ID) doesn't match the integration type
+      // Mock 1: Threat query - returns error case before update is called
       mockSql
         .mockResolvedValueOnce([{
           id: 'threat-123',
@@ -324,10 +328,7 @@ describe('Remediation Service', () => {
           integration_id: null,
           integration_type: 'gmail', // But external_message_id is O365 format!
           status: 'quarantined',
-          nango_connection_id: null,
-        }])
-        .mockResolvedValueOnce([{
-          nango_connection_id: 'nango-conn-123',
+          connected_email: null,
         }]);
 
       const result = await releaseEmail({

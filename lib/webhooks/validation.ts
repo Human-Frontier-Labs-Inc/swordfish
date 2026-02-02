@@ -4,10 +4,38 @@
  */
 
 import crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
+
+// HIGH-4 FIX: Prevent ALLOW_UNSIGNED_WEBHOOKS from being set in production
+// This env var is ONLY for development/testing - never production
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_UNSIGNED_WEBHOOKS === 'true') {
+  console.error(
+    '\n\n' +
+    '='.repeat(80) + '\n' +
+    'SECURITY CRITICAL ERROR\n' +
+    '='.repeat(80) + '\n' +
+    'ALLOW_UNSIGNED_WEBHOOKS=true is set in production!\n' +
+    'This allows attackers to send forged webhook requests.\n' +
+    'Remove this environment variable immediately.\n' +
+    '='.repeat(80) + '\n\n'
+  );
+  // Don't exit the process, but log the critical error
+  // In production, this will be visible in logs for immediate attention
+}
+
+// Singleton OAuth2Client for Google token verification
+let googleOAuth2Client: OAuth2Client | null = null;
+
+function getGoogleOAuth2Client(): OAuth2Client {
+  if (!googleOAuth2Client) {
+    googleOAuth2Client = new OAuth2Client();
+  }
+  return googleOAuth2Client;
+}
 
 /**
  * Validate Google Pub/Sub push notification
- * Google Cloud Pub/Sub uses OIDC tokens for authentication
+ * SECURITY: Now properly verifies JWT signature against Google's public keys
  * @see https://cloud.google.com/pubsub/docs/push#authentication
  */
 export async function validateGooglePubSub(params: {
@@ -28,12 +56,27 @@ export async function validateGooglePubSub(params: {
   const token = authorizationHeader.substring(7);
 
   try {
-    // Decode JWT without verification to get header
-    const [headerB64, payloadB64] = token.split('.');
-    const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString());
-    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+    const client = getGoogleOAuth2Client();
 
-    // Verify claims
+    // SECURITY FIX: Verify the JWT signature using Google's public keys
+    // This ensures the token was actually issued by Google and not forged
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: expectedAudience, // Will throw if audience doesn't match
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      return { valid: false, error: 'Invalid token payload' };
+    }
+
+    // Verify issuer is Google
+    if (!payload.iss?.includes('accounts.google.com')) {
+      return { valid: false, error: `Invalid issuer: ${payload.iss}` };
+    }
+
+    // Additional claim validation
     const now = Math.floor(Date.now() / 1000);
 
     if (payload.exp && payload.exp < now) {
@@ -44,25 +87,14 @@ export async function validateGooglePubSub(params: {
       return { valid: false, error: 'Token issued in the future' };
     }
 
-    // Check audience if provided
-    if (expectedAudience && payload.aud !== expectedAudience) {
-      return { valid: false, error: `Invalid audience: ${payload.aud}` };
-    }
-
-    // Verify issuer is Google
-    if (!payload.iss?.includes('accounts.google.com')) {
-      return { valid: false, error: `Invalid issuer: ${payload.iss}` };
-    }
-
-    // In production, you should verify the signature using Google's public keys
-    // For now, we validate the structure and claims
-    // TODO: Add full JWT signature verification with google-auth-library
-
     return {
       valid: true,
       email: payload.email || payload.sub,
     };
   } catch (error) {
+    // Log verification failures for security monitoring
+    console.warn('[Webhook Validation] Google JWT verification failed:', error instanceof Error ? error.message : 'Unknown error');
+
     return {
       valid: false,
       error: error instanceof Error ? error.message : 'Token validation failed',

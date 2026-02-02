@@ -9,6 +9,7 @@ import { MetricsCollector, Counter, Histogram, Gauge } from './metrics';
 import { ErrorTracker, WebhookReporter, ConsoleReporter, ErrorEvent } from './error-tracking';
 import { Tracer, SpanExporter, SpanData, SpanStatus } from './tracing';
 import { AlertManager, Alert, AlertSeverity } from './alerts';
+import { AlertNotificationBridge, type AlertBridgeConfig } from './alert-notification-bridge';
 
 /**
  * Observability configuration
@@ -46,6 +47,10 @@ export interface ObservabilityConfig {
     webhookUrl?: string;
     slackWebhookUrl?: string;
     pagerDutyKey?: string;
+    /** Enable database-backed notifications via AlertNotificationBridge */
+    enableDatabaseNotifications?: boolean;
+    /** Bridge configuration for database notifications */
+    bridgeConfig?: AlertBridgeConfig;
   };
 }
 
@@ -318,6 +323,7 @@ export interface ObservabilityInstance {
   tracer: Tracer;
   errorTracker: ErrorTracker;
   alertManager: AlertManager;
+  alertBridge: AlertNotificationBridge | null;
   swordfishMetrics: SwordfishMetrics;
 
   // Utility methods
@@ -406,10 +412,26 @@ export function initObservability(config: ObservabilityConfig): ObservabilityIns
     pagerDutyKey: alertConfig.pagerDutyKey,
   });
 
+  // Initialize alert notification bridge for database-backed notifications
+  let alertBridge: AlertNotificationBridge | null = null;
+  if (alertConfig.enableDatabaseNotifications) {
+    alertBridge = new AlertNotificationBridge(alertConfig.bridgeConfig);
+  }
+
   const alertManager = new AlertManager({
     notify: (alert) => {
       if (alertConfig.enabled) {
+        // Send to webhook/Slack/PagerDuty handlers
         alertHandler.notify(alert);
+
+        // Also send to database-backed notification bridge if enabled
+        // Note: The bridge requires tenant context, so this is fire-and-forget
+        // For tenant-specific alerts, use alertBridge.handleAlert(alert, tenantId) directly
+        if (alertBridge) {
+          alertBridge.handleAlert(alert).catch((error) => {
+            console.warn('[observability] Alert bridge notification failed:', error);
+          });
+        }
       }
     },
   });
@@ -427,6 +449,7 @@ export function initObservability(config: ObservabilityConfig): ObservabilityIns
     tracer,
     errorTracker,
     alertManager,
+    alertBridge,
     swordfishMetrics,
 
     getMetricsEndpoint: () => metricsCollector.getRegistry().toPrometheusFormat(),
@@ -662,6 +685,7 @@ export function initFromEnv(): ObservabilityInstance {
       webhookUrl: process.env.ALERT_WEBHOOK_URL,
       slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
       pagerDutyKey: process.env.PAGERDUTY_ROUTING_KEY,
+      enableDatabaseNotifications: process.env.ALERT_DB_NOTIFICATIONS_ENABLED === 'true',
     },
   };
 

@@ -1,6 +1,8 @@
 /**
  * Microsoft 365 Webhook (Change Notifications)
  * Receives notifications from Microsoft Graph subscriptions
+ *
+ * SECURITY: Uses direct OAuth token management, not Nango.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -13,8 +15,10 @@ import { sendThreatNotification } from '@/lib/notifications/service';
 import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
 import { validateMicrosoftGraph, checkRateLimit } from '@/lib/webhooks/validation';
+import { loggers } from '@/lib/logging/logger';
 
 const MICROSOFT_WEBHOOK_SECRET = process.env.MICROSOFT_WEBHOOK_SECRET || '';
+const log = loggers.webhook;
 
 // Export for Vercel configuration
 export const maxDuration = 30;
@@ -44,7 +48,7 @@ export async function POST(request: NextRequest) {
     // Handle subscription validation (Microsoft sends this on subscription creation)
     const validationToken = request.nextUrl.searchParams.get('validationToken');
     if (validationToken) {
-      console.log('[O365 Webhook] Subscription validation request');
+      log.info('O365 subscription validation request');
       return new NextResponse(validationToken, {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
@@ -76,7 +80,7 @@ export async function POST(request: NextRequest) {
         });
 
         if (!validation.valid) {
-          console.warn('[O365 Webhook] Validation failed:', validation.error);
+          log.warn('O365 webhook validation failed', { error: validation.error });
           if (process.env.NODE_ENV === 'production' && process.env.STRICT_WEBHOOK_VALIDATION === 'true') {
             continue; // Skip invalid notifications
           }
@@ -85,15 +89,15 @@ export async function POST(request: NextRequest) {
         await processNotification(notification);
         processedCount++;
       } catch (error) {
-        console.error(`[O365 Webhook] Failed to process notification ${notification.subscriptionId}:`, error);
+        log.error('Failed to process O365 notification', error instanceof Error ? error : new Error(String(error)), { subscriptionId: notification.subscriptionId });
       }
     }
 
-    console.log(`[O365 Webhook] Processed ${processedCount} notifications in ${Date.now() - startTime}ms`);
+    log.info('O365 webhook processed', { processedCount, durationMs: Date.now() - startTime });
 
     return NextResponse.json({ status: 'processed' });
   } catch (error) {
-    console.error('O365 webhook error:', error);
+    log.error('O365 webhook error', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json(
       { error: 'Processing failed' },
       { status: 500 }
@@ -111,7 +115,7 @@ async function processNotification(notification: GraphNotification['value'][0]) 
 
   // Find integration by subscription ID
   const integrations = await sql`
-    SELECT id, tenant_id, config, nango_connection_id
+    SELECT id, tenant_id, config, connected_email
     FROM integrations
     WHERE type = 'o365'
     AND status = 'connected'
@@ -119,43 +123,63 @@ async function processNotification(notification: GraphNotification['value'][0]) 
   `;
 
   if (integrations.length === 0) {
-    // Try finding by client state (tenant ID)
-    const byState = await sql`
-      SELECT id, tenant_id, config, nango_connection_id
-      FROM integrations
-      WHERE type = 'o365'
-      AND status = 'connected'
-      AND tenant_id = ${clientState}
-    `;
-
-    if (byState.length === 0) {
-      console.log(`No integration found for subscription ${subscriptionId}`);
-      return;
-    }
-
-    integrations.push(byState[0]);
+    // SECURITY: Do NOT fall back to clientState lookup
+    // The clientState is attacker-controlled and could be spoofed to point to a different tenant
+    // Only process notifications for subscriptions we have registered in our database
+    log.warn('SECURITY: No subscription found, ignoring to prevent cross-tenant data leakage', {
+      subscriptionId,
+      clientState,
+      alertType: 'cross_tenant_prevention',
+    });
+    return;
   }
 
+  // SECURITY: Verify clientState matches the integration's tenant
+  // This prevents tampering even when subscription ID is valid
   const integration = integrations[0];
+  if (clientState !== integration.tenant_id) {
+    log.error('SECURITY ALERT: clientState mismatch, rejecting notification', {
+      expectedTenantId: integration.tenant_id,
+      receivedClientState: clientState,
+      subscriptionId,
+      alertType: 'tampering_attempt',
+    });
+    // Log security event for monitoring
+    try {
+      await logAuditEvent({
+        tenantId: integration.tenant_id as string,
+        actorId: null,
+        actorEmail: 'system',
+        action: 'security.webhook_tampering_detected',
+        resourceType: 'integration',
+        resourceId: integration.id as string,
+        afterState: {
+          subscriptionId,
+          expectedClientState: integration.tenant_id,
+          receivedClientState: clientState,
+          alertType: 'cross_tenant_attempt',
+        },
+      });
+    } catch (auditError) {
+      log.error('Failed to log security audit', auditError instanceof Error ? auditError : new Error(String(auditError)));
+    }
+    return;
+  }
+
+  // integration was already validated above
   const tenantId = integration.tenant_id as string;
-  const nangoConnectionId = integration.nango_connection_id as string | null;
 
   // Extract message ID from resource path
   // Resource format: "Users/{userId}/Messages/{messageId}"
   const messageIdMatch = resource.match(/Messages\/(.+)$/);
   if (!messageIdMatch) {
-    console.log(`Could not extract message ID from resource: ${resource}`);
+    log.warn('Could not extract message ID from resource', { resource });
     return;
   }
   const messageId = messageIdMatch[1];
 
-  // Get fresh token from Nango
-  if (!nangoConnectionId) {
-    console.warn(`No Nango connection for integration ${integration.id}`);
-    return;
-  }
-
-  const accessToken = await getO365AccessToken(nangoConnectionId);
+  // Get fresh token using direct OAuth token manager (handles refresh automatically)
+  const accessToken = await getO365AccessToken(tenantId);
 
   // Get the email
   const message = await getO365Email({
@@ -220,7 +244,7 @@ async function processNotification(notification: GraphNotification['value'][0]) 
     },
   });
 
-  console.log(`Processed O365 message ${messageId}: ${verdict.verdict} (${verdict.overallScore})`);
+  log.info('Processed O365 message', { messageId, verdict: verdict.verdict, score: verdict.overallScore, tenantId });
 }
 
 /**
