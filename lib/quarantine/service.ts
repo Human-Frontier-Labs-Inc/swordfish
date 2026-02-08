@@ -2,7 +2,7 @@
  * Quarantine Service
  * Handles moving, releasing, and deleting quarantined emails
  *
- * Token management is handled by Nango - we get fresh tokens via the integration modules.
+ * Token management is handled by direct OAuth - we get fresh tokens via the integration modules.
  */
 
 import { sql } from '@/lib/db';
@@ -423,11 +423,8 @@ async function moveToMicrosoftQuarantine(
     throw new Error('Microsoft integration not configured');
   }
 
-  if (!integration.nango_connection_id) {
-    throw new Error('No Nango connection configured for Microsoft integration');
-  }
-
-  const accessToken = await getO365AccessToken(integration.nango_connection_id);
+  // Use direct OAuth token management (tenantId-based)
+  const accessToken = await getO365AccessToken(tenantId);
 
   // Get or create quarantine folder
   const quarantineFolderId = await getOrCreateMicrosoftFolder(
@@ -468,11 +465,8 @@ async function releaseFromMicrosoftQuarantine(
     throw new Error('Microsoft integration not configured');
   }
 
-  if (!integration.nango_connection_id) {
-    throw new Error('No Nango connection configured for Microsoft integration');
-  }
-
-  const accessToken = await getO365AccessToken(integration.nango_connection_id);
+  // Use direct OAuth token management (tenantId-based)
+  const accessToken = await getO365AccessToken(tenantId);
 
   // Move message back to inbox
   const response = await fetch(
@@ -507,11 +501,8 @@ async function deleteFromMicrosoft(
     throw new Error('Microsoft integration not configured');
   }
 
-  if (!integration.nango_connection_id) {
-    throw new Error('No Nango connection configured for Microsoft integration');
-  }
-
-  const accessToken = await getO365AccessToken(integration.nango_connection_id);
+  // Use direct OAuth token management (tenantId-based)
+  const accessToken = await getO365AccessToken(tenantId);
 
   const response = await fetch(
     `https://graph.microsoft.com/v1.0/me/messages/${messageId}`,
@@ -541,11 +532,8 @@ async function moveToGmailQuarantine(
     throw new Error('Gmail integration not configured');
   }
 
-  if (!integration.nango_connection_id) {
-    throw new Error('No Nango connection configured for Gmail integration');
-  }
-
-  const accessToken = await getGmailAccessToken(integration.nango_connection_id);
+  // Use direct OAuth token management (tenantId-based)
+  const accessToken = await getGmailAccessToken(tenantId);
 
   // Get or create quarantine label
   const quarantineLabelId = await getOrCreateGmailLabel(
@@ -587,11 +575,8 @@ async function releaseFromGmailQuarantine(
     throw new Error('Gmail integration not configured');
   }
 
-  if (!integration.nango_connection_id) {
-    throw new Error('No Nango connection configured for Gmail integration');
-  }
-
-  const accessToken = await getGmailAccessToken(integration.nango_connection_id);
+  // Use direct OAuth token management (tenantId-based)
+  const accessToken = await getGmailAccessToken(tenantId);
 
   const quarantineLabelId = await getOrCreateGmailLabel(
     accessToken,
@@ -632,11 +617,8 @@ async function deleteFromGmail(
     throw new Error('Gmail integration not configured');
   }
 
-  if (!integration.nango_connection_id) {
-    throw new Error('No Nango connection configured for Gmail integration');
-  }
-
-  const accessToken = await getGmailAccessToken(integration.nango_connection_id);
+  // Use direct OAuth token management (tenantId-based)
+  const accessToken = await getGmailAccessToken(tenantId);
 
   const response = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
