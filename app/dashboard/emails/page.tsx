@@ -25,6 +25,8 @@ interface ScannedEmail {
   primarySignal: string;
   processingTimeMs: number;
   scannedAt: string;
+  threatId: string | null;
+  threatStatus: 'quarantined' | 'released' | 'deleted' | null;
 }
 
 const verdictConfig = {
@@ -65,6 +67,7 @@ export default function ScannedEmailsPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const fetchEmails = useCallback(async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
@@ -112,6 +115,54 @@ export default function ScannedEmailsPage() {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
     return date.toLocaleString();
+  }
+
+  async function releaseEmail(threatId: string) {
+    setActionLoading(threatId);
+    try {
+      const response = await fetch(`/api/threats/${threatId}/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addToAllowlist: false }),
+      });
+      if (response.ok) {
+        // Update local state
+        setSelectedEmail(null);
+        await fetchEmails();
+      } else {
+        const data = await response.json();
+        alert(`Failed to release: ${data.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to release email:', error);
+      alert('Failed to release email');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function deleteEmail(threatId: string) {
+    if (!confirm('Are you sure you want to permanently delete this email?')) {
+      return;
+    }
+    setActionLoading(threatId);
+    try {
+      const response = await fetch(`/api/threats/${threatId}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setSelectedEmail(null);
+        await fetchEmails();
+      } else {
+        const data = await response.json();
+        alert(`Failed to delete: ${data.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete email:', error);
+      alert('Failed to delete email');
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   // Count by verdict
@@ -403,6 +454,58 @@ export default function ScannedEmailsPage() {
                       <dt className="text-sm font-medium text-gray-500">Scanned At</dt>
                       <dd className="mt-1 text-sm text-gray-900">{formatDate(selectedEmail.scannedAt)}</dd>
                     </div>
+
+                    {/* Actions for blocked/quarantined emails */}
+                    {selectedEmail.threatId && selectedEmail.threatStatus === 'quarantined' && (
+                      <div className="border-t pt-6">
+                        <dt className="text-sm font-medium text-gray-500 mb-3">Actions</dt>
+                        <dd className="flex gap-3">
+                          <button
+                            onClick={() => releaseEmail(selectedEmail.threatId!)}
+                            disabled={actionLoading === selectedEmail.threatId}
+                            className="flex-1 inline-flex justify-center items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                          >
+                            {actionLoading === selectedEmail.threatId ? (
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            ) : (
+                              '✓'
+                            )}
+                            Release to Inbox
+                          </button>
+                          <button
+                            onClick={() => deleteEmail(selectedEmail.threatId!)}
+                            disabled={actionLoading === selectedEmail.threatId}
+                            className="inline-flex justify-center items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                          >
+                            ✕ Delete
+                          </button>
+                        </dd>
+                        <p className="mt-2 text-xs text-gray-500">
+                          Release will move this email back to your inbox. Delete will permanently remove it.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Show status if already released or deleted */}
+                    {selectedEmail.threatId && selectedEmail.threatStatus === 'released' && (
+                      <div className="border-t pt-6">
+                        <div className="rounded-md bg-green-50 p-3">
+                          <p className="text-sm text-green-800">
+                            ✓ This email has been released to your inbox
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedEmail.threatId && selectedEmail.threatStatus === 'deleted' && (
+                      <div className="border-t pt-6">
+                        <div className="rounded-md bg-gray-50 p-3">
+                          <p className="text-sm text-gray-600">
+                            This email has been deleted
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </dl>
                 </div>
               </div>

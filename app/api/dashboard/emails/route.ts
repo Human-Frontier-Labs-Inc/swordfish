@@ -27,49 +27,56 @@ export async function GET(request: NextRequest) {
     const verdictFilter = searchParams.get('verdict'); // pass, suspicious, quarantine, block
 
     // Build query with optional verdict filter
+    // Join with threats table to get threat_id for release functionality
     let emails;
     if (verdictFilter) {
       emails = await sql`
         SELECT
-          id,
-          message_id,
-          subject,
-          from_address,
-          from_display_name,
-          to_addresses,
-          received_at,
-          verdict,
-          score,
-          confidence,
-          signals,
-          processing_time_ms,
-          created_at
-        FROM email_verdicts
-        WHERE tenant_id = ${tenantId}
-        AND verdict = ${verdictFilter}
-        ORDER BY COALESCE(received_at, created_at) DESC
+          ev.id,
+          ev.message_id,
+          ev.subject,
+          ev.from_address,
+          ev.from_display_name,
+          ev.to_addresses,
+          ev.received_at,
+          ev.verdict,
+          ev.score,
+          ev.confidence,
+          ev.signals,
+          ev.processing_time_ms,
+          ev.created_at,
+          t.id as threat_id,
+          t.status as threat_status
+        FROM email_verdicts ev
+        LEFT JOIN threats t ON t.message_id = ev.message_id AND t.tenant_id = ev.tenant_id
+        WHERE ev.tenant_id = ${tenantId}
+        AND ev.verdict = ${verdictFilter}
+        ORDER BY COALESCE(ev.received_at, ev.created_at) DESC
         LIMIT ${limit}
         OFFSET ${offset}
       `;
     } else {
       emails = await sql`
         SELECT
-          id,
-          message_id,
-          subject,
-          from_address,
-          from_display_name,
-          to_addresses,
-          received_at,
-          verdict,
-          score,
-          confidence,
-          signals,
-          processing_time_ms,
-          created_at
-        FROM email_verdicts
-        WHERE tenant_id = ${tenantId}
-        ORDER BY COALESCE(received_at, created_at) DESC
+          ev.id,
+          ev.message_id,
+          ev.subject,
+          ev.from_address,
+          ev.from_display_name,
+          ev.to_addresses,
+          ev.received_at,
+          ev.verdict,
+          ev.score,
+          ev.confidence,
+          ev.signals,
+          ev.processing_time_ms,
+          ev.created_at,
+          t.id as threat_id,
+          t.status as threat_status
+        FROM email_verdicts ev
+        LEFT JOIN threats t ON t.message_id = ev.message_id AND t.tenant_id = ev.tenant_id
+        WHERE ev.tenant_id = ${tenantId}
+        ORDER BY COALESCE(ev.received_at, ev.created_at) DESC
         LIMIT ${limit}
         OFFSET ${offset}
       `;
@@ -115,6 +122,9 @@ export async function GET(request: NextRequest) {
         primarySignal: primarySignal?.detail || (email.verdict === 'pass' ? 'No threats detected' : 'Unknown'),
         processingTimeMs: email.processing_time_ms || 0,
         scannedAt: email.created_at,
+        // Threat info for release functionality
+        threatId: email.threat_id || null,
+        threatStatus: email.threat_status || null,
       };
     });
 
