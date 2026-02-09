@@ -74,8 +74,10 @@ export default function ThreatDetailPage() {
     if (!threat) return;
     setActionLoading(true);
     try {
-      const response = await fetch(`/api/quarantine/${threat.id}/release`, {
+      const response = await fetch(`/api/threats/${threat.id}/release`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addToAllowlist: false }),
       });
       if (!response.ok) throw new Error('Failed to release');
       setThreat({ ...threat, status: 'released', releasedAt: new Date().toISOString() });
