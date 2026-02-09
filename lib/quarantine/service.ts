@@ -150,11 +150,19 @@ export async function releaseEmail(
 
     const threat = threats[0];
 
-    // Move email back in provider
-    if (threat.provider === 'microsoft') {
-      await releaseFromMicrosoftQuarantine(tenantId, threat.provider_message_id);
-    } else if (threat.provider === 'google') {
-      await releaseFromGmailQuarantine(tenantId, threat.provider_message_id);
+    // Move email back in provider (integration_type is 'gmail' or 'o365')
+    const providerMsgId = threat.external_message_id;
+    if (providerMsgId) {
+      try {
+        if (threat.integration_type === 'o365') {
+          await releaseFromMicrosoftQuarantine(tenantId, providerMsgId);
+        } else if (threat.integration_type === 'gmail') {
+          await releaseFromGmailQuarantine(tenantId, providerMsgId);
+        }
+      } catch (providerErr) {
+        // Log but don't fail - still update status so user can unblock
+        console.warn('Provider release failed (email may already be in inbox):', providerErr);
+      }
     }
 
     // Update threat status
@@ -234,17 +242,24 @@ export async function deleteQuarantinedEmail(
 
     const threat = threats[0];
 
-    // Delete email in provider
-    if (threat.provider === 'microsoft') {
-      await deleteFromMicrosoft(tenantId, threat.provider_message_id);
-    } else if (threat.provider === 'google') {
-      await deleteFromGmail(tenantId, threat.provider_message_id);
+    // Delete email in provider (integration_type is 'gmail' or 'o365')
+    const providerMsgId = threat.external_message_id;
+    if (providerMsgId) {
+      try {
+        if (threat.integration_type === 'o365') {
+          await deleteFromMicrosoft(tenantId, providerMsgId);
+        } else if (threat.integration_type === 'gmail') {
+          await deleteFromGmail(tenantId, providerMsgId);
+        }
+      } catch (providerErr) {
+        console.warn('Provider delete failed (email may already be deleted):', providerErr);
+      }
     }
 
     // Update threat status
     await sql`
       UPDATE threats
-      SET status = 'deleted', released_at = NOW(), released_by = ${userId}
+      SET status = 'deleted', deleted_at = NOW(), deleted_by = ${userId}
       WHERE id = ${threatId}
     `;
 

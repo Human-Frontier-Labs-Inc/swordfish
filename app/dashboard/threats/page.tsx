@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTenant } from '@/lib/auth/tenant-context';
 import Link from 'next/link';
 
@@ -23,30 +23,72 @@ export default function ThreatsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'quarantined' | 'released' | 'deleted'>('all');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const fetchThreats = useCallback(async () => {
+    if (!currentTenant) return;
+
+    try {
+      const params = new URLSearchParams();
+      // Always send status parameter - API needs explicit 'all' to show all statuses
+      params.set('status', filter);
+
+      const response = await fetch(`/api/threats?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch threats');
+
+      const data = await response.json();
+      setThreats(data.threats || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load threats');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentTenant, filter]);
 
   useEffect(() => {
-    async function fetchThreats() {
-      if (!currentTenant) return;
-
-      try {
-        const params = new URLSearchParams();
-        // Always send status parameter - API needs explicit 'all' to show all statuses
-        params.set('status', filter);
-
-        const response = await fetch(`/api/threats?${params}`);
-        if (!response.ok) throw new Error('Failed to fetch threats');
-
-        const data = await response.json();
-        setThreats(data.threats || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load threats');
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchThreats();
-  }, [currentTenant, filter]);
+  }, [fetchThreats]);
+
+  async function releaseThreat(threatId: string) {
+    setActionLoading(threatId);
+    try {
+      const response = await fetch(`/api/threats/${threatId}/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addToAllowlist: false }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        setError(`Release failed: ${data.error || 'Unknown error'}`);
+        return;
+      }
+      await fetchThreats();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Release failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function deleteThreat(threatId: string) {
+    if (!confirm('Permanently delete this email?')) return;
+    setActionLoading(threatId);
+    try {
+      const response = await fetch(`/api/threats/${threatId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        setError(`Delete failed: ${data.error || 'Unknown error'}`);
+        return;
+      }
+      await fetchThreats();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   const getThreatTypeBadge = (type: string) => {
     const colors: Record<string, string> = {
@@ -203,10 +245,18 @@ export default function ThreatsPage() {
                     </Link>
                     {threat.status === 'quarantined' && (
                       <>
-                        <button className="text-green-600 hover:text-green-900 mr-3">
-                          Release
+                        <button
+                          onClick={() => releaseThreat(threat.id)}
+                          disabled={actionLoading === threat.id}
+                          className="text-green-600 hover:text-green-900 mr-3 disabled:opacity-50"
+                        >
+                          {actionLoading === threat.id ? '...' : 'Release'}
                         </button>
-                        <button className="text-red-600 hover:text-red-900">
+                        <button
+                          onClick={() => deleteThreat(threat.id)}
+                          disabled={actionLoading === threat.id}
+                          className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                        >
                           Delete
                         </button>
                       </>
