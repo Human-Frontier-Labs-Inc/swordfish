@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { sql } from '@/lib/db';
+import { sql, withTenant } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,22 +17,24 @@ export async function GET(request: NextRequest) {
 
     const tenantId = orgId || `personal_${userId}`;
 
-    const integrations = await sql`
-      SELECT
-        id,
-        type,
-        status,
-        config->>'email' as email,
-        config->>'displayName' as display_name,
-        config->>'syncEnabled' as sync_enabled,
-        last_sync_at,
-        error_message,
-        created_at,
-        updated_at
-      FROM integrations
-      WHERE tenant_id = ${tenantId}
-      ORDER BY created_at DESC
-    `;
+    // RLS-protected query
+    const integrations = await withTenant(tenantId, async () => {
+      return sql`
+        SELECT
+          id,
+          type,
+          status,
+          config->>'email' as email,
+          config->>'displayName' as display_name,
+          config->>'syncEnabled' as sync_enabled,
+          last_sync_at,
+          error_message,
+          created_at,
+          updated_at
+        FROM integrations
+        ORDER BY created_at DESC
+      `;
+    });
 
     // Map to frontend format
     const formatted = integrations.map((i: Record<string, unknown>) => ({

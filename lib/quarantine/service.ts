@@ -5,7 +5,7 @@
  * Token management is handled by direct OAuth - we get fresh tokens via the integration modules.
  */
 
-import { sql } from '@/lib/db';
+import { sql, withTenant } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 import type { EmailVerdict } from '@/lib/detection/types';
 import { getO365AccessToken } from '@/lib/integrations/o365';
@@ -57,32 +57,34 @@ export async function quarantineEmail(
   providerMessageId?: string
 ): Promise<QuarantineResult> {
   try {
-    // Store threat record in database
-    const result = await sql`
-      INSERT INTO threats (
-        tenant_id, message_id, subject, sender_email, recipient_email,
-        verdict, score, status, provider, provider_message_id, quarantined_at
-      ) VALUES (
-        ${tenantId},
-        ${email.messageId},
-        ${email.subject},
-        ${email.from},
-        ${email.to},
-        ${verdict.verdict},
-        ${verdict.overallScore},
-        'quarantined',
-        ${provider},
-        ${providerMessageId || null},
-        NOW()
-      )
-      ON CONFLICT (tenant_id, message_id)
-      DO UPDATE SET
-        status = 'quarantined',
-        verdict = ${verdict.verdict},
-        score = ${verdict.overallScore},
-        quarantined_at = NOW()
-      RETURNING id
-    `;
+    // Store threat record in database (RLS-protected)
+    const result = await withTenant(tenantId, async () => {
+      return sql`
+        INSERT INTO threats (
+          tenant_id, message_id, subject, sender_email, recipient_email,
+          verdict, score, status, provider, provider_message_id, quarantined_at
+        ) VALUES (
+          ${tenantId},
+          ${email.messageId},
+          ${email.subject},
+          ${email.from},
+          ${email.to},
+          ${verdict.verdict},
+          ${verdict.overallScore},
+          'quarantined',
+          ${provider},
+          ${providerMessageId || null},
+          NOW()
+        )
+        ON CONFLICT (tenant_id, message_id)
+        DO UPDATE SET
+          status = 'quarantined',
+          verdict = ${verdict.verdict},
+          score = ${verdict.overallScore},
+          quarantined_at = NOW()
+        RETURNING id
+      `;
+    });
 
     // Move email in provider (delegate to provider-specific service)
     if (provider === 'microsoft') {
@@ -131,13 +133,14 @@ export async function releaseEmail(
   addToAllowlist: boolean = false
 ): Promise<QuarantineResult> {
   try {
-    // Get threat record
-    const threats = await sql`
-      SELECT * FROM threats
-      WHERE id = ${threatId}
-      AND tenant_id = ${tenantId}
-      AND status = 'quarantined'
-    `;
+    // Get threat record (RLS-protected)
+    const threats = await withTenant(tenantId, async () => {
+      return sql`
+        SELECT * FROM threats
+        WHERE id = ${threatId}
+        AND status = 'quarantined'
+      `;
+    });
 
     if (threats.length === 0) {
       return {
@@ -165,25 +168,28 @@ export async function releaseEmail(
       }
     }
 
-    // Update threat status
-    await sql`
-      UPDATE threats
-      SET status = 'released', released_at = NOW(), released_by = ${userId}
-      WHERE id = ${threatId}
-    `;
-
-    // Optionally add sender to allowlist
-    if (addToAllowlist && threat.sender_email) {
-      const domain = threat.sender_email.split('@')[1];
-      await sql`
-        INSERT INTO list_entries (
-          tenant_id, list_type, entry_type, value, reason, created_by
-        ) VALUES (
-          ${tenantId}, 'allowlist', 'email', ${threat.sender_email.toLowerCase()},
-          'Released from quarantine', ${userId}
-        )
-        ON CONFLICT (tenant_id, list_type, entry_type, value) DO NOTHING
+    // Update threat status (RLS-protected)
+    await withTenant(tenantId, async () => {
+      return sql`
+        UPDATE threats
+        SET status = 'released', released_at = NOW(), released_by = ${userId}
+        WHERE id = ${threatId}
       `;
+    });
+
+    // Optionally add sender to allowlist (RLS-protected)
+    if (addToAllowlist && threat.sender_email) {
+      await withTenant(tenantId, async () => {
+        return sql`
+          INSERT INTO list_entries (
+            tenant_id, list_type, entry_type, value, reason, created_by
+          ) VALUES (
+            ${tenantId}, 'allowlist', 'email', ${(threat.sender_email as string).toLowerCase()},
+            'Released from quarantine', ${userId}
+          )
+          ON CONFLICT (tenant_id, list_type, entry_type, value) DO NOTHING
+        `;
+      });
     }
 
     await logAuditEvent({
@@ -224,12 +230,13 @@ export async function deleteQuarantinedEmail(
   userId: string
 ): Promise<QuarantineResult> {
   try {
-    // Get threat record
-    const threats = await sql`
-      SELECT * FROM threats
-      WHERE id = ${threatId}
-      AND tenant_id = ${tenantId}
-    `;
+    // Get threat record (RLS-protected)
+    const threats = await withTenant(tenantId, async () => {
+      return sql`
+        SELECT * FROM threats
+        WHERE id = ${threatId}
+      `;
+    });
 
     if (threats.length === 0) {
       return {
@@ -256,12 +263,14 @@ export async function deleteQuarantinedEmail(
       }
     }
 
-    // Update threat status
-    await sql`
-      UPDATE threats
-      SET status = 'deleted', deleted_at = NOW(), deleted_by = ${userId}
-      WHERE id = ${threatId}
-    `;
+    // Update threat status (RLS-protected)
+    await withTenant(tenantId, async () => {
+      return sql`
+        UPDATE threats
+        SET status = 'deleted', deleted_at = NOW(), deleted_by = ${userId}
+        WHERE id = ${threatId}
+      `;
+    });
 
     await logAuditEvent({
       tenantId,
@@ -316,15 +325,17 @@ export async function reportFalsePositive(
       afterState: { notes },
     });
 
-    // Store false positive for ML training
-    await sql`
-      INSERT INTO feedback (
-        tenant_id, threat_id, feedback_type, notes, created_by, created_at
-      ) VALUES (
-        ${tenantId}, ${threatId}, 'false_positive', ${notes || null}, ${userId}, NOW()
-      )
-      ON CONFLICT DO NOTHING
-    `;
+    // Store false positive for ML training (RLS-protected)
+    await withTenant(tenantId, async () => {
+      return sql`
+        INSERT INTO feedback (
+          tenant_id, threat_id, feedback_type, notes, created_by, created_at
+        ) VALUES (
+          ${tenantId}, ${threatId}, 'false_positive', ${notes || null}, ${userId}, NOW()
+        )
+        ON CONFLICT DO NOTHING
+      `;
+    });
 
     return {
       success: true,
@@ -355,24 +366,24 @@ export async function getQuarantinedThreats(
 ): Promise<ThreatRecord[]> {
   const { status = 'quarantined', limit = 50, offset = 0 } = options;
 
-  // Use created_at for ordering since quarantined_at may not exist in all schemas
-  let threats;
-  if (status === 'all') {
-    threats = await sql`
-      SELECT * FROM threats
-      WHERE tenant_id = ${tenantId}
-      ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-  } else {
-    threats = await sql`
-      SELECT * FROM threats
-      WHERE tenant_id = ${tenantId}
-      AND status = ${status}
-      ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-  }
+  // Use RLS-protected query with tenant context
+  const threats = await withTenant(tenantId, async () => {
+    // Use created_at for ordering since quarantined_at may not exist in all schemas
+    if (status === 'all') {
+      return sql`
+        SELECT * FROM threats
+        ORDER BY created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+    } else {
+      return sql`
+        SELECT * FROM threats
+        WHERE status = ${status}
+        ORDER BY created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+    }
+  });
 
   return threats.map((t: Record<string, unknown>) => ({
     id: t.id as string,
@@ -399,18 +410,20 @@ export async function getQuarantinedThreats(
  * Get threat statistics for dashboard
  */
 export async function getThreatStats(tenantId: string) {
-  // Use created_at instead of quarantined_at (which may not exist in all schemas)
-  const stats = await sql`
-    SELECT
-      COUNT(*) FILTER (WHERE status = 'quarantined') as quarantined_count,
-      COUNT(*) FILTER (WHERE status = 'released') as released_count,
-      COUNT(*) FILTER (WHERE status = 'deleted') as deleted_count,
-      COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as last_24h,
-      COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as last_7d,
-      AVG(score) FILTER (WHERE status = 'quarantined') as avg_score
-    FROM threats
-    WHERE tenant_id = ${tenantId}
-  `;
+  // Use RLS-protected query with tenant context
+  const stats = await withTenant(tenantId, async () => {
+    // Use created_at instead of quarantined_at (which may not exist in all schemas)
+    return sql`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'quarantined') as quarantined_count,
+        COUNT(*) FILTER (WHERE status = 'released') as released_count,
+        COUNT(*) FILTER (WHERE status = 'deleted') as deleted_count,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as last_24h,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as last_7d,
+        AVG(score) FILTER (WHERE status = 'quarantined') as avg_score
+      FROM threats
+    `;
+  });
 
   return {
     quarantinedCount: Number(stats[0].quarantined_count) || 0,
@@ -664,13 +677,15 @@ async function getIntegration(tenantId: string, provider: 'microsoft' | 'google'
   // Map provider name to integration type
   const integrationType = provider === 'microsoft' ? 'o365' : 'gmail';
 
-  const integrations = await sql`
-    SELECT id, nango_connection_id FROM integrations
-    WHERE tenant_id = ${tenantId}
-    AND type = ${integrationType}
-    AND status = 'connected'
-    LIMIT 1
-  `;
+  // RLS-protected query
+  const integrations = await withTenant(tenantId, async () => {
+    return sql`
+      SELECT id, nango_connection_id FROM integrations
+      WHERE type = ${integrationType}
+      AND status = 'connected'
+      LIMIT 1
+    `;
+  });
   return integrations[0] as IntegrationRecord || null;
 }
 

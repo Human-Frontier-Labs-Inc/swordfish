@@ -3,7 +3,7 @@
  * Persists email verdicts and related data to the database
  */
 
-import { sql } from '@/lib/db';
+import { sql, withTenant } from '@/lib/db';
 import type { EmailVerdict, Signal, ParsedEmail } from './types';
 
 // Helper to truncate strings to fit database column limits
@@ -186,19 +186,21 @@ export async function getVerdictStats(
   avgScore: number;
   avgProcessingTime: number;
 }> {
-  const results = await sql`
-    SELECT
-      COUNT(*)::int as total,
-      COUNT(*) FILTER (WHERE verdict = 'pass')::int as passed,
-      COUNT(*) FILTER (WHERE verdict = 'suspicious')::int as suspicious,
-      COUNT(*) FILTER (WHERE verdict = 'quarantine')::int as quarantined,
-      COUNT(*) FILTER (WHERE verdict = 'block')::int as blocked,
-      COALESCE(AVG(score), 0)::float as avg_score,
-      COALESCE(AVG(processing_time_ms), 0)::float as avg_processing_time
-    FROM email_verdicts
-    WHERE tenant_id = ${tenantId}
-    AND created_at >= NOW() - INTERVAL '1 day' * ${daysBack}
-  ` as Array<{
+  // RLS-protected query with tenant context
+  const results = await withTenant(tenantId, async () => {
+    return sql`
+      SELECT
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE verdict = 'pass')::int as passed,
+        COUNT(*) FILTER (WHERE verdict = 'suspicious')::int as suspicious,
+        COUNT(*) FILTER (WHERE verdict = 'quarantine')::int as quarantined,
+        COUNT(*) FILTER (WHERE verdict = 'block')::int as blocked,
+        COALESCE(AVG(score), 0)::float as avg_score,
+        COALESCE(AVG(processing_time_ms), 0)::float as avg_processing_time
+      FROM email_verdicts
+      WHERE created_at >= NOW() - INTERVAL '1 day' * ${daysBack}
+    `;
+  }) as Array<{
     total: number;
     passed: number;
     suspicious: number;

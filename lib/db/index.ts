@@ -193,12 +193,75 @@ export interface VIPEntry {
   updated_at: Date;
 }
 
-// Query helpers with tenant isolation
+// ============================================================================
+// QUERY HELPERS WITH TENANT ISOLATION (RLS)
+// ============================================================================
+//
+// IMPORTANT: All queries on tenant-scoped tables MUST use these helpers to
+// ensure Row Level Security policies are enforced. Without setting the context,
+// queries may fail or (worse) leak data between tenants.
+//
+// Usage:
+//   const threats = await withTenant(tenantId, async () => {
+//     return sql`SELECT * FROM threats WHERE status = 'quarantined'`;
+//   });
+//
+// For MSP users who need cross-tenant access:
+//   const allThreats = await withMspAccess(tenantId, mspOrgId, async () => {
+//     return sql`SELECT * FROM threats WHERE status = 'quarantined'`;
+//   });
+
+/**
+ * Execute a query with tenant context for RLS policies.
+ * This sets app.current_tenant_id for the duration of the query.
+ */
 export async function withTenant<T>(
   tenantId: string,
   queryFn: () => Promise<T>
 ): Promise<T> {
-  // Set tenant context for RLS policies
+  // Set tenant context for RLS policies (LOCAL = transaction-scoped)
   await sql`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+  return queryFn();
+}
+
+/**
+ * Execute a query with both tenant and MSP context for RLS policies.
+ * This allows MSP admins to access data across their managed tenants.
+ */
+export async function withMspAccess<T>(
+  tenantId: string,
+  mspOrgId: string,
+  queryFn: () => Promise<T>
+): Promise<T> {
+  // Set both contexts for RLS policies
+  await sql`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+  await sql`SELECT set_config('app.msp_org_id', ${mspOrgId}, true)`;
+  return queryFn();
+}
+
+/**
+ * Execute a query with MSP context only (for cross-tenant queries).
+ * Use when you need to query across all tenants managed by an MSP.
+ */
+export async function withMspContext<T>(
+  mspOrgId: string,
+  queryFn: () => Promise<T>
+): Promise<T> {
+  // Set MSP context for cross-tenant access
+  await sql`SELECT set_config('app.msp_org_id', ${mspOrgId}, true)`;
+  // Clear tenant context to allow cross-tenant queries
+  await sql`SELECT set_config('app.current_tenant_id', '', true)`;
+  return queryFn();
+}
+
+/**
+ * Clear all RLS context. Use with caution - only for system operations
+ * that need to bypass tenant isolation (e.g., migrations, cron jobs).
+ */
+export async function withSystemContext<T>(
+  queryFn: () => Promise<T>
+): Promise<T> {
+  await sql`SELECT set_config('app.current_tenant_id', '', true)`;
+  await sql`SELECT set_config('app.msp_org_id', '', true)`;
   return queryFn();
 }

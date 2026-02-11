@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { sql } from '@/lib/db';
+import { sql, withTenant } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 import type { Policy, PolicyRule, PolicyPriority } from '@/lib/policies/types';
 
@@ -38,39 +38,36 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type');
     const status = searchParams.get('status');
 
-    let policies;
-
+    // RLS-protected queries
     // Priority is stored as INTEGER: 0=critical, 1=high, 2=medium, 3=low
     // Lower number = higher priority, so ORDER BY priority ASC
-    if (type && status) {
-      policies = await sql`
-        SELECT * FROM policies
-        WHERE tenant_id = ${tenantId}
-        AND type = ${type}
-        AND status = ${status}
-        ORDER BY priority ASC, created_at DESC
-      `;
-    } else if (type) {
-      policies = await sql`
-        SELECT * FROM policies
-        WHERE tenant_id = ${tenantId}
-        AND type = ${type}
-        ORDER BY priority ASC, created_at DESC
-      `;
-    } else if (status) {
-      policies = await sql`
-        SELECT * FROM policies
-        WHERE tenant_id = ${tenantId}
-        AND status = ${status}
-        ORDER BY priority ASC, created_at DESC
-      `;
-    } else {
-      policies = await sql`
-        SELECT * FROM policies
-        WHERE tenant_id = ${tenantId}
-        ORDER BY priority ASC, created_at DESC
-      `;
-    }
+    const policies = await withTenant(tenantId, async () => {
+      if (type && status) {
+        return sql`
+          SELECT * FROM policies
+          WHERE type = ${type}
+          AND status = ${status}
+          ORDER BY priority ASC, created_at DESC
+        `;
+      } else if (type) {
+        return sql`
+          SELECT * FROM policies
+          WHERE type = ${type}
+          ORDER BY priority ASC, created_at DESC
+        `;
+      } else if (status) {
+        return sql`
+          SELECT * FROM policies
+          WHERE status = ${status}
+          ORDER BY priority ASC, created_at DESC
+        `;
+      } else {
+        return sql`
+          SELECT * FROM policies
+          ORDER BY priority ASC, created_at DESC
+        `;
+      }
+    });
 
     const formatted = policies.map((p: Record<string, unknown>) => ({
       id: p.id,
@@ -124,22 +121,25 @@ export async function POST(request: NextRequest) {
     // Convert string priority to integer for database storage
     const priorityInt = PRIORITY_TO_INT[priority as PolicyPriority] ?? 2; // default to medium (2)
 
-    const result = await sql`
-      INSERT INTO policies (
-        tenant_id, name, description, type, status, priority, rules, scope, created_by
-      ) VALUES (
-        ${tenantId},
-        ${name},
-        ${description || null},
-        ${type},
-        ${status},
-        ${priorityInt},
-        ${JSON.stringify(rules)}::jsonb,
-        ${scope ? JSON.stringify(scope) : null}::jsonb,
-        ${userId}
-      )
-      RETURNING id
-    `;
+    // RLS-protected insert
+    const result = await withTenant(tenantId, async () => {
+      return sql`
+        INSERT INTO policies (
+          tenant_id, name, description, type, status, priority, rules, scope, created_by
+        ) VALUES (
+          ${tenantId},
+          ${name},
+          ${description || null},
+          ${type},
+          ${status},
+          ${priorityInt},
+          ${JSON.stringify(rules)}::jsonb,
+          ${scope ? JSON.stringify(scope) : null}::jsonb,
+          ${userId}
+        )
+        RETURNING id
+      `;
+    });
 
     await logAuditEvent({
       tenantId,

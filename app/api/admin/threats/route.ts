@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { sql } from '@/lib/db';
+import { sql, withMspContext, withTenant } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
