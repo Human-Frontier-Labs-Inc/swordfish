@@ -1,6 +1,7 @@
 -- Migration: 006_phish_reports
 -- Description: Create phish_reports table for user-reported suspicious emails
 -- Date: 2026-01-17
+-- Fixed: 2026-02-11 - Changed tenant_id/reviewed_by to UUID to match parent tables
 
 -- Create enum types for report status and verdicts
 DO $$ BEGIN
@@ -23,8 +24,8 @@ END $$;
 
 -- Create phish_reports table
 CREATE TABLE IF NOT EXISTS phish_reports (
-    id VARCHAR(32) PRIMARY KEY,
-    tenant_id VARCHAR(32) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 
     -- Reporter information
     reporter_email VARCHAR(255) NOT NULL,
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS phish_reports (
 
     -- Admin review
     admin_notes TEXT,
-    reviewed_by VARCHAR(32) REFERENCES users(id),
+    reviewed_by UUID REFERENCES users(id),
     reviewed_at TIMESTAMPTZ,
     notified_reporter BOOLEAN NOT NULL DEFAULT false,
 
@@ -83,13 +84,13 @@ CREATE INDEX IF NOT EXISTS idx_phish_reports_subject_search ON phish_reports USI
 
 -- Create ml_feedback table for tracking verdicts to improve ML
 CREATE TABLE IF NOT EXISTS ml_feedback (
-    id VARCHAR(32) PRIMARY KEY,
-    tenant_id VARCHAR(32) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 
     -- Feedback details
     feedback_type VARCHAR(50) NOT NULL,  -- e.g., 'phish_report_verdict', 'user_feedback', 'analyst_correction'
     source_type VARCHAR(50) NOT NULL,    -- e.g., 'phish_report', 'email_verdict', 'threat'
-    source_id VARCHAR(32) NOT NULL,
+    source_id UUID NOT NULL,
 
     -- Label assigned
     label VARCHAR(50) NOT NULL,          -- e.g., 'phish', 'legitimate', 'spam', 'unknown'
@@ -131,14 +132,14 @@ ALTER TABLE phish_reports ENABLE ROW LEVEL SECURITY;
 -- Policy for tenant isolation
 DROP POLICY IF EXISTS phish_reports_tenant_isolation ON phish_reports;
 CREATE POLICY phish_reports_tenant_isolation ON phish_reports
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::VARCHAR);
+    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
 
 -- Policy for ML feedback tenant isolation
 ALTER TABLE ml_feedback ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS ml_feedback_tenant_isolation ON ml_feedback;
 CREATE POLICY ml_feedback_tenant_isolation ON ml_feedback
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::VARCHAR);
+    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
 
 -- Add comments for documentation
 COMMENT ON TABLE phish_reports IS 'User-reported suspicious emails from Outlook Add-in, Gmail Add-on, or manual submission';
