@@ -3,7 +3,7 @@
  * Processes Microsoft Graph change notifications
  */
 
-import { sql } from '@/lib/db';
+import { sql, withTenant, withSystemContext } from '@/lib/db';
 import { getO365Email, getO365AccessToken } from '@/lib/integrations/o365';
 import { parseGraphEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
@@ -95,24 +95,28 @@ async function processNotification(notification: GraphNotification): Promise<{
 
   console.log(`[Microsoft Webhook] Processing notification for subscription ${subscriptionId}`);
 
-  // Find integration by subscription ID or client state (tenant ID)
-  let integrations = await sql`
-    SELECT id, tenant_id, config, nango_connection_id
-    FROM integrations
-    WHERE type = 'o365'
-    AND status = 'connected'
-    AND config->>'subscriptionId' = ${subscriptionId}
-  `;
-
-  if (integrations.length === 0 && clientState) {
-    // Try finding by client state (often contains tenant ID)
-    integrations = await sql`
+  // Find integration by subscription ID or client state (system context - no tenant yet)
+  let integrations = await withSystemContext(async () => {
+    return sql`
       SELECT id, tenant_id, config, nango_connection_id
       FROM integrations
       WHERE type = 'o365'
       AND status = 'connected'
-      AND tenant_id = ${clientState}
+      AND config->>'subscriptionId' = ${subscriptionId}
     `;
+  });
+
+  if (integrations.length === 0 && clientState) {
+    // Try finding by client state (often contains tenant ID)
+    integrations = await withSystemContext(async () => {
+      return sql`
+        SELECT id, tenant_id, config, nango_connection_id
+        FROM integrations
+        WHERE type = 'o365'
+        AND status = 'connected'
+        AND tenant_id = ${clientState}
+      `;
+    });
   }
 
   if (integrations.length === 0) {
@@ -138,12 +142,13 @@ async function processNotification(notification: GraphNotification): Promise<{
   }
   const messageId = messageIdMatch[1];
 
-  // Check if already processed
-  const existing = await sql`
-    SELECT id FROM email_verdicts
-    WHERE tenant_id = ${tenantId}
-    AND message_id LIKE ${`%${messageId}%`}
-  `;
+  // Check if already processed (RLS-protected)
+  const existing = await withTenant(tenantId, async () => {
+    return sql`
+      SELECT id FROM email_verdicts
+      WHERE message_id LIKE ${`%${messageId}%`}
+    `;
+  });
 
   if (existing.length > 0) {
     return { processed: false, threatFound: false };
@@ -203,12 +208,14 @@ async function processNotification(notification: GraphNotification): Promise<{
     });
   }
 
-  // Update last sync
-  await sql`
-    UPDATE integrations
-    SET last_sync_at = NOW(), updated_at = NOW()
-    WHERE id = ${integration.id}
-  `;
+  // Update last sync (RLS-protected)
+  await withTenant(tenantId, async () => {
+    return sql`
+      UPDATE integrations
+      SET last_sync_at = NOW(), updated_at = NOW()
+      WHERE id = ${integration.id}
+    `;
+  });
 
   // Audit log
   await logAuditEvent({

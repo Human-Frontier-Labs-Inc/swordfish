@@ -14,6 +14,7 @@ import { loggers } from '@/lib/logging/logger';
 import { DEFAULT_DETECTION_CONFIG } from './types';
 import { runDeterministicAnalysis } from './deterministic';
 import { runLLMAnalysis, shouldInvokeLLM, type LLMAnalysisContext } from './llm';
+import { checkAndIncrementLLMUsage, recordLLMTokenUsage } from './llm-rate-limiter';
 import { evaluatePolicies } from '@/lib/policies/engine';
 import { classifyEmail } from './ml/classifier';
 import { checkReputation } from './reputation/service';
@@ -325,19 +326,58 @@ export async function analyzeEmail(
     filteredDeterministicResult.score >= 50;
 
   if (shouldUseLLM || becSuspected || trustedSenderHighScore) {
-    // Phase 4: Build context from Phase 1-3 for LLM analysis
-    const llmContext = buildLLMContext(
-      reputationContext,
-      allSignals,
-      emailClassification,
-      layerResults
-    );
+    // Check LLM rate limit before calling Claude
+    const rateLimitResult = await checkAndIncrementLLMUsage(tenantId);
+    
+    if (!rateLimitResult.allowed) {
+      // Rate limit exceeded - skip LLM but log it
+      loggers.detection.warn('LLM rate limit exceeded', {
+        tenantId,
+        currentCount: rateLimitResult.currentCount,
+        dailyLimit: rateLimitResult.dailyLimit,
+      });
+      
+      layerResults.push({
+        layer: 'llm',
+        score: 0,
+        confidence: 0,
+        signals: [{
+          type: 'llm_rate_limited',
+          severity: 'info',
+          score: 0,
+          detail: `LLM analysis skipped: Daily limit of ${rateLimitResult.dailyLimit} calls reached. Resets at midnight UTC.`,
+        }],
+        processingTimeMs: 0,
+        skipped: true,
+        skipReason: `Rate limit exceeded (${rateLimitResult.currentCount}/${rateLimitResult.dailyLimit})`,
+      });
+    } else {
+      // Rate limit OK - proceed with LLM analysis
+      if (rateLimitResult.warning) {
+        loggers.detection.info('LLM rate limit warning', {
+          tenantId,
+          warning: rateLimitResult.warning,
+        });
+      }
 
-    const llmResult = await runLLMAnalysis(email, allSignals, llmContext);
-    layerResults.push(llmResult);
-    allSignals.push(...llmResult.signals);
-    // Estimate tokens used (rough approximation)
-    llmTokensUsed = estimateTokensUsed(email);
+      // Phase 4: Build context from Phase 1-3 for LLM analysis
+      const llmContext = buildLLMContext(
+        reputationContext,
+        allSignals,
+        emailClassification,
+        layerResults
+      );
+
+      const llmResult = await runLLMAnalysis(email, allSignals, llmContext);
+      layerResults.push(llmResult);
+      allSignals.push(...llmResult.signals);
+      
+      // Estimate and record tokens used
+      llmTokensUsed = estimateTokensUsed(email);
+      await recordLLMTokenUsage(tenantId, llmTokensUsed, llmTokensUsed / 4).catch(err => {
+        loggers.detection.error('Failed to record LLM token usage', err instanceof Error ? err : new Error(String(err)));
+      });
+    }
   } else {
     layerResults.push({
       layer: 'llm',

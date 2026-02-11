@@ -3,7 +3,7 @@
  * Processes Gmail Pub/Sub notifications
  */
 
-import { sql } from '@/lib/db';
+import { sql, withTenant, withSystemContext } from '@/lib/db';
 import { getGmailMessage, getGmailHistory, getGmailAccessToken } from '@/lib/integrations/gmail';
 import { parseGmailEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
@@ -47,14 +47,16 @@ export async function processGmailWebhook(
 
     console.log(`[Gmail Webhook] Processing notification for ${emailAddress}, history: ${historyId}`);
 
-    // Find the integration for this email
-    const integrations = await sql`
-      SELECT id, tenant_id, config, nango_connection_id
-      FROM integrations
-      WHERE type = 'gmail'
-      AND status = 'connected'
-      AND config->>'email' = ${emailAddress}
-    `;
+    // Find the integration for this email (system context - no tenant yet)
+    const integrations = await withSystemContext(async () => {
+      return sql`
+        SELECT id, tenant_id, config, nango_connection_id
+        FROM integrations
+        WHERE type = 'gmail'
+        AND status = 'connected'
+        AND config->>'email' = ${emailAddress}
+      `;
+    });
 
     if (integrations.length === 0) {
       return {
@@ -109,12 +111,13 @@ export async function processGmailWebhook(
     // Process each new message
     for (const messageId of newMessageIds) {
       try {
-        // Check if already processed
-        const existing = await sql`
-          SELECT id FROM email_verdicts
-          WHERE tenant_id = ${tenantId}
-          AND message_id LIKE ${`%${messageId}%`}
-        `;
+        // Check if already processed (RLS-protected)
+        const existing = await withTenant(tenantId, async () => {
+          return sql`
+            SELECT id FROM email_verdicts
+            WHERE message_id LIKE ${`%${messageId}%`}
+          `;
+        });
 
         if (existing.length > 0) {
           continue;
@@ -170,14 +173,16 @@ export async function processGmailWebhook(
       }
     }
 
-    // Update history ID
-    await sql`
-      UPDATE integrations
-      SET config = config || ${JSON.stringify({ historyId: historyResult.historyId })}::jsonb,
-          last_sync_at = NOW(),
-          updated_at = NOW()
-      WHERE id = ${integration.id}
-    `;
+    // Update history ID (RLS-protected)
+    await withTenant(tenantId, async () => {
+      return sql`
+        UPDATE integrations
+        SET config = config || ${JSON.stringify({ historyId: historyResult.historyId })}::jsonb,
+            last_sync_at = NOW(),
+            updated_at = NOW()
+        WHERE id = ${integration.id}
+      `;
+    });
 
     // Audit log
     await logAuditEvent({
