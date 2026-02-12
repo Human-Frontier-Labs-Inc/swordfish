@@ -1,6 +1,6 @@
 /**
  * Report Export API
- * GET - Export reports in various formats
+ * GET - Export reports in various formats (CSV, JSON, PDF)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,6 +15,7 @@ import {
 } from '@/lib/analytics/export';
 import { generateExecutiveSummary } from '@/lib/analytics/service';
 import { logAuditEvent } from '@/lib/db/audit';
+import { generateExecutivePDF, generateThreatsPDF } from '@/lib/reports/pdf-generator';
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,6 +36,46 @@ export async function GET(request: NextRequest) {
     const startDate = new Date(endDate.getTime() - daysBack * 24 * 60 * 60 * 1000);
     const dateRange = { start: startDate, end: endDate };
 
+    // Handle PDF format separately
+    if (format === 'pdf') {
+      let pdf;
+      switch (reportType) {
+        case 'executive': {
+          const summary = await generateExecutiveSummary(tenantId, daysBack);
+          pdf = await generateExecutivePDF(summary, dateRange);
+          break;
+        }
+        case 'threats': {
+          pdf = await generateThreatsPDF(tenantId, dateRange, limit);
+          break;
+        }
+        default:
+          return NextResponse.json(
+            { error: `PDF export not supported for ${reportType}. Use csv or json.` },
+            { status: 400 }
+          );
+      }
+
+      // Log the export
+      await logAuditEvent({
+        tenantId,
+        actorId: userId,
+        actorEmail: null,
+        action: 'report.export',
+        resourceType: 'report',
+        resourceId: reportType,
+        afterState: { format: 'pdf', daysBack, limit },
+      });
+
+      return new NextResponse(pdf.buffer, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${pdf.filename}"`,
+        },
+      });
+    }
+
+    // Handle CSV/JSON formats
     let content: string;
     let filename: string;
 

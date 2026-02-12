@@ -295,3 +295,52 @@ export function generateExportFilename(
 
   return `swordfish_${reportType}_${dateStr}.${format}`;
 }
+
+/**
+ * Get threats for PDF report generation
+ */
+export async function getThreatsForReport(
+  tenantId: string,
+  dateRange: { start: Date; end: Date },
+  limit: number = 100
+): Promise<Array<{
+  id: string;
+  type: string;
+  severity: string;
+  sender: string;
+  subject: string;
+  detectedAt: Date;
+  status: string;
+}>> {
+  const threats = await sql`
+    SELECT
+      id,
+      verdict as type,
+      CASE 
+        WHEN score >= 0.9 THEN 'critical'
+        WHEN score >= 0.7 THEN 'high'
+        WHEN score >= 0.5 THEN 'medium'
+        ELSE 'low'
+      END as severity,
+      sender_email as sender,
+      subject,
+      quarantined_at as detected_at,
+      status
+    FROM threats
+    WHERE tenant_id = ${tenantId}
+    AND quarantined_at >= ${dateRange.start.toISOString()}
+    AND quarantined_at <= ${dateRange.end.toISOString()}
+    ORDER BY quarantined_at DESC
+    LIMIT ${limit}
+  `;
+
+  return threats.map(t => ({
+    id: t.id,
+    type: t.type || 'unknown',
+    severity: t.severity || 'medium',
+    sender: t.sender || '',
+    subject: t.subject || '(no subject)',
+    detectedAt: new Date(t.detected_at),
+    status: t.status || 'quarantined',
+  }));
+}

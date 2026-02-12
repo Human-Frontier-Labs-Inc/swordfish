@@ -2,9 +2,10 @@
  * PDF Report Generator
  *
  * Generates PDF reports from compliance and security data
- * Uses HTML templates rendered to PDF
+ * Uses Puppeteer with @sparticuz/chromium for serverless PDF generation
  */
 
+import puppeteer, { Browser, PDFOptions as PuppeteerPDFOptions } from 'puppeteer-core';
 import { SOC2ReportData } from './compliance/soc2';
 import { HIPAAReportData } from './compliance/hipaa';
 
@@ -30,6 +31,40 @@ export interface GeneratedPDF {
   pageCount: number;
 }
 
+// Cache browser instance for reuse (important for serverless cold starts)
+let browserInstance: Browser | null = null;
+
+/**
+ * Get or create a browser instance
+ */
+async function getBrowser(): Promise<Browser> {
+  if (browserInstance) {
+    return browserInstance;
+  }
+
+  const isLocal = process.env.NODE_ENV === 'development' || process.env.LOCAL_CHROMIUM;
+
+  if (isLocal) {
+    browserInstance = await puppeteer.launch({
+      args: [],
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+      headless: true,
+    });
+  } else {
+    // Dynamic import for serverless chromium (avoids ESM/CJS issues)
+    const chromium = await import('@sparticuz/chromium').then(m => m.default || m);
+    
+    browserInstance = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
+  }
+
+  return browserInstance;
+}
+
 /**
  * Generate PDF from SOC 2 report data
  */
@@ -53,36 +88,323 @@ export async function generateHIPAAPDF(
 }
 
 /**
- * Core PDF generation from HTML
- * Note: In production, use a service like Puppeteer, wkhtmltopdf, or a cloud service
+ * Core PDF generation from HTML using Puppeteer
  */
 async function generatePDFFromHTML(
   html: string,
   filename: string,
   options?: PDFOptions
 ): Promise<GeneratedPDF> {
-  // For serverless, we return HTML that can be rendered to PDF client-side
-  // or use a PDF service API
+  const browser = await getBrowser();
+  const page = await browser.newPage();
 
-  // Placeholder implementation - in production use:
-  // 1. Puppeteer (if running on server with chromium)
-  // 2. PDF service API (like html-pdf-service, pdf.co, etc.)
-  // 3. Client-side rendering with jsPDF or similar
+  try {
+    // Set content
+    await page.setContent(html, { waitUntil: 'networkidle0' });
 
-  const buffer = Buffer.from(html, 'utf-8');
+    // Configure PDF options
+    const pdfOptions: PuppeteerPDFOptions = {
+      format: options?.format || 'A4',
+      landscape: options?.orientation === 'landscape',
+      margin: options?.margins ? {
+        top: `${options.margins.top}px`,
+        right: `${options.margins.right}px`,
+        bottom: `${options.margins.bottom}px`,
+        left: `${options.margins.left}px`,
+      } : {
+        top: '40px',
+        right: '40px',
+        bottom: '60px',
+        left: '40px',
+      },
+      printBackground: true,
+      displayHeaderFooter: !!(options?.headerHtml || options?.footerHtml),
+      headerTemplate: options?.headerHtml || '',
+      footerTemplate: options?.footerHtml || `
+        <div style="font-size: 10px; color: #666; width: 100%; text-align: center; padding: 10px;">
+          Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+        </div>
+      `,
+    };
 
-  return {
-    buffer,
-    filename,
-    mimeType: 'text/html', // Change to application/pdf when using real PDF generation
-    pageCount: estimatePageCount(html),
-  };
+    // Generate PDF
+    const pdfBuffer = await page.pdf(pdfOptions);
+
+    // Count pages (approximate based on PDF structure)
+    const pageCount = countPDFPages(pdfBuffer);
+
+    return {
+      buffer: Buffer.from(pdfBuffer),
+      filename,
+      mimeType: 'application/pdf',
+      pageCount,
+    };
+  } finally {
+    await page.close();
+  }
 }
 
-function estimatePageCount(html: string): number {
-  // Rough estimate based on content length
-  const charCount = html.replace(/<[^>]*>/g, '').length;
-  return Math.ceil(charCount / 3000); // ~3000 chars per page
+/**
+ * Count pages in a PDF buffer by looking for page markers
+ */
+function countPDFPages(buffer: Buffer | Uint8Array): number {
+  const content = buffer.toString('binary');
+  // Count /Type /Page occurrences (excluding /Pages)
+  const matches = content.match(/\/Type\s*\/Page[^s]/g);
+  return matches ? matches.length : 1;
+}
+
+/**
+ * Generate a generic report PDF from HTML string
+ */
+export async function generateCustomPDF(
+  html: string,
+  filename: string,
+  options?: PDFOptions
+): Promise<GeneratedPDF> {
+  return generatePDFFromHTML(html, filename, options);
+}
+
+/**
+ * Close browser instance (call during graceful shutdown)
+ */
+export async function closeBrowser(): Promise<void> {
+  if (browserInstance) {
+    await browserInstance.close();
+    browserInstance = null;
+  }
+}
+
+// Executive Summary types (matching analytics/service)
+interface ExecutiveSummary {
+  period: { start: Date; end: Date };
+  emailsProcessed: number;
+  threatsBlocked: number;
+  threatsBreakdown: { type: string; count: number }[];
+  topSenders: { email: string; count: number }[];
+  verdictDistribution: { verdict: string; count: number }[];
+  responseTimeAvg: number;
+  falsePositiveRate: number;
+}
+
+interface DateRange {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Generate Executive Summary PDF
+ */
+export async function generateExecutivePDF(
+  data: ExecutiveSummary,
+  dateRange: DateRange
+): Promise<GeneratedPDF> {
+  const html = renderExecutiveReportHTML(data, dateRange);
+  const dateStr = formatDate(dateRange.start).replace(/\s/g, '-');
+  return generatePDFFromHTML(html, `executive-summary-${dateStr}.pdf`);
+}
+
+/**
+ * Generate Threats Report PDF
+ */
+export async function generateThreatsPDF(
+  tenantId: string,
+  dateRange: DateRange,
+  limit: number = 100
+): Promise<GeneratedPDF> {
+  // Import dynamically to avoid circular deps
+  const { getThreatsForReport } = await import('@/lib/analytics/export');
+  const threats = await getThreatsForReport(tenantId, dateRange, limit);
+  const html = renderThreatsReportHTML(threats, dateRange);
+  const dateStr = formatDate(dateRange.start).replace(/\s/g, '-');
+  return generatePDFFromHTML(html, `threats-report-${dateStr}.pdf`);
+}
+
+/**
+ * Render Executive Summary as HTML
+ */
+function renderExecutiveReportHTML(data: ExecutiveSummary, dateRange: DateRange): string {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Executive Security Summary</title>
+  <style>
+    ${getReportStyles()}
+  </style>
+</head>
+<body>
+  <div class="report">
+    <div class="cover-page">
+      <div class="logo">📊</div>
+      <h1>Executive Summary</h1>
+      <h2>Email Security Report</h2>
+      <div class="period">
+        ${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Key Metrics</h2>
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="card-label">Emails Processed</div>
+          <div class="card-value">${data.emailsProcessed.toLocaleString()}</div>
+        </div>
+        <div class="summary-card ${data.threatsBlocked > 0 ? 'danger' : ''}">
+          <div class="card-label">Threats Blocked</div>
+          <div class="card-value">${data.threatsBlocked.toLocaleString()}</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">Avg Response Time</div>
+          <div class="card-value">${data.responseTimeAvg.toFixed(1)}s</div>
+        </div>
+        <div class="summary-card">
+          <div class="card-label">False Positive Rate</div>
+          <div class="card-value">${(data.falsePositiveRate * 100).toFixed(2)}%</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Threat Breakdown</h2>
+      <table class="info-table">
+        <thead>
+          <tr><th>Threat Type</th><th>Count</th><th>Percentage</th></tr>
+        </thead>
+        <tbody>
+          ${data.threatsBreakdown.map(t => `
+            <tr>
+              <td>${escapeHtml(t.type)}</td>
+              <td>${t.count.toLocaleString()}</td>
+              <td>${((t.count / Math.max(data.threatsBlocked, 1)) * 100).toFixed(1)}%</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Verdict Distribution</h2>
+      <table class="info-table">
+        <thead>
+          <tr><th>Verdict</th><th>Count</th></tr>
+        </thead>
+        <tbody>
+          ${data.verdictDistribution.map(v => `
+            <tr>
+              <td>${escapeHtml(v.verdict)}</td>
+              <td>${v.count.toLocaleString()}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Top Suspicious Senders</h2>
+      <table class="info-table">
+        <thead>
+          <tr><th>Sender</th><th>Threat Count</th></tr>
+        </thead>
+        <tbody>
+          ${data.topSenders.slice(0, 10).map(s => `
+            <tr>
+              <td>${escapeHtml(s.email)}</td>
+              <td>${s.count.toLocaleString()}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer">
+      <p>Generated by Swordfish Email Security Platform</p>
+      <p>Confidential - For authorized recipients only</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+/**
+ * Render Threats Report as HTML
+ */
+function renderThreatsReportHTML(
+  threats: Array<{
+    id: string;
+    type: string;
+    severity: string;
+    sender: string;
+    subject: string;
+    detectedAt: Date;
+    status: string;
+  }>,
+  dateRange: DateRange
+): string {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Threat Report</title>
+  <style>
+    ${getReportStyles()}
+    .threats-table { font-size: 11px; }
+    .threats-table td { padding: 6px 8px; }
+  </style>
+</head>
+<body>
+  <div class="report">
+    <div class="cover-page" style="padding: 60px 0;">
+      <div class="logo">🛡️</div>
+      <h1>Threat Report</h1>
+      <div class="period">
+        ${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}
+      </div>
+      <div style="margin-top: 20px; color: #666;">
+        ${threats.length} threats detected
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Detected Threats</h2>
+      <table class="threats-table controls-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Severity</th>
+            <th>Sender</th>
+            <th>Subject</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${threats.map(t => `
+            <tr>
+              <td>${new Date(t.detectedAt).toLocaleDateString()}</td>
+              <td>${escapeHtml(t.type)}</td>
+              <td class="severity-${t.severity.toLowerCase()}">${t.severity.toUpperCase()}</td>
+              <td>${escapeHtml(t.sender)}</td>
+              <td>${escapeHtml(t.subject.substring(0, 50))}${t.subject.length > 50 ? '...' : ''}</td>
+              <td>${escapeHtml(t.status)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer">
+      <p>Generated by Swordfish Email Security Platform</p>
+      <p>Confidential - For authorized recipients only</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
 }
 
 /**
