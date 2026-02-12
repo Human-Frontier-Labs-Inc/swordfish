@@ -13,54 +13,100 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder'
 export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
 export type BillingPeriod = 'month' | 'year';
 
-// Price IDs from Stripe Dashboard
+// Price IDs from Stripe Dashboard (per-user pricing)
 const PRICE_IDS: Record<SubscriptionTier, { monthly: string; annual: string }> = {
   free: { monthly: 'price_free', annual: 'price_free' },
-  pro: { monthly: 'price_pro_monthly', annual: 'price_pro_annual' },
-  enterprise: { monthly: 'price_enterprise_monthly', annual: 'price_enterprise_annual' },
+  pro: { monthly: 'price_pro_monthly_per_user', annual: 'price_pro_annual_per_user' },
+  enterprise: { monthly: 'price_enterprise_monthly_per_user', annual: 'price_enterprise_annual_per_user' },
 };
 
-// Pricing in cents
-const PRICING: Record<SubscriptionTier, { monthly: number; annual: number }> = {
+// Per-user pricing in cents (65% margin targeting)
+// Pro: ~$40 cost/user/yr → $120/user/yr (~$10/mo)
+// Enterprise: ~$60 cost/user/yr → $180/user/yr (~$15/mo)
+const PRICING_PER_USER: Record<SubscriptionTier, { monthly: number; annual: number }> = {
   free: { monthly: 0, annual: 0 },
-  pro: { monthly: 9900, annual: 99000 }, // $99/month or $990/year (17% off)
-  enterprise: { monthly: 29900, annual: 299000 }, // $299/month or $2990/year
+  pro: { monthly: 1000, annual: 12000 }, // $10/user/month or $120/user/year
+  enterprise: { monthly: 1500, annual: 18000 }, // $15/user/month or $180/user/year
 };
+
+// Volume discount tiers (percentage off base price)
+interface VolumeDiscount {
+  minUsers: number;
+  maxUsers: number;
+  discountPercent: number;
+}
+
+const VOLUME_DISCOUNTS: VolumeDiscount[] = [
+  { minUsers: 1, maxUsers: 50, discountPercent: 0 },
+  { minUsers: 51, maxUsers: 250, discountPercent: 17 }, // ~$100/$150 per user/yr
+  { minUsers: 251, maxUsers: 1000, discountPercent: 29 }, // ~$85/$130 per user/yr
+  { minUsers: 1001, maxUsers: Infinity, discountPercent: 35 }, // Custom pricing baseline
+];
+
+/**
+ * Calculate per-user price with volume discounts
+ */
+export function calculatePerUserPrice(
+  tier: SubscriptionTier,
+  userCount: number,
+  period: BillingPeriod = 'year'
+): { pricePerUser: number; totalPrice: number; discountPercent: number } {
+  const basePrice = period === 'year' 
+    ? PRICING_PER_USER[tier].annual 
+    : PRICING_PER_USER[tier].monthly;
+  
+  const discount = VOLUME_DISCOUNTS.find(
+    d => userCount >= d.minUsers && userCount <= d.maxUsers
+  ) || VOLUME_DISCOUNTS[0];
+  
+  const discountedPrice = Math.round(basePrice * (1 - discount.discountPercent / 100));
+  
+  return {
+    pricePerUser: discountedPrice,
+    totalPrice: discountedPrice * userCount,
+    discountPercent: discount.discountPercent,
+  };
+}
+
+// Legacy flat pricing export (deprecated, use calculatePerUserPrice)
+const PRICING = PRICING_PER_USER;
 
 interface TierFeatures {
-  emailsPerMonth: number;
-  users: number;
   retentionDays: number;
   advancedThreats: boolean;
+  aiPoweredDetection: boolean;
   sso?: boolean;
   customIntegrations?: boolean;
   prioritySupport?: boolean;
   dedicatedAccount?: boolean;
+  apiAccess?: boolean;
+  customRules?: boolean;
 }
 
 const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
   free: {
-    emailsPerMonth: 1000,
-    users: 1,
     retentionDays: 30,
     advancedThreats: false,
+    aiPoweredDetection: false,
   },
   pro: {
-    emailsPerMonth: 50000,
-    users: 10,
     retentionDays: 90,
     advancedThreats: true,
+    aiPoweredDetection: true,
     prioritySupport: true,
+    apiAccess: true,
+    customRules: true,
   },
   enterprise: {
-    emailsPerMonth: -1, // Unlimited
-    users: -1, // Unlimited
     retentionDays: 365,
     advancedThreats: true,
+    aiPoweredDetection: true,
     sso: true,
     customIntegrations: true,
     prioritySupport: true,
     dedicatedAccount: true,
+    apiAccess: true,
+    customRules: true,
   },
 };
 
@@ -288,10 +334,43 @@ export class BillingService {
   }
 
   /**
-   * Get pricing information
+   * Get base per-user pricing (before volume discounts)
    */
   static getPricing(): Record<SubscriptionTier, { monthly: number; annual: number }> {
-    return PRICING;
+    return PRICING_PER_USER;
+  }
+
+  /**
+   * Get pricing quote for a specific user count
+   */
+  static getQuote(
+    tier: SubscriptionTier,
+    userCount: number,
+    period: BillingPeriod = 'year'
+  ): {
+    tier: SubscriptionTier;
+    userCount: number;
+    period: BillingPeriod;
+    pricePerUser: number;
+    totalPrice: number;
+    discountPercent: number;
+    annualTotal: number;
+  } {
+    const quote = calculatePerUserPrice(tier, userCount, period);
+    return {
+      tier,
+      userCount,
+      period,
+      ...quote,
+      annualTotal: period === 'year' ? quote.totalPrice : quote.totalPrice * 12,
+    };
+  }
+
+  /**
+   * Get volume discount tiers
+   */
+  static getVolumeDiscounts(): VolumeDiscount[] {
+    return VOLUME_DISCOUNTS;
   }
 }
 
