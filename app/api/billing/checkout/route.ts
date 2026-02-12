@@ -40,9 +40,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['pro', 'enterprise'].includes(tier)) {
+    if (!['standard', 'enterprise'].includes(tier)) {
       return NextResponse.json(
-        { error: 'Invalid tier. Must be pro or enterprise.' },
+        { error: 'Invalid tier. Must be standard or enterprise.' },
         { status: 400 }
       );
     }

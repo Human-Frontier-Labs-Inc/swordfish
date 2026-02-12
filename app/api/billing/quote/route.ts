@@ -12,9 +12,9 @@ export async function GET(request: NextRequest) {
   const userCount = parseInt(searchParams.get('userCount') || '1', 10);
   const period = (searchParams.get('period') || 'year') as BillingPeriod;
 
-  if (!tier || !['free', 'pro', 'enterprise'].includes(tier)) {
+  if (!tier || !['free', 'standard', 'enterprise'].includes(tier)) {
     return NextResponse.json(
-      { error: 'Invalid tier. Must be free, pro, or enterprise.' },
+      { error: 'Invalid tier. Must be free, standard, or enterprise.' },
       { status: 400 }
     );
   }

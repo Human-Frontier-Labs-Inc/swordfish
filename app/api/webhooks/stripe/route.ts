@@ -154,7 +154,7 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
   const customerId = typeof subscription.customer === 'string' 
     ? subscription.customer 
     : subscription.customer?.id;
-  const tier = (subscription.metadata?.tier as string) || 'pro';
+  const tier = (subscription.metadata?.tier as string) || 'standard';
   const userCount = parseInt(subscription.metadata?.userCount || '1', 10);
   
   // Get period end from the subscription object
@@ -184,7 +184,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   const customerId = typeof subscription.customer === 'string' 
     ? subscription.customer 
     : subscription.customer?.id;
-  const tier = (subscription.metadata?.tier as string) || 'pro';
+  const tier = (subscription.metadata?.tier as string) || 'standard';
   const userCount = parseInt(subscription.metadata?.userCount || '1', 10);
   
   // Get period end from the subscription object

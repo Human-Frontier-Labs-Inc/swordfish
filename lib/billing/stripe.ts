@@ -10,37 +10,48 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder'
   apiVersion: '2025-12-15.clover',
 });
 
-export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
+export type SubscriptionTier = 'free' | 'standard' | 'enterprise';
 export type BillingPeriod = 'month' | 'year';
 
 // Price IDs from Stripe Dashboard (per-user pricing)
+// NOTE: Create these in Stripe Dashboard to match
 const PRICE_IDS: Record<SubscriptionTier, { monthly: string; annual: string }> = {
   free: { monthly: 'price_free', annual: 'price_free' },
-  pro: { monthly: 'price_pro_monthly_per_user', annual: 'price_pro_annual_per_user' },
+  standard: { monthly: 'price_standard_monthly_per_user', annual: 'price_standard_annual_per_user' },
   enterprise: { monthly: 'price_enterprise_monthly_per_user', annual: 'price_enterprise_annual_per_user' },
 };
 
-// Per-user pricing in cents (65% margin targeting)
-// Pro: ~$40 cost/user/yr → $120/user/yr (~$10/mo)
-// Enterprise: ~$60 cost/user/yr → $180/user/yr (~$15/mo)
+// =============================================================================
+// AGGRESSIVE MARKET CAPTURE PRICING
+// =============================================================================
+// Strategy: Undercut Sublime ($3/user/mo) by 33-60%
+// Cost basis: ~$0.50-0.75/user/month at scale
+// Target: 75%+ gross margin while being cheapest in market
+//
+// Sublime pricing: $3/user/month at 1,500 users
+// Our pricing:     $2/user/month base, down to $1.25 at scale
+// =============================================================================
+
 const PRICING_PER_USER: Record<SubscriptionTier, { monthly: number; annual: number }> = {
   free: { monthly: 0, annual: 0 },
-  pro: { monthly: 1000, annual: 12000 }, // $10/user/month or $120/user/year
-  enterprise: { monthly: 1500, annual: 18000 }, // $15/user/month or $180/user/year
+  standard: { monthly: 200, annual: 2400 },    // $2/user/month or $24/user/year (all features)
+  enterprise: { monthly: 250, annual: 3000 },  // $2.50/user/month or $30/user/year (+ SLA + support)
 };
 
-// Volume discount tiers (percentage off base price)
+// Volume discount tiers - aggressive scaling
 interface VolumeDiscount {
   minUsers: number;
   maxUsers: number;
   discountPercent: number;
+  effectiveMonthly: number; // for reference
 }
 
 const VOLUME_DISCOUNTS: VolumeDiscount[] = [
-  { minUsers: 1, maxUsers: 50, discountPercent: 0 },
-  { minUsers: 51, maxUsers: 250, discountPercent: 17 }, // ~$100/$150 per user/yr
-  { minUsers: 251, maxUsers: 1000, discountPercent: 29 }, // ~$85/$130 per user/yr
-  { minUsers: 1001, maxUsers: Infinity, discountPercent: 35 }, // Custom pricing baseline
+  { minUsers: 1, maxUsers: 99, discountPercent: 0, effectiveMonthly: 200 },        // $2.00/user/mo
+  { minUsers: 100, maxUsers: 499, discountPercent: 12, effectiveMonthly: 176 },    // $1.76/user/mo
+  { minUsers: 500, maxUsers: 999, discountPercent: 25, effectiveMonthly: 150 },    // $1.50/user/mo
+  { minUsers: 1000, maxUsers: 4999, discountPercent: 37, effectiveMonthly: 126 },  // $1.26/user/mo
+  { minUsers: 5000, maxUsers: Infinity, discountPercent: 50, effectiveMonthly: 100 }, // $1.00/user/mo
 ];
 
 /**
@@ -83,30 +94,36 @@ interface TierFeatures {
   customRules?: boolean;
 }
 
+// All features included at standard tier - no feature gating
+// Enterprise adds SLA, support, and compliance features
 const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
   free: {
-    retentionDays: 30,
+    retentionDays: 14,
     advancedThreats: false,
     aiPoweredDetection: false,
   },
-  pro: {
+  standard: {
+    // ALL security features included - no upsell on protection
     retentionDays: 90,
     advancedThreats: true,
     aiPoweredDetection: true,
-    prioritySupport: true,
     apiAccess: true,
     customRules: true,
+    prioritySupport: false,      // Email support only
+    sso: false,                  // Enterprise
+    customIntegrations: false,   // Enterprise
+    dedicatedAccount: false,     // Enterprise
   },
   enterprise: {
     retentionDays: 365,
     advancedThreats: true,
     aiPoweredDetection: true,
-    sso: true,
-    customIntegrations: true,
-    prioritySupport: true,
-    dedicatedAccount: true,
     apiAccess: true,
     customRules: true,
+    prioritySupport: true,       // Priority support + SLA
+    sso: true,                   // SSO/SAML
+    customIntegrations: true,    // Custom webhooks, SIEM integration
+    dedicatedAccount: true,      // Dedicated CSM
   },
 };
 
