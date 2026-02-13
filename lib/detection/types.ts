@@ -114,6 +114,7 @@ export type SignalType =
   | 'llm_phishing_detected'
   | 'llm_bec_indicator'
   | 'llm_phishing_indicator'
+  | 'llm_rate_limited'
   // BEC detection
   | 'bec_detected'
   | 'bec_impersonation'

@@ -157,8 +157,8 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
   const tier = (subscription.metadata?.tier as string) || 'standard';
   const userCount = parseInt(subscription.metadata?.userCount || '1', 10);
   
-  // Get period end from the subscription object
-  const periodEnd = subscription.current_period_end;
+  // Get period end from the subscription object (cast through unknown for newer Stripe API versions)
+  const periodEnd = (subscription as unknown as { current_period_end?: number }).current_period_end;
 
   // Update tenant subscription info
   await sql`
@@ -187,8 +187,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   const tier = (subscription.metadata?.tier as string) || 'standard';
   const userCount = parseInt(subscription.metadata?.userCount || '1', 10);
   
-  // Get period end from the subscription object
-  const periodEnd = subscription.current_period_end;
+  // Get period end from the subscription object (cast through unknown for newer Stripe API versions)
+  const periodEnd = (subscription as unknown as { current_period_end?: number }).current_period_end;
 
   // Find tenant
   const tenantResult = await sql`

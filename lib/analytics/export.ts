@@ -6,7 +6,7 @@
 import { sql } from '@/lib/db';
 import type { DashboardStats, SenderStats, ThreatCategory } from './service';
 
-export type ExportFormat = 'csv' | 'json';
+export type ExportFormat = 'csv' | 'json' | 'pdf';
 
 export interface ExportOptions {
   format: ExportFormat;

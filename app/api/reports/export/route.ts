@@ -41,7 +41,18 @@ export async function GET(request: NextRequest) {
       let pdf;
       switch (reportType) {
         case 'executive': {
-          const summary = await generateExecutiveSummary(tenantId, daysBack);
+          const rawSummary = await generateExecutiveSummary(tenantId, daysBack);
+          // Transform to PDF generator's expected format
+          const summary = {
+            period: rawSummary.period,
+            emailsProcessed: rawSummary.summary.totalEmails,
+            threatsBlocked: rawSummary.summary.threatsBlocked,
+            threatsBreakdown: rawSummary.topThreats.map(t => ({ type: t.category, count: t.count })),
+            topSenders: rawSummary.topSenders.map(s => ({ email: s.sender, count: s.count })),
+            verdictDistribution: Object.entries(rawSummary.verdictBreakdown).map(([verdict, count]) => ({ verdict, count: count as number })),
+            responseTimeAvg: rawSummary.performance.avgProcessingTime || 0,
+            falsePositiveRate: rawSummary.performance.falsePositiveRate || 0,
+          };
           pdf = await generateExecutivePDF(summary, dateRange);
           break;
         }
@@ -67,7 +78,7 @@ export async function GET(request: NextRequest) {
         afterState: { format: 'pdf', daysBack, limit },
       });
 
-      return new NextResponse(pdf.buffer, {
+      return new NextResponse(new Uint8Array(pdf.buffer), {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `attachment; filename="${pdf.filename}"`,
