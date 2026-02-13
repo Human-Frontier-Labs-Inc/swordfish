@@ -15,6 +15,12 @@ export default function Home() {
               <span className="text-xl font-bold text-white">Swordfish</span>
             </div>
             <div className="flex items-center gap-4">
+              <Link
+                href="/pricing"
+                className="text-slate-300 hover:text-white transition-colors"
+              >
+                Pricing
+              </Link>
               <SignedOut>
                 <Link
                   href="/sign-in"
