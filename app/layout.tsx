@@ -3,9 +3,13 @@ import type { Appearance } from "@clerk/types";
 import "./globals.css";
 import Script from "next/script";
 import localFont from "next/font/local";
-import { templateMetadata } from "./_template/content/metadata";
+import type { Metadata } from "next";
 
-export const metadata = templateMetadata;
+export const metadata: Metadata = {
+  title: "SwordPhish - AI-Powered Email Security",
+  description: "Enterprise email threat detection and protection powered by AI. Protect your organization from phishing, BEC, and advanced email threats.",
+  keywords: ["email security", "phishing protection", "BEC detection", "AI security", "threat detection"],
+};
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",

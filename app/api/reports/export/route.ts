@@ -48,10 +48,10 @@ export async function GET(request: NextRequest) {
             emailsProcessed: rawSummary.summary.totalEmails,
             threatsBlocked: rawSummary.summary.threatsBlocked,
             threatsBreakdown: rawSummary.topThreats.map(t => ({ type: t.category, count: t.count })),
-            topSenders: rawSummary.topSenders.map(s => ({ email: s.sender, count: s.count })),
+            topSenders: rawSummary.topSenders.map(s => ({ email: s.email, count: s.threatCount })),
             verdictDistribution: Object.entries(rawSummary.verdictBreakdown).map(([verdict, count]) => ({ verdict, count: count as number })),
-            responseTimeAvg: rawSummary.performance.avgProcessingTime || 0,
-            falsePositiveRate: rawSummary.performance.falsePositiveRate || 0,
+            responseTimeAvg: rawSummary.performance.avgLatency || 0,
+            falsePositiveRate: 0, // Not tracked in current performance metrics
           };
           pdf = await generateExecutivePDF(summary, dateRange);
           break;

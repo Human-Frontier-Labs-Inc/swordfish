@@ -297,7 +297,7 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
     : invoice.customer?.id;
   
   // Get subscription ID - may be string or object depending on expansion
-  const invoiceAny = invoice as Record<string, unknown>;
+  const invoiceAny = invoice as unknown as Record<string, unknown>;
   const subscriptionId = typeof invoiceAny.subscription === 'string'
     ? invoiceAny.subscription
     : (invoiceAny.subscription as { id?: string } | null)?.id;
@@ -330,7 +330,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
     : invoice.customer?.id;
   
   // Get subscription ID - may be string or object depending on expansion
-  const invoiceAny = invoice as Record<string, unknown>;
+  const invoiceAny = invoice as unknown as Record<string, unknown>;
   const subscriptionId = typeof invoiceAny.subscription === 'string'
     ? invoiceAny.subscription
     : (invoiceAny.subscription as { id?: string } | null)?.id;
