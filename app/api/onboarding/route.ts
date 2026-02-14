@@ -115,12 +115,15 @@ export async function PUT(request: NextRequest) {
 
     if (existingData) {
       // Update existing record
+      // Note: completed_steps and skipped_steps are INTEGER[] columns —
+      // pass native JS arrays (the Neon driver handles the conversion).
+      // JSON.stringify produces "[1]" which is invalid for INTEGER[].
       await sql`
         UPDATE onboarding_progress
         SET
           current_step = ${currentStep || existingData.current_step},
-          completed_steps = ${JSON.stringify(completedSteps)},
-          skipped_steps = ${JSON.stringify(skippedSteps)},
+          completed_steps = ${completedSteps},
+          skipped_steps = ${skippedSteps},
           completed_at = ${completed ? new Date().toISOString() : null},
           metadata = ${JSON.stringify(mergedMetadata)},
           updated_at = NOW()
@@ -141,8 +144,8 @@ export async function PUT(request: NextRequest) {
           ${tenantId},
           ${userId},
           ${currentStep || 1},
-          ${JSON.stringify(completedSteps)},
-          ${JSON.stringify(skippedSteps)},
+          ${completedSteps},
+          ${skippedSteps},
           ${completed ? new Date().toISOString() : null},
           ${JSON.stringify(mergedMetadata)}
         )
