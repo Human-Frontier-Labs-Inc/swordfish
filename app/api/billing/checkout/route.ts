@@ -9,9 +9,11 @@ import Stripe from 'stripe';
 import { sql } from '@/lib/db';
 import { BillingService, calculatePerUserPrice, SubscriptionTier } from '@/lib/billing';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-12-15.clover',
-});
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY is not configured');
+  return new Stripe(key, { apiVersion: '2025-12-15.clover' });
+}
 
 const billingService = new BillingService();
 
@@ -97,7 +99,7 @@ export async function POST(request: NextRequest) {
     // For now, use line_items with unit_amount for flexibility
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
       line_items: [

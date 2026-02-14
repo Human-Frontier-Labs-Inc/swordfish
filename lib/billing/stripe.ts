@@ -6,9 +6,15 @@
 
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
-  apiVersion: '2025-12-15.clover',
-});
+let _stripe: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!_stripe) {
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
+      apiVersion: '2025-12-15.clover',
+    });
+  }
+  return _stripe;
+}
 
 export type SubscriptionTier = 'free' | 'standard' | 'enterprise';
 export type BillingPeriod = 'month' | 'year';
@@ -153,7 +159,7 @@ export class BillingService {
     tenantId: string;
     name?: string;
   }): Promise<Stripe.Customer> {
-    return stripe.customers.create({
+    return getStripe().customers.create({
       email: params.email,
       name: params.name,
       metadata: { tenantId: params.tenantId },
@@ -164,7 +170,7 @@ export class BillingService {
    * Get customer by ID
    */
   async getCustomer(customerId: string): Promise<Stripe.Customer> {
-    return stripe.customers.retrieve(customerId) as Promise<Stripe.Customer>;
+    return getStripe().customers.retrieve(customerId) as Promise<Stripe.Customer>;
   }
 
   /**
@@ -174,7 +180,7 @@ export class BillingService {
     customerId: string,
     params: Partial<{ email: string; name: string }>
   ): Promise<Stripe.Customer> {
-    return stripe.customers.update(customerId, params);
+    return getStripe().customers.update(customerId, params);
   }
 
   /**
@@ -186,7 +192,7 @@ export class BillingService {
     tier: SubscriptionTier;
     period?: BillingPeriod;
   }): Promise<Stripe.Subscription> {
-    return stripe.subscriptions.create({
+    return getStripe().subscriptions.create({
       customer: params.customerId,
       items: [{ price: params.priceId }],
       metadata: { tier: params.tier },
@@ -201,11 +207,11 @@ export class BillingService {
     newTier: SubscriptionTier,
     period: BillingPeriod = 'month'
   ): Promise<Stripe.Subscription> {
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
     const itemId = subscription.items.data[0].id;
     const priceId = PRICE_IDS[newTier][period === 'month' ? 'monthly' : 'annual'];
 
-    return stripe.subscriptions.update(subscriptionId, {
+    return getStripe().subscriptions.update(subscriptionId, {
       items: [{ id: itemId, price: priceId }],
       proration_behavior: 'create_prorations',
       metadata: { tier: newTier },
@@ -220,11 +226,11 @@ export class BillingService {
     newTier: SubscriptionTier,
     period: BillingPeriod = 'month'
   ): Promise<Stripe.Subscription> {
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
     const itemId = subscription.items.data[0].id;
     const priceId = PRICE_IDS[newTier][period === 'month' ? 'monthly' : 'annual'];
 
-    return stripe.subscriptions.update(subscriptionId, {
+    return getStripe().subscriptions.update(subscriptionId, {
       items: [{ id: itemId, price: priceId }],
       proration_behavior: 'create_prorations',
       metadata: { tier: newTier },
@@ -239,10 +245,10 @@ export class BillingService {
     options: { atPeriodEnd?: boolean; immediately?: boolean }
   ): Promise<Stripe.Subscription> {
     if (options.immediately) {
-      return stripe.subscriptions.cancel(subscriptionId);
+      return getStripe().subscriptions.cancel(subscriptionId);
     }
 
-    return stripe.subscriptions.update(subscriptionId, {
+    return getStripe().subscriptions.update(subscriptionId, {
       cancel_at_period_end: true,
     });
   }
@@ -251,7 +257,7 @@ export class BillingService {
    * Resume a cancelled subscription
    */
   async resumeSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
-    return stripe.subscriptions.update(subscriptionId, {
+    return getStripe().subscriptions.update(subscriptionId, {
       cancel_at_period_end: false,
     });
   }
@@ -265,7 +271,7 @@ export class BillingService {
     successUrl: string;
     cancelUrl: string;
   }): Promise<Stripe.Checkout.Session> {
-    return stripe.checkout.sessions.create({
+    return getStripe().checkout.sessions.create({
       customer: params.customerId,
       mode: 'subscription',
       line_items: [{ price: params.priceId, quantity: 1 }],
@@ -281,7 +287,7 @@ export class BillingService {
     customerId: string;
     returnUrl: string;
   }): Promise<Stripe.BillingPortal.Session> {
-    return stripe.billingPortal.sessions.create({
+    return getStripe().billingPortal.sessions.create({
       customer: params.customerId,
       return_url: params.returnUrl,
     });
@@ -291,7 +297,7 @@ export class BillingService {
    * List customer invoices
    */
   async listInvoices(customerId: string): Promise<Stripe.Invoice[]> {
-    const result = await stripe.invoices.list({ customer: customerId });
+    const result = await getStripe().invoices.list({ customer: customerId });
     return result.data;
   }
 
@@ -299,7 +305,7 @@ export class BillingService {
    * Get specific invoice
    */
   async getInvoice(invoiceId: string): Promise<Stripe.Invoice> {
-    return stripe.invoices.retrieve(invoiceId);
+    return getStripe().invoices.retrieve(invoiceId);
   }
 
   /**
@@ -505,7 +511,7 @@ export class UsageTracker {
     const usage = await this.getUsage(params.tenantId, params.usageType);
 
     // Use billing meter events for usage-based billing in newer Stripe API
-    await stripe.billing.meterEvents.create({
+    await getStripe().billing.meterEvents.create({
       event_name: params.usageType,
       payload: {
         value: String(usage.total),

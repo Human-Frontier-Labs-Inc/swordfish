@@ -8,9 +8,11 @@ import { auth } from '@clerk/nextjs/server';
 import Stripe from 'stripe';
 import { sql } from '@/lib/db';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-12-15.clover',
-});
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY is not configured');
+  return new Stripe(key, { apiVersion: '2025-12-15.clover' });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     
-    const session = await stripe.billingPortal.sessions.create({
+    const session = await getStripe().billingPortal.sessions.create({
       customer: tenant.stripe_customer_id,
       return_url: `${baseUrl}/dashboard/settings`,
     });

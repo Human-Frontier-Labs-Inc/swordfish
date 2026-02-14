@@ -670,7 +670,6 @@ async function deleteFromGmail(
 
 interface IntegrationRecord {
   id: string;
-  nango_connection_id: string | null;
 }
 
 async function getIntegration(tenantId: string, provider: 'microsoft' | 'google'): Promise<IntegrationRecord | null> {
@@ -680,7 +679,7 @@ async function getIntegration(tenantId: string, provider: 'microsoft' | 'google'
   // RLS-protected query
   const integrations = await withTenant(tenantId, async () => {
     return sql`
-      SELECT id, nango_connection_id FROM integrations
+      SELECT id FROM integrations
       WHERE type = ${integrationType}
       AND status = 'connected'
       LIMIT 1
