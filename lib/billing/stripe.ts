@@ -6,130 +6,61 @@
 
 import Stripe from 'stripe';
 
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
-      apiVersion: '2025-12-15.clover',
-    });
-  }
-  return _stripe;
-}
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
+  apiVersion: '2025-12-15.clover',
+});
 
-export type SubscriptionTier = 'free' | 'standard' | 'enterprise';
+export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
 export type BillingPeriod = 'month' | 'year';
 
-// Price IDs from Stripe Dashboard (per-user pricing)
-// NOTE: Create these in Stripe Dashboard to match
+// Price IDs from Stripe Dashboard
 const PRICE_IDS: Record<SubscriptionTier, { monthly: string; annual: string }> = {
   free: { monthly: 'price_free', annual: 'price_free' },
-  standard: { monthly: 'price_standard_monthly_per_user', annual: 'price_standard_annual_per_user' },
-  enterprise: { monthly: 'price_enterprise_monthly_per_user', annual: 'price_enterprise_annual_per_user' },
+  pro: { monthly: 'price_pro_monthly', annual: 'price_pro_annual' },
+  enterprise: { monthly: 'price_enterprise_monthly', annual: 'price_enterprise_annual' },
 };
 
-// =============================================================================
-// AGGRESSIVE MARKET CAPTURE PRICING
-// =============================================================================
-// Strategy: Undercut Sublime ($3/user/mo) by 33-60%
-// Cost basis: ~$0.50-0.75/user/month at scale
-// Target: 75%+ gross margin while being cheapest in market
-//
-// Sublime pricing: $3/user/month at 1,500 users
-// Our pricing:     $2/user/month base, down to $1.25 at scale
-// =============================================================================
-
-const PRICING_PER_USER: Record<SubscriptionTier, { monthly: number; annual: number }> = {
+// Pricing in cents
+const PRICING: Record<SubscriptionTier, { monthly: number; annual: number }> = {
   free: { monthly: 0, annual: 0 },
-  standard: { monthly: 200, annual: 2400 },    // $2/user/month or $24/user/year (all features)
-  enterprise: { monthly: 250, annual: 3000 },  // $2.50/user/month or $30/user/year (+ SLA + support)
+  pro: { monthly: 9900, annual: 99000 }, // $99/month or $990/year (17% off)
+  enterprise: { monthly: 29900, annual: 299000 }, // $299/month or $2990/year
 };
-
-// Volume discount tiers - aggressive scaling
-interface VolumeDiscount {
-  minUsers: number;
-  maxUsers: number;
-  discountPercent: number;
-  effectiveMonthly: number; // for reference
-}
-
-const VOLUME_DISCOUNTS: VolumeDiscount[] = [
-  { minUsers: 1, maxUsers: 99, discountPercent: 0, effectiveMonthly: 200 },        // $2.00/user/mo
-  { minUsers: 100, maxUsers: 499, discountPercent: 12, effectiveMonthly: 176 },    // $1.76/user/mo
-  { minUsers: 500, maxUsers: 999, discountPercent: 25, effectiveMonthly: 150 },    // $1.50/user/mo
-  { minUsers: 1000, maxUsers: 4999, discountPercent: 37, effectiveMonthly: 126 },  // $1.26/user/mo
-  { minUsers: 5000, maxUsers: Infinity, discountPercent: 50, effectiveMonthly: 100 }, // $1.00/user/mo
-];
-
-/**
- * Calculate per-user price with volume discounts
- */
-export function calculatePerUserPrice(
-  tier: SubscriptionTier,
-  userCount: number,
-  period: BillingPeriod = 'year'
-): { pricePerUser: number; totalPrice: number; discountPercent: number } {
-  const basePrice = period === 'year' 
-    ? PRICING_PER_USER[tier].annual 
-    : PRICING_PER_USER[tier].monthly;
-  
-  const discount = VOLUME_DISCOUNTS.find(
-    d => userCount >= d.minUsers && userCount <= d.maxUsers
-  ) || VOLUME_DISCOUNTS[0];
-  
-  const discountedPrice = Math.round(basePrice * (1 - discount.discountPercent / 100));
-  
-  return {
-    pricePerUser: discountedPrice,
-    totalPrice: discountedPrice * userCount,
-    discountPercent: discount.discountPercent,
-  };
-}
-
-// Legacy flat pricing export (deprecated, use calculatePerUserPrice)
-const PRICING = PRICING_PER_USER;
 
 interface TierFeatures {
+  emailsPerMonth: number;
+  users: number;
   retentionDays: number;
   advancedThreats: boolean;
-  aiPoweredDetection: boolean;
   sso?: boolean;
   customIntegrations?: boolean;
   prioritySupport?: boolean;
   dedicatedAccount?: boolean;
-  apiAccess?: boolean;
-  customRules?: boolean;
 }
 
-// All features included at standard tier - no feature gating
-// Enterprise adds SLA, support, and compliance features
 const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
   free: {
-    retentionDays: 14,
+    emailsPerMonth: 1000,
+    users: 1,
+    retentionDays: 30,
     advancedThreats: false,
-    aiPoweredDetection: false,
   },
-  standard: {
-    // ALL security features included - no upsell on protection
+  pro: {
+    emailsPerMonth: 50000,
+    users: 10,
     retentionDays: 90,
     advancedThreats: true,
-    aiPoweredDetection: true,
-    apiAccess: true,
-    customRules: true,
-    prioritySupport: false,      // Email support only
-    sso: false,                  // Enterprise
-    customIntegrations: false,   // Enterprise
-    dedicatedAccount: false,     // Enterprise
+    prioritySupport: true,
   },
   enterprise: {
+    emailsPerMonth: -1, // Unlimited
+    users: -1, // Unlimited
     retentionDays: 365,
     advancedThreats: true,
-    aiPoweredDetection: true,
-    apiAccess: true,
-    customRules: true,
-    prioritySupport: true,       // Priority support + SLA
-    sso: true,                   // SSO/SAML
-    customIntegrations: true,    // Custom webhooks, SIEM integration
-    dedicatedAccount: true,      // Dedicated CSM
+    sso: true,
+    customIntegrations: true,
+    prioritySupport: true,
+    dedicatedAccount: true,
   },
 };
 
@@ -159,7 +90,7 @@ export class BillingService {
     tenantId: string;
     name?: string;
   }): Promise<Stripe.Customer> {
-    return getStripe().customers.create({
+    return stripe.customers.create({
       email: params.email,
       name: params.name,
       metadata: { tenantId: params.tenantId },
@@ -170,7 +101,7 @@ export class BillingService {
    * Get customer by ID
    */
   async getCustomer(customerId: string): Promise<Stripe.Customer> {
-    return getStripe().customers.retrieve(customerId) as Promise<Stripe.Customer>;
+    return stripe.customers.retrieve(customerId) as Promise<Stripe.Customer>;
   }
 
   /**
@@ -180,7 +111,7 @@ export class BillingService {
     customerId: string,
     params: Partial<{ email: string; name: string }>
   ): Promise<Stripe.Customer> {
-    return getStripe().customers.update(customerId, params);
+    return stripe.customers.update(customerId, params);
   }
 
   /**
@@ -192,7 +123,7 @@ export class BillingService {
     tier: SubscriptionTier;
     period?: BillingPeriod;
   }): Promise<Stripe.Subscription> {
-    return getStripe().subscriptions.create({
+    return stripe.subscriptions.create({
       customer: params.customerId,
       items: [{ price: params.priceId }],
       metadata: { tier: params.tier },
@@ -207,11 +138,11 @@ export class BillingService {
     newTier: SubscriptionTier,
     period: BillingPeriod = 'month'
   ): Promise<Stripe.Subscription> {
-    const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     const itemId = subscription.items.data[0].id;
     const priceId = PRICE_IDS[newTier][period === 'month' ? 'monthly' : 'annual'];
 
-    return getStripe().subscriptions.update(subscriptionId, {
+    return stripe.subscriptions.update(subscriptionId, {
       items: [{ id: itemId, price: priceId }],
       proration_behavior: 'create_prorations',
       metadata: { tier: newTier },
@@ -226,11 +157,11 @@ export class BillingService {
     newTier: SubscriptionTier,
     period: BillingPeriod = 'month'
   ): Promise<Stripe.Subscription> {
-    const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     const itemId = subscription.items.data[0].id;
     const priceId = PRICE_IDS[newTier][period === 'month' ? 'monthly' : 'annual'];
 
-    return getStripe().subscriptions.update(subscriptionId, {
+    return stripe.subscriptions.update(subscriptionId, {
       items: [{ id: itemId, price: priceId }],
       proration_behavior: 'create_prorations',
       metadata: { tier: newTier },
@@ -245,10 +176,10 @@ export class BillingService {
     options: { atPeriodEnd?: boolean; immediately?: boolean }
   ): Promise<Stripe.Subscription> {
     if (options.immediately) {
-      return getStripe().subscriptions.cancel(subscriptionId);
+      return stripe.subscriptions.cancel(subscriptionId);
     }
 
-    return getStripe().subscriptions.update(subscriptionId, {
+    return stripe.subscriptions.update(subscriptionId, {
       cancel_at_period_end: true,
     });
   }
@@ -257,7 +188,7 @@ export class BillingService {
    * Resume a cancelled subscription
    */
   async resumeSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
-    return getStripe().subscriptions.update(subscriptionId, {
+    return stripe.subscriptions.update(subscriptionId, {
       cancel_at_period_end: false,
     });
   }
@@ -271,7 +202,7 @@ export class BillingService {
     successUrl: string;
     cancelUrl: string;
   }): Promise<Stripe.Checkout.Session> {
-    return getStripe().checkout.sessions.create({
+    return stripe.checkout.sessions.create({
       customer: params.customerId,
       mode: 'subscription',
       line_items: [{ price: params.priceId, quantity: 1 }],
@@ -287,7 +218,7 @@ export class BillingService {
     customerId: string;
     returnUrl: string;
   }): Promise<Stripe.BillingPortal.Session> {
-    return getStripe().billingPortal.sessions.create({
+    return stripe.billingPortal.sessions.create({
       customer: params.customerId,
       return_url: params.returnUrl,
     });
@@ -297,7 +228,7 @@ export class BillingService {
    * List customer invoices
    */
   async listInvoices(customerId: string): Promise<Stripe.Invoice[]> {
-    const result = await getStripe().invoices.list({ customer: customerId });
+    const result = await stripe.invoices.list({ customer: customerId });
     return result.data;
   }
 
@@ -305,7 +236,7 @@ export class BillingService {
    * Get specific invoice
    */
   async getInvoice(invoiceId: string): Promise<Stripe.Invoice> {
-    return getStripe().invoices.retrieve(invoiceId);
+    return stripe.invoices.retrieve(invoiceId);
   }
 
   /**
@@ -357,43 +288,10 @@ export class BillingService {
   }
 
   /**
-   * Get base per-user pricing (before volume discounts)
+   * Get pricing information
    */
   static getPricing(): Record<SubscriptionTier, { monthly: number; annual: number }> {
-    return PRICING_PER_USER;
-  }
-
-  /**
-   * Get pricing quote for a specific user count
-   */
-  static getQuote(
-    tier: SubscriptionTier,
-    userCount: number,
-    period: BillingPeriod = 'year'
-  ): {
-    tier: SubscriptionTier;
-    userCount: number;
-    period: BillingPeriod;
-    pricePerUser: number;
-    totalPrice: number;
-    discountPercent: number;
-    annualTotal: number;
-  } {
-    const quote = calculatePerUserPrice(tier, userCount, period);
-    return {
-      tier,
-      userCount,
-      period,
-      ...quote,
-      annualTotal: period === 'year' ? quote.totalPrice : quote.totalPrice * 12,
-    };
-  }
-
-  /**
-   * Get volume discount tiers
-   */
-  static getVolumeDiscounts(): VolumeDiscount[] {
-    return VOLUME_DISCOUNTS;
+    return PRICING;
   }
 }
 
@@ -511,7 +409,7 @@ export class UsageTracker {
     const usage = await this.getUsage(params.tenantId, params.usageType);
 
     // Use billing meter events for usage-based billing in newer Stripe API
-    await getStripe().billing.meterEvents.create({
+    await stripe.billing.meterEvents.create({
       event_name: params.usageType,
       payload: {
         value: String(usage.total),

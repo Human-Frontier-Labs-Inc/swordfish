@@ -259,12 +259,11 @@ export async function DELETE() {
 
 // Helper functions for state management
 async function storeState(tenantId: string, state: string): Promise<void> {
-  // state_token is NOT NULL in the full schema — set it equal to state for compatibility
   await sql`
-    INSERT INTO oauth_states (tenant_id, state, state_token, expires_at)
-    VALUES (${tenantId}, ${state}, ${state}, NOW() + INTERVAL '10 minutes')
+    INSERT INTO oauth_states (tenant_id, state, expires_at)
+    VALUES (${tenantId}, ${state}, NOW() + INTERVAL '10 minutes')
     ON CONFLICT (tenant_id)
-    DO UPDATE SET state = ${state}, state_token = ${state}, expires_at = NOW() + INTERVAL '10 minutes'
+    DO UPDATE SET state = ${state}, expires_at = NOW() + INTERVAL '10 minutes'
   `;
 }
 
