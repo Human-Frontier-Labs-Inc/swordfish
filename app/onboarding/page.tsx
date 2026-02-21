@@ -92,7 +92,10 @@ export default function OnboardingPage() {
             router.push('/dashboard');
           }
         } else if (data.currentStep) {
-          setCurrentStep(data.currentStep);
+          // Clamp to valid step range so we never render an empty page
+          const maxStep = ONBOARDING_STEPS.length;
+          const step = Math.min(Math.max(data.currentStep, 1), maxStep);
+          setCurrentStep(step);
           if (data.accountType) {
             setAccountType(data.accountType);
           }
