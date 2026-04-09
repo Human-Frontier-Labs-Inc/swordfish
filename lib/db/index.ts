@@ -1,4 +1,8 @@
 import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
+import { validateEnvironment } from '@/lib/config/validate-env';
+
+// Validate environment variables on module load
+validateEnvironment();
 
 // Lazy-initialized SQL client to prevent build-time initialization errors
 let _sql: NeonQueryFunction<false, false> | null = null;
