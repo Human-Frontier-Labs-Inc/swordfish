@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface User {
   id: string;
@@ -152,7 +153,7 @@ export default function UsersPage() {
       <div className="bg-white rounded-lg border overflow-hidden">
         {loading ? (
           <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+            <LoadingSpinner className="mx-auto" />
           </div>
         ) : users.length === 0 ? (
           <div className="p-8 text-center text-gray-500">No users found</div>

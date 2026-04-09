@@ -3,16 +3,17 @@
 import { ReactNode, useState, useEffect, useCallback } from 'react';
 import { UserButton } from '@clerk/nextjs';
 import { Sidebar } from './sidebar';
-import { TenantSwitcher } from './tenant-switcher';
+import { TenantSwitcher } from '@/components/msp/TenantSwitcher';
 import { CommandPalette } from './command-palette';
 import { useTenant } from '@/lib/auth/tenant-context';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface DashboardLayoutProps {
   children: ReactNode;
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { currentTenant, isMspUser, isLoadingRole } = useTenant();
+  const { currentTenant, availableTenants, setCurrentTenant, isMspUser, isLoadingRole } = useTenant();
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -75,7 +76,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           {/* Left side */}
           <div className="flex items-center gap-4">
             {/* Tenant switcher for MSP users */}
-            {!isLoadingRole && isMspUser && <TenantSwitcher />}
+            {!isLoadingRole && isMspUser && (
+              <TenantSwitcher
+                tenants={availableTenants.map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  domain: t.domain,
+                  plan: t.plan,
+                  role: 'msp_admin' as const,
+                }))}
+                currentTenantId={currentTenant?.id ?? null}
+                onSwitch={(tenantId) => {
+                  const tenant = availableTenants.find((t) => t.id === tenantId);
+                  if (tenant) setCurrentTenant(tenant);
+                }}
+                isMSPUser={isMspUser}
+              />
+            )}
 
             {/* Search button */}
             <button
@@ -133,7 +150,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           ) : (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+                <LoadingSpinner />
                 <p className="mt-4 text-gray-500">Loading tenant...</p>
               </div>
             </div>
