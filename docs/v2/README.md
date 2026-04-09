@@ -6,6 +6,8 @@ Swordfish is an AI-powered email security platform designed for MSPs to protect 
 
 ## Current Status
 
+The project is in the **stabilizing phase**. Most features have been implemented. The current focus is on bug fixes, UI polish, and reliability improvements before launch.
+
 | Metric | Score | Target |
 |--------|-------|--------|
 | Production Readiness | 72/100 | 100 |
