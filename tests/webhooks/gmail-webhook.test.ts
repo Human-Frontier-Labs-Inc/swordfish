@@ -9,6 +9,10 @@ import { NextRequest } from 'next/server';
 // Mock modules
 vi.mock('@/lib/db', () => ({
   sql: vi.fn().mockImplementation(() => Promise.resolve([])),
+  withTransaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const mockTx = vi.fn().mockResolvedValue([]);
+    return fn(mockTx);
+  }),
 }));
 
 vi.mock('@/lib/integrations/gmail', () => ({
@@ -281,7 +285,7 @@ describe('Gmail Webhook Handler', () => {
       expect(response.status).toBe(429);
     });
 
-    it('should return ignored for unknown email', async () => {
+    it('should return 404 for unknown email', async () => {
       const { POST } = await import('@/app/api/webhooks/gmail/route');
       const { sql } = await import('@/lib/db');
       const { checkRateLimit } = await import('@/lib/webhooks/validation');
@@ -292,7 +296,7 @@ describe('Gmail Webhook Handler', () => {
         resetAt: new Date(),
       });
 
-      // No integration found - first call is by email, second is all Gmail integrations fallback
+      // No integration found
       vi.mocked(sql)
         .mockResolvedValueOnce([] as any)  // Find by email - none found
         .mockResolvedValueOnce([] as any); // Get all Gmail integrations - none found
@@ -314,9 +318,9 @@ describe('Gmail Webhook Handler', () => {
 
       const response = await POST(request);
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.status).toBe('ignored');
+      expect(data.error).toBe('No matching integration');
     });
 
     it('should process threats and trigger auto-remediate', async () => {

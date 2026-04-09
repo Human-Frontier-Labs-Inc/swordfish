@@ -9,6 +9,10 @@ import { NextRequest } from 'next/server';
 // Mock database
 vi.mock('@/lib/db', () => ({
   sql: vi.fn(),
+  withTransaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const mockTx = vi.fn().mockResolvedValue([]);
+    return fn(mockTx);
+  }),
 }));
 
 // Mock OAuth module
@@ -258,7 +262,7 @@ describe('Gmail Webhook API', () => {
       expect(data.status).toBe('processed');
     });
 
-    it('should return ignored status when no integration found', async () => {
+    it('should return 404 when no integration found', async () => {
       (sql as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       const request = new NextRequest('http://localhost/api/webhooks/gmail', {
@@ -269,9 +273,9 @@ describe('Gmail Webhook API', () => {
 
       const response = await POST(request);
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.status).toBe('ignored');
+      expect(data.error).toBe('No matching integration');
     });
 
     it('should NOT process emails for unverified addresses (security)', async () => {
@@ -290,9 +294,9 @@ describe('Gmail Webhook API', () => {
 
       const response = await POST(request);
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.status).toBe('ignored'); // Should ignore unverified emails
+      expect(data.error).toBe('No matching integration'); // Should reject unverified emails
     });
   });
 

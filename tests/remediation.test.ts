@@ -8,6 +8,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Mock the database and external services
 vi.mock('@/lib/db', () => ({
   sql: vi.fn(),
+  withTransaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const mockTx = vi.fn().mockResolvedValue([]);
+    return fn(mockTx);
+  }),
 }));
 
 vi.mock('@/lib/integrations/gmail', () => ({

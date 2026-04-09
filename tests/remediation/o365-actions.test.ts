@@ -12,6 +12,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Mock the modules before importing the code under test
 vi.mock('@/lib/db', () => ({
   sql: vi.fn(),
+  withTransaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const mockTx = vi.fn().mockResolvedValue([]);
+    return fn(mockTx);
+  }),
 }));
 
 // Token retrieval is handled by getO365AccessToken in integration module
@@ -33,7 +37,7 @@ vi.mock('@/lib/notifications/service', () => ({
 }));
 
 // Import after mocking
-import { sql } from '@/lib/db';
+import { sql, withTransaction } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 
 // Test constants
@@ -434,8 +438,8 @@ describe('O365 Email Remediation', () => {
       expect(result.success).toBe(true);
       expect(result.action).toBe('quarantine');
 
-      // Verify audit log was called
-      expect(logAuditEvent).toHaveBeenCalled();
+      // Verify transaction was used for status update + audit log
+      expect(withTransaction).toHaveBeenCalled();
     });
 
     it('should return error when threat not found', async () => {
@@ -506,8 +510,8 @@ describe('O365 Email Remediation', () => {
         })
       );
 
-      // Verify audit log was called
-      expect(logAuditEvent).toHaveBeenCalled();
+      // Verify transaction was used for status update + audit log
+      expect(withTransaction).toHaveBeenCalled();
     });
   });
 

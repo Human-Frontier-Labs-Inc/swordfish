@@ -11,6 +11,11 @@ vi.mock('@clerk/nextjs/server', () => ({
   auth: vi.fn(),
 }));
 
+// Mock rate limiting
+vi.mock('@/lib/api/rate-limit', () => ({
+  rateLimit: vi.fn().mockReturnValue({ success: true, remaining: 9 }),
+}));
+
 // Mock detection pipeline
 vi.mock('@/lib/detection/pipeline', () => ({
   analyzeEmail: vi.fn(),
@@ -27,11 +32,14 @@ vi.mock('@/lib/detection/parser', () => ({
 import { auth } from '@clerk/nextjs/server';
 import { analyzeEmail, quickCheck } from '@/lib/detection/pipeline';
 import { parseEmail, parseGraphEmail, parseGmailEmail } from '@/lib/detection/parser';
+import { rateLimit } from '@/lib/api/rate-limit';
 import { POST } from '@/app/api/analyze/route';
 
 describe('POST /api/analyze', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Re-establish rate limit mock after clearAllMocks
+    (rateLimit as ReturnType<typeof vi.fn>).mockReturnValue({ success: true, remaining: 9 });
   });
 
   afterEach(() => {
