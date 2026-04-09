@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { sql } from '@/lib/db';
+import { sql, withTransaction } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -174,41 +174,44 @@ export async function POST(request: NextRequest) {
 
     for (const threatId of threatIds) {
       try {
-        if (action === 'release') {
-          await sql`
-            UPDATE threats SET
-              status = 'released',
-              released_at = NOW(),
-              released_by = ${userEmail},
-              updated_at = NOW()
-            WHERE id = ${threatId}::uuid
-            AND status = 'quarantined'
-          `;
-        } else if (action === 'delete') {
-          await sql`
-            UPDATE threats SET
-              status = 'deleted',
-              deleted_at = NOW(),
-              deleted_by = ${userEmail},
-              updated_at = NOW()
-            WHERE id = ${threatId}::uuid
-            AND status = 'quarantined'
-          `;
-        }
+        // Wrap status update + audit log in a transaction per threat
+        await withTransaction(async (tx) => {
+          if (action === 'release') {
+            await tx`
+              UPDATE threats SET
+                status = 'released',
+                released_at = NOW(),
+                released_by = ${userEmail},
+                updated_at = NOW()
+              WHERE id = ${threatId}::uuid
+              AND status = 'quarantined'
+            `;
+          } else if (action === 'delete') {
+            await tx`
+              UPDATE threats SET
+                status = 'deleted',
+                deleted_at = NOW(),
+                deleted_by = ${userEmail},
+                updated_at = NOW()
+              WHERE id = ${threatId}::uuid
+              AND status = 'quarantined'
+            `;
+          }
 
-        // Log audit event
-        await sql`
-          INSERT INTO audit_log (tenant_id, actor_id, actor_email, action, resource_type, resource_id, created_at)
-          SELECT
-            tenant_id,
-            ${userUuid},
-            ${userEmail},
-            ${action === 'release' ? 'threat.released' : 'threat.deleted'},
-            'threat',
-            ${threatId},
-            NOW()
-          FROM threats WHERE id = ${threatId}::uuid
-        `;
+          // Log audit event within the same transaction
+          await tx`
+            INSERT INTO audit_log (tenant_id, actor_id, actor_email, action, resource_type, resource_id, created_at)
+            SELECT
+              tenant_id,
+              ${userUuid},
+              ${userEmail},
+              ${action === 'release' ? 'threat.released' : 'threat.deleted'},
+              'threat',
+              ${threatId},
+              NOW()
+            FROM threats WHERE id = ${threatId}::uuid
+          `;
+        });
 
         results.success++;
       } catch (err) {
