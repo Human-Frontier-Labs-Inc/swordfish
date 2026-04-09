@@ -1,83 +1,118 @@
-<p align="center">
-  <a href="https://go.clerk.com/e3UDpP4" target="_blank" rel="noopener noreferrer">
-   <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="./public/light-logo.png">
-      <img src="./public/dark-logo.png" height="64">
-    </picture>
-  </a>
-  <br />
-</p>
-<div align="center">
-  <h1>
-    Next.js Clerk auth starter template
-  </h1>
-  <a href="https://www.npmjs.com/package/@clerk/clerk-js">
-    <img alt="" src="https://img.shields.io/npm/dm/@clerk/clerk-js" />
-  </a>
-  <a href="https://discord.com/invite/b5rXHjAg7A">
-    <img alt="Discord" src="https://img.shields.io/discord/856971667393609759?color=7389D8&label&logo=discord&logoColor=ffffff" />
-  </a>
-  <a href="https://twitter.com/clerkdev">
-    <img alt="Twitter" src="https://img.shields.io/twitter/url.svg?label=%40clerkdev&style=social&url=https%3A%2F%2Ftwitter.com%2Fclerkdev" />
-  </a>
-  <br />
-  <br />
-  <img alt="Clerk Hero Image" src="public/og.png">
-</div>
+# Swordfish
 
-## Introduction
+Email security SaaS platform for threat detection, monitoring, and security operations.
 
-Clerk is a developer-first authentication and user management solution. It provides pre-built React components and hooks for sign-in, sign-up, user profile, and organization management. Clerk is designed to be easy to use and customize, and can be dropped into any React or Next.js application.
+## Tech Stack
 
-This template allows you to get started with Clerk and Next.js (App Router) in a matter of minutes, and demonstrates features of Clerk such as:
+- **Runtime**: Next.js 16 (App Router), React 19, TypeScript
+- **Styling**: Tailwind CSS 4, Radix UI, CVA
+- **Database**: PostgreSQL via Neon serverless, Drizzle ORM
+- **Cache/Queue**: Upstash Redis, Upstash Kafka
+- **Auth**: Clerk
+- **Payments**: Stripe
+- **Webhooks**: Svix
+- **Analytics**: PostHog
+- **AI**: Anthropic Claude SDK
+- **Email**: Google Workspace (Gmail API), Microsoft 365
+- **Security**: Joe Sandbox, AbuseIPDB, URLScan.io, VirusTotal
+- **Storage**: Cloudflare R2
+- **Deployment**: Vercel
 
-- Fully functional auth flow with sign-in, sign-up, and a protected page
-- Customized Clerk components with Tailwind CSS
-- Hooks for accessing user data and authentication state
-- Organizations for multi-tenant applications
+## Prerequisites
 
-## Demo
+- Node.js 20+
+- npm 10+
+- Accounts: Clerk, Neon, Upstash (required for core functionality)
+- Optional: Stripe, Google Cloud, Anthropic, Cloudflare
 
-A hosted demo of this example is available at https://clerk-nextjs-app-router.vercel.app/
+## Getting Started
 
-## Deploy
-
-Easily deploy the template to Vercel with the button below. You will need to set the required environment variables in the Vercel dashboard.
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fclerk%2Fnextjs-auth-starter-template&project-name=nextjs-clerk&repository-name=nextjs-with-clerk&demo-title=Next.js+Clerk+Template&demo-description=A+Next.js+application+pre-configured+to+authenticate+users+with+Clerk.&demo-url=https%3A%2F%2Fnextjs-auth-starter-template-kit.vercel.app%2F&demo-image=%2F%2Fraw.githubusercontent.com%2Fclerk%2Fnextjs-auth-starter-template%2Frefs%2Fheads%2Fmain%2Fpublic%2Fog.png&products=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22clerk%22%2C%22productSlug%22%3A%22clerk%22%2C%22protocol%22%3A%22authentication%22%2C%22group%22%3A%22%22%7D%5D)
-
-## Running the template
+1. Clone the repository:
 
 ```bash
-git clone https://github.com/clerk/clerk-nextjs-demo-app-router
+git clone <repo-url>
+cd swordfish
 ```
 
-To run the example locally, you need to:
+2. Install dependencies:
 
-1. Sign up for a Clerk account at [https://clerk.com](https://go.clerk.com/31bREJU).
-2. Go to the [Clerk dashboard](https://go.clerk.com/4I5LXFj) and create an application.
-3. Set the required Clerk environment variables as shown in [the example `env` file](./.env.example).
-4. Go to "Organization Settings" in your sidebar and enable Organizations
-5. `npm install` the required dependencies.
-6. `npm run dev` to launch the development server.
+```bash
+npm install
+```
 
-## Learn more
+3. Set up environment variables:
 
-To learn more about Clerk and Next.js, check out the following resources:
+```bash
+cp .env.example .env.local
+```
 
-- [Quickstart: Get started with Next.js and Clerk](https://go.clerk.com/vgWhQ7B)
-- [Clerk Documentation](https://go.clerk.com/aNiTioa)
-- [Next.js Documentation](https://nextjs.org/docs)
+Edit `.env.local` and fill in your credentials. At minimum you need:
 
-## Found an issue or have feedback?
+- `CLERK_SECRET_KEY` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (authentication)
+- `DATABASE_URL` (Neon PostgreSQL connection string)
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (caching/queues)
 
-If you have found an issue with this repo or have feedback, please join our Discord and create a new thread inside of our [support](https://clerk.com/discord) channel.
+See `.env.example` for the full list of available configuration options.
 
-If it's a quick fix, such as a misspelled word or a broken link, feel free to skip creating a thread.
-Go ahead and create a [pull request](https://github.com/clerk/clerk-nextjs-demo-app-router/pulls) with the solution. :rocket:
+4. Run database migrations:
 
-## Connect with us
+```bash
+npm run migrate:009
+npm run migrate:014
+```
 
-You can discuss ideas, ask questions, and meet others from the community in our [Discord](https://clerk.com/discord).
+5. Start the development server:
 
-If you prefer, you can also find support through our [Twitter](https://twitter.com/ClerkDev), or you can [email](mailto:support@clerk.dev) us!
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:3000`.
+
+## Available Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server with Turbopack |
+| `npm run build` | Production build |
+| `npm run start` | Start production server |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | TypeScript type checking |
+| `npm run test` | Run unit/integration tests (Vitest) |
+| `npm run test:watch` | Run tests in watch mode |
+| `npm run test:coverage` | Run tests with coverage report |
+| `npm run test:e2e` | Run E2E tests (Playwright) |
+| `npm run test:e2e:ui` | Run E2E tests with UI |
+| `npm run test:e2e:headed` | Run E2E tests in headed browser |
+| `npm run setup` | Full environment setup |
+| `npm run setup:quick` | Quick environment setup |
+
+## Project Structure
+
+```
+app/          Next.js App Router (pages, API routes, layouts)
+components/   Shared UI components (dashboards, SOC, MSP modules)
+lib/          Business logic, server actions, integrations, utilities
+tests/        Unit, integration, and E2E test files
+migrations/   Database migration files (Drizzle ORM)
+scripts/      Setup and utility scripts
+docs/         Project documentation
+public/       Static assets
+```
+
+## Architecture Notes
+
+- React Server Components by default; `'use client'` only when needed.
+- No direct database access in routes. All DB operations go through `/lib` action functions.
+- Zod validation at system boundaries.
+- Strict TypeScript with no `any` types.
+
+## Deployment
+
+Swordfish deploys to Vercel. Push to `main` triggers a production deployment.
+
+Required environment variables must be configured in the Vercel dashboard. See `.env.example` for the full list.
+
+## License
+
+Proprietary. All rights reserved.
