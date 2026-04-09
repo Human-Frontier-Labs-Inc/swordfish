@@ -55,9 +55,63 @@ import {
 } from './phase4c-integration';
 
 /**
+ * Determines if an error is transient (network/timeout) and worth retrying
+ */
+function isTransientError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('network') ||
+    message.includes('timeout') ||
+    message.includes('econnrefused') ||
+    message.includes('econnreset') ||
+    message.includes('etimedout') ||
+    message.includes('socket hang up') ||
+    message.includes('503') ||
+    message.includes('502') ||
+    message.includes('429') ||
+    message.includes('fetch failed') ||
+    message.includes('aborted')
+  );
+}
+
+/**
+ * Retry wrapper for pipeline operations. Retries up to maxRetries times
+ * with a delay between attempts, but only for transient errors.
+ */
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  operationName: string,
+  maxRetries: number = 2,
+  delayMs: number = 1000
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries && isTransientError(error)) {
+        loggers.detection.warn(`${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Main detection pipeline - analyzes an email through all layers
  * Phase 6: Optimized with parallel execution for independent layers
  * Expected latency reduction: 40-60%
+ *
+ * Includes retry logic for transient failures (network, timeout).
+ * Validation errors are not retried.
+ * On failure, the verdict is marked with analysisStatus: 'analysis_failed'.
  */
 export async function analyzeEmail(
   email: ParsedEmail,
@@ -66,6 +120,8 @@ export async function analyzeEmail(
 ): Promise<EmailVerdict> {
   const config: DetectionConfig = { ...DEFAULT_DETECTION_CONFIG, ...configOverrides };
   const startTime = performance.now();
+
+  try {
   const layerResults: LayerResult[] = [];
   const allSignals: Signal[] = [];
   let llmTokensUsed = 0;
@@ -82,18 +138,18 @@ export async function analyzeEmail(
     policyResult,
     reputationLookupResult,
   ] = await Promise.all([
-    // Layer 0: Email Type Classification
-    classifyEmailType(email).catch(error => {
+    // Layer 0: Email Type Classification (with retry for transient failures)
+    withRetry(() => classifyEmailType(email), 'Email classification').catch(error => {
       loggers.detection.error('Email classification failed', error instanceof Error ? error : new Error(String(error)));
       return null;
     }),
-    // Layer 1: Policy Evaluation
-    evaluatePolicies(email, tenantId).catch(error => {
+    // Layer 1: Policy Evaluation (with retry for transient failures)
+    withRetry(() => evaluatePolicies(email, tenantId), 'Policy evaluation').catch(error => {
       loggers.detection.error('Policy evaluation failed', error instanceof Error ? error : new Error(String(error)), { tenantId });
       return { matched: false } as { matched: false };
     }),
-    // Layer 2: Enhanced Reputation Lookup
-    runEnhancedReputationLookup(email),
+    // Layer 2: Enhanced Reputation Lookup (with retry for transient failures)
+    withRetry(() => runEnhancedReputationLookup(email), 'Reputation lookup'),
   ]);
 
   // Process classification result
@@ -136,6 +192,7 @@ export async function analyzeEmail(
         recommendation: 'Sender is on your allowlist.',
         processingTimeMs: performance.now() - startTime,
         analyzedAt: new Date(),
+        analysisStatus: 'complete',
         policyApplied: {
           policyId: policyResult.policyId,
           policyName: policyResult.policyName,
@@ -160,6 +217,7 @@ export async function analyzeEmail(
         recommendation: 'Sender is on your blocklist.',
         processingTimeMs: performance.now() - startTime,
         analyzedAt: new Date(),
+        analysisStatus: 'complete',
         policyApplied: {
           policyId: policyResult.policyId,
           policyName: policyResult.policyName,
@@ -197,9 +255,9 @@ export async function analyzeEmail(
     becResultRaw,
     sandboxResult,
   ] = await Promise.all([
-    // Layer 3: Deterministic Analysis
-    runDeterministicAnalysis(email, reputationContext),
-    // Layer 5: BEC Detection (may be skipped)
+    // Layer 3: Deterministic Analysis (with retry for transient failures)
+    withRetry(() => runDeterministicAnalysis(email, reputationContext), 'Deterministic analysis'),
+    // Layer 5: BEC Detection (may be skipped, with retry for transient failures)
     skipBEC
       ? Promise.resolve({
           layer: 'bec' as const,
@@ -210,9 +268,9 @@ export async function analyzeEmail(
           skipped: true,
           skipReason: `Skipped for ${emailClassification!.type} email from known sender`,
         })
-      : runBECAnalysis(email, tenantId),
-    // Layer 7: Sandbox Analysis
-    runSandboxAnalysis(email, tenantId),
+      : withRetry(() => runBECAnalysis(email, tenantId), 'BEC analysis'),
+    // Layer 7: Sandbox Analysis (with retry for transient failures)
+    withRetry(() => runSandboxAnalysis(email, tenantId), 'Sandbox analysis'),
   ]);
 
   // Process deterministic result
@@ -266,8 +324,8 @@ export async function analyzeEmail(
     // Continue without lookalike analysis
   }
 
-  // Layer 4: ML Analysis (needs allSignals from prior layers - must be sequential)
-  const mlResult = await runMLAnalysis(email, allSignals);
+  // Layer 4: ML Analysis (needs allSignals from prior layers - must be sequential, with retry)
+  const mlResult = await withRetry(() => runMLAnalysis(email, allSignals), 'ML analysis');
 
   // Filter ML signals for email type
   const filteredMLSignals = filterSignalsForEmailType(
@@ -333,7 +391,7 @@ export async function analyzeEmail(
       layerResults
     );
 
-    const llmResult = await runLLMAnalysis(email, allSignals, llmContext);
+    const llmResult = await withRetry(() => runLLMAnalysis(email, allSignals, llmContext), 'LLM analysis');
     layerResults.push(llmResult);
     allSignals.push(...llmResult.signals);
     // Estimate tokens used (rough approximation)
@@ -493,6 +551,7 @@ export async function analyzeEmail(
     processingTimeMs: performance.now() - startTime,
     llmTokensUsed: llmTokensUsed > 0 ? llmTokensUsed : undefined,
     analyzedAt: new Date(),
+    analysisStatus: 'complete',
     // Include classification in result for transparency
     emailClassification: emailClassification ? {
       type: emailClassification.type,
@@ -506,6 +565,37 @@ export async function analyzeEmail(
       signals: emailClassification.marketingSignals?.signals || [],
     } : undefined,
   };
+  } catch (error) {
+    // Pipeline-level failure: return a verdict that clearly indicates analysis failed
+    // This prevents the email from being falsely marked as "analyzed" when the
+    // pipeline encountered a fatal error
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    loggers.detection.error('Detection pipeline failed', error instanceof Error ? error : new Error(errorMessage), {
+      tenantId,
+      messageId: email.messageId,
+    });
+
+    return {
+      messageId: email.messageId,
+      tenantId,
+      verdict: 'suspicious' as const,
+      overallScore: 0,
+      confidence: 0,
+      signals: [{
+        type: 'pipeline_error',
+        severity: 'warning' as const,
+        score: 0,
+        detail: `Analysis failed: ${errorMessage}. This email has not been fully analyzed.`,
+      }],
+      layerResults: [],
+      explanation: 'Analysis could not be completed due to a system error. This email has not been fully evaluated.',
+      recommendation: 'This email should be re-analyzed. Contact your administrator if this persists.',
+      processingTimeMs: performance.now() - startTime,
+      analyzedAt: new Date(),
+      analysisStatus: 'analysis_failed',
+      analysisError: errorMessage,
+    };
+  }
 }
 
 /**

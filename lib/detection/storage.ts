@@ -5,6 +5,7 @@
 
 import { sql } from '@/lib/db';
 import type { EmailVerdict, Signal, ParsedEmail } from './types';
+import { loggers } from '@/lib/logging/logger';
 
 // Helper to truncate strings to fit database column limits
 function truncate(str: string | null | undefined, maxLength: number): string | null {
@@ -21,6 +22,18 @@ export async function storeVerdict(
   verdict: EmailVerdict,
   email?: ParsedEmail
 ): Promise<string> {
+  // Do not persist verdicts from failed analysis runs.
+  // This prevents emails from being falsely marked as "analyzed" when the
+  // detection pipeline encountered a fatal error.
+  if (verdict.analysisStatus === 'analysis_failed') {
+    loggers.db.warn('Skipping verdict storage for failed analysis', {
+      tenantId,
+      messageId,
+      analysisError: verdict.analysisError,
+    });
+    return '';
+  }
+
   // Truncate all string fields to fit database limits (use 250 to be safe with VARCHAR(255))
   const safeMessageId = truncate(messageId, 250);
   const safeSubject = truncate(email?.subject, 250);
