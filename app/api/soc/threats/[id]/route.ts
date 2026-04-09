@@ -50,6 +50,7 @@ export async function GET(
       SELECT id, author, content, created_at
       FROM investigation_notes
       WHERE threat_id = ${threatId}
+        AND tenant_id = ${tenantId}
       ORDER BY created_at DESC
     `;
 

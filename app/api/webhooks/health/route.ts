@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getTenantId } from '@/lib/auth/tenant';
 import { getQueueStats, getDeadLetterJobs } from '@/lib/webhooks/queue';
 import { getSubscriptions, renewExpiringSubscriptions } from '@/lib/webhooks/subscriptions';
 import { sql } from '@/lib/db';
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get tenant ID from org or user
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
 
     // Get queue stats
     const queueStats = await getQueueStats();

@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getTenantId } from '@/lib/auth/tenant';
 import { bulkImportVIPs, detectPotentialVIP } from '@/lib/detection/bec/vip-list';
 
 interface ImportEntry {
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const body = await request.json();
 
     if (!body.entries || !Array.isArray(body.entries)) {

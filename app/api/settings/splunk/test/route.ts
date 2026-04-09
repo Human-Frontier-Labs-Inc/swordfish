@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getTenantId } from '@/lib/auth/tenant';
 import { testSplunkConnection, SplunkConfig } from '@/lib/integrations/splunk';
 
 export async function POST(request: NextRequest) {
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const body = await request.json();
     const { hecUrl, hecToken, index = 'main', source = 'swordfish', sourceType = 'cef' } = body;
 

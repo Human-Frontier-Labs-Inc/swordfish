@@ -323,7 +323,9 @@ export class PhishReportService {
       emailContent = {
         headers: reportData.emailHeaders || {},
         bodyText: reportData.emailBodyText || null,
-        bodyHtml: reportData.emailBodyHtml || null,
+        bodyHtml: reportData.emailBodyHtml
+          ? sanitizeHtml(reportData.emailBodyHtml, { decodeEntities: true })
+          : null,
       };
     }
 

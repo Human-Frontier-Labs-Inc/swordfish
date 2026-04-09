@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getTenantId } from '@/lib/auth/tenant';
 import {
   getVIPList,
   addVIP,
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const searchParams = request.nextUrl.searchParams;
     const includeStats = searchParams.get('stats') === 'true';
 
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const body = await request.json();
 
     // Validate required fields
@@ -123,7 +124,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const body = await request.json();
 
     if (!body.id) {
@@ -186,7 +187,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
 

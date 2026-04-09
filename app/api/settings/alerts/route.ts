@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getTenantId } from '@/lib/auth/tenant';
 import {
   createAlertRule,
   getAlertRules,
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'rules';
 
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const body = await request.json();
 
     const {
@@ -123,7 +124,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const body = await request.json();
 
     const { action, ruleId, alertId, updates } = body;
@@ -170,7 +171,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const { searchParams } = new URL(request.url);
     const ruleId = searchParams.get('ruleId');
 

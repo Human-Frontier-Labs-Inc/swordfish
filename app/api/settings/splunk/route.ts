@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getTenantId } from '@/lib/auth/tenant';
 import { sql } from '@/lib/db';
 import { nanoid } from 'nanoid';
 import { testSplunkConnection, SplunkConfig } from '@/lib/integrations/splunk';
@@ -22,7 +23,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
 
     const result = await sql`
       SELECT id, name, hec_url, index_name, source_name, source_type, is_active, event_types, created_at, updated_at
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
     const body = await request.json();
     const {
       name = 'Splunk HEC',
@@ -248,7 +249,7 @@ export async function DELETE() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tenantId = orgId || userId;
+    const tenantId = await getTenantId();
 
     const deleted = await sql`
       DELETE FROM splunk_integrations
