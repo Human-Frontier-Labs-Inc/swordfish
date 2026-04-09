@@ -19,6 +19,9 @@ export async function POST(
 ) {
   try {
     const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     let tenantId: string;
     try {
       tenantId = await getTenantId();

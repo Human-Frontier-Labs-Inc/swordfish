@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Rate limit: 60 req/min
-    const limit = rateLimit(userId, 60, 60000);
-    if (!limit.success) {
+    const rl = rateLimit(userId, 60, 60000);
+    if (!rl.success) {
       return new Response('Too Many Requests', { status: 429 });
     }
 
