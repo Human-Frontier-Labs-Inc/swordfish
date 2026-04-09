@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { rateLimit } from '@/lib/api/rate-limit';
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 
@@ -91,6 +92,12 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Rate limit: 20 req/min
+    const limit = rateLimit(userId, 20, 60000);
+    if (!limit.success) {
+      return new Response('Too Many Requests', { status: 429 });
+    }
+
     const tenantId = orgId || `personal_${userId}`;
 
     // Get settings from database
@@ -131,6 +138,12 @@ export async function PUT(request: NextRequest) {
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Rate limit: 20 req/min
+    const limit = rateLimit(userId, 20, 60000);
+    if (!limit.success) {
+      return new Response('Too Many Requests', { status: 429 });
     }
 
     const tenantId = orgId || `personal_${userId}`;

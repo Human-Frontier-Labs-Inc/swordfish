@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { rateLimit } from '@/lib/api/rate-limit';
 import { parseEmail, parseGraphEmail, parseGmailEmail } from '@/lib/detection/parser';
 import { analyzeEmail, quickCheck } from '@/lib/detection/pipeline';
 import { DEFAULT_DETECTION_CONFIG } from '@/lib/detection/types';
@@ -38,6 +39,12 @@ export async function POST(request: NextRequest) {
         { error: 'Unauthorized' },
         { status: 401 }
       );
+    }
+
+    // Rate limit: 10 req/min (expensive LLM analysis)
+    const limit = rateLimit(userId, 10, 60000);
+    if (!limit.success) {
+      return new Response('Too Many Requests', { status: 429 });
     }
 
     // Parse request body
