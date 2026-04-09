@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { sql, withTransaction } from '@/lib/db';
 import { getGmailMessage, getGmailHistory, getGmailAccessToken } from '@/lib/integrations/gmail';
 import { parseGmailEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
@@ -143,6 +143,17 @@ export async function POST(request: NextRequest) {
       historyId: string;
     };
 
+    // Idempotency: skip if this historyId has already been processed or is older
+    // Gmail can send duplicate Pub/Sub notifications for the same historyId
+    if (config.historyId && BigInt(historyId) <= BigInt(config.historyId)) {
+      log.info('Duplicate or stale Gmail notification, skipping', {
+        receivedHistoryId: historyId,
+        lastProcessedHistoryId: config.historyId,
+        emailAddress,
+      });
+      return NextResponse.json({ status: 'duplicate', historyId });
+    }
+
     // If queue is configured, enqueue and return quickly
     if (isGmailQueueConfigured()) {
       try {
@@ -255,28 +266,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Update history ID
-    await sql`
-      UPDATE integrations
-      SET config = config || ${JSON.stringify({ historyId: historyResult.historyId })}::jsonb,
-          last_sync_at = NOW(),
-          updated_at = NOW()
-      WHERE id = ${integration.id}
-    `;
+    // Update history ID and audit log atomically to prevent processing gaps
+    await withTransaction(async (tx) => {
+      await tx`
+        UPDATE integrations
+        SET config = config || ${JSON.stringify({ historyId: historyResult.historyId })}::jsonb,
+            last_sync_at = NOW(),
+            updated_at = NOW()
+        WHERE id = ${integration.id as string}
+      `;
 
-    // Audit log
-    await logAuditEvent({
-      tenantId,
-      actorId: null,
-      actorEmail: 'system',
-      action: 'email.sync',
-      resourceType: 'integration',
-      resourceId: integration.id as string,
-      afterState: {
-        messagesProcessed: processedCount,
-        historyId: historyResult.historyId,
-        integrationType: 'gmail',
-      },
+      await tx`
+        INSERT INTO audit_log (
+          tenant_id, actor_id, actor_email, action, resource_type, resource_id, after_state
+        ) VALUES (
+          ${tenantId}, ${null}, 'system', 'email.sync', 'integration', ${integration.id as string},
+          ${JSON.stringify({
+            messagesProcessed: processedCount,
+            historyId: historyResult.historyId,
+            integrationType: 'gmail',
+          })}::jsonb
+        )
+      `;
     });
 
     return NextResponse.json({

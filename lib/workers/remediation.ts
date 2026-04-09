@@ -3,7 +3,7 @@
  * Handles quarantine, release, and delete actions on actual mailboxes
  */
 
-import { sql } from '@/lib/db';
+import { sql, withTransaction } from '@/lib/db';
 import {
   moveO365Email,
   getOrCreateQuarantineFolder,
@@ -230,25 +230,25 @@ export async function quarantineEmail(params: {
       await quarantineGmailEmail(tenantId, externalMessageId);
     }
 
-    // Update threat status
-    await sql`
-      UPDATE threats
-      SET status = 'quarantined', quarantined_at = NOW(), quarantined_by = ${actorId}
-      WHERE id = ${threatId}
-    `;
+    // Update threat status and audit log atomically
+    await withTransaction(async (tx) => {
+      await tx`
+        UPDATE threats
+        SET status = 'quarantined', quarantined_at = NOW(), quarantined_by = ${actorId}
+        WHERE id = ${threatId}
+      `;
 
-    // Audit log
-    await logAuditEvent({
-      tenantId,
-      actorId,
-      actorEmail,
-      action: 'threat.quarantine',
-      resourceType: 'threat',
-      resourceId: threatId,
-      afterState: { status: 'quarantined' },
+      await tx`
+        INSERT INTO audit_log (
+          tenant_id, actor_id, actor_email, action, resource_type, resource_id, after_state
+        ) VALUES (
+          ${tenantId}, ${actorId}, ${actorEmail}, 'threat.quarantine', 'threat', ${threatId},
+          ${JSON.stringify({ status: 'quarantined' })}::jsonb
+        )
+      `;
     });
 
-    // Send notification
+    // Send notification outside the transaction (non-critical, best-effort)
     await sendNotification({
       tenantId,
       type: 'threat_quarantined',
@@ -333,22 +333,22 @@ export async function releaseEmail(params: {
       await releaseGmailEmail(tenantId, externalMessageId, threat.status === 'deleted');
     }
 
-    // Update threat status
-    await sql`
-      UPDATE threats
-      SET status = 'released', released_at = NOW(), released_by = ${actorId}
-      WHERE id = ${threatId}
-    `;
+    // Update threat status and audit log atomically
+    await withTransaction(async (tx) => {
+      await tx`
+        UPDATE threats
+        SET status = 'released', released_at = NOW(), released_by = ${actorId}
+        WHERE id = ${threatId}
+      `;
 
-    // Audit log
-    await logAuditEvent({
-      tenantId,
-      actorId,
-      actorEmail,
-      action: 'threat.release',
-      resourceType: 'threat',
-      resourceId: threatId,
-      afterState: { status: 'released' },
+      await tx`
+        INSERT INTO audit_log (
+          tenant_id, actor_id, actor_email, action, resource_type, resource_id, after_state
+        ) VALUES (
+          ${tenantId}, ${actorId}, ${actorEmail}, 'threat.release', 'threat', ${threatId},
+          ${JSON.stringify({ status: 'released' })}::jsonb
+        )
+      `;
     });
 
     await sendNotification({
@@ -434,22 +434,22 @@ export async function deleteEmail(params: {
       await deleteGmailEmail(tenantId, externalMessageId);
     }
 
-    // Update threat status
-    await sql`
-      UPDATE threats
-      SET status = 'deleted', deleted_at = NOW(), deleted_by = ${actorId}
-      WHERE id = ${threatId}
-    `;
+    // Update threat status and audit log atomically
+    await withTransaction(async (tx) => {
+      await tx`
+        UPDATE threats
+        SET status = 'deleted', deleted_at = NOW(), deleted_by = ${actorId}
+        WHERE id = ${threatId}
+      `;
 
-    // Audit log
-    await logAuditEvent({
-      tenantId,
-      actorId,
-      actorEmail,
-      action: 'threat.delete',
-      resourceType: 'threat',
-      resourceId: threatId,
-      afterState: { status: 'deleted' },
+      await tx`
+        INSERT INTO audit_log (
+          tenant_id, actor_id, actor_email, action, resource_type, resource_id, after_state
+        ) VALUES (
+          ${tenantId}, ${actorId}, ${actorEmail}, 'threat.delete', 'threat', ${threatId},
+          ${JSON.stringify({ status: 'deleted' })}::jsonb
+        )
+      `;
     });
 
     return {
@@ -850,46 +850,37 @@ export async function autoRemediate(params: {
       250
     );
 
-    // HIGH-2 FIX: First create/update threat record with 'remediation_pending' status
-    // This ensures we can track failures properly
-    const existingThreats = await sql`
-      SELECT id FROM threats WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
+    // Create/update threat record with 'remediation_pending' status atomically
+    // Uses INSERT ... ON CONFLICT to avoid check-then-write race conditions
+    const signalsJson = JSON.stringify(emailDetails.signals || []);
+    await sql`
+      INSERT INTO threats (
+        tenant_id, message_id, external_message_id, subject, sender_email, recipient_email,
+        verdict, score, status, integration_id, integration_type, signals, created_at
+      ) VALUES (
+        ${tenantId},
+        ${safeMessageId},
+        ${safeExternalMessageId},
+        ${safeSubject},
+        ${safeSenderEmail},
+        ${safeRecipientEmail || ''},
+        ${verdict},
+        ${score},
+        'remediation_pending',
+        ${integrationId},
+        ${integrationType},
+        ${signalsJson}::jsonb,
+        NOW()
+      )
+      ON CONFLICT (tenant_id, message_id) DO UPDATE SET
+        status = 'remediation_pending',
+        verdict = ${verdict},
+        score = ${score},
+        integration_id = COALESCE(threats.integration_id, ${integrationId}),
+        external_message_id = COALESCE(threats.external_message_id, ${safeExternalMessageId}),
+        signals = ${signalsJson}::jsonb,
+        updated_at = NOW()
     `;
-
-    if (existingThreats.length > 0) {
-      await sql`
-        UPDATE threats SET
-          status = 'remediation_pending',
-          verdict = ${verdict},
-          score = ${score},
-          integration_id = COALESCE(integration_id, ${integrationId}),
-          external_message_id = COALESCE(external_message_id, ${safeExternalMessageId}),
-          signals = ${JSON.stringify(emailDetails.signals || [])}::jsonb,
-          updated_at = NOW()
-        WHERE tenant_id = ${tenantId} AND message_id = ${safeMessageId}
-      `;
-    } else {
-      await sql`
-        INSERT INTO threats (
-          tenant_id, message_id, external_message_id, subject, sender_email, recipient_email,
-          verdict, score, status, integration_id, integration_type, signals, created_at
-        ) VALUES (
-          ${tenantId},
-          ${safeMessageId},
-          ${safeExternalMessageId},
-          ${safeSubject},
-          ${safeSenderEmail},
-          ${safeRecipientEmail || ''},
-          ${verdict},
-          ${score},
-          'remediation_pending',
-          ${integrationId},
-          ${integrationType},
-          ${JSON.stringify(emailDetails.signals || [])}::jsonb,
-          NOW()
-        )
-      `;
-    }
 
     // Now attempt the actual quarantine action
     // IMPORTANT: Always quarantine, never delete automatically

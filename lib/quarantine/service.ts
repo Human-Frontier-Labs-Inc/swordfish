@@ -5,7 +5,7 @@
  * Token management is handled by direct OAuth - we get fresh tokens via the integration modules.
  */
 
-import { sql } from '@/lib/db';
+import { sql, withTransaction } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 import type { EmailVerdict } from '@/lib/detection/types';
 import { getO365AccessToken } from '@/lib/integrations/o365';
@@ -165,38 +165,38 @@ export async function releaseEmail(
       }
     }
 
-    // Update threat status
-    await sql`
-      UPDATE threats
-      SET status = 'released', released_at = NOW(), released_by = ${userId}
-      WHERE id = ${threatId}
-    `;
-
-    // Optionally add sender to allowlist
-    if (addToAllowlist && threat.sender_email) {
-      const domain = threat.sender_email.split('@')[1];
-      await sql`
-        INSERT INTO list_entries (
-          tenant_id, list_type, entry_type, value, reason, created_by
-        ) VALUES (
-          ${tenantId}, 'allowlist', 'email', ${threat.sender_email.toLowerCase()},
-          'Released from quarantine', ${userId}
-        )
-        ON CONFLICT (tenant_id, list_type, entry_type, value) DO NOTHING
+    // Update threat status, allowlist, and audit log atomically
+    await withTransaction(async (tx) => {
+      await tx`
+        UPDATE threats
+        SET status = 'released', released_at = NOW(), released_by = ${userId}
+        WHERE id = ${threatId}
       `;
-    }
 
-    await logAuditEvent({
-      tenantId,
-      actorId: userId,
-      actorEmail: null,
-      action: 'threat.release',
-      resourceType: 'threat',
-      resourceId: threatId,
-      afterState: {
-        messageId: threat.message_id,
-        addedToAllowlist: addToAllowlist,
-      },
+      // Optionally add sender to allowlist
+      if (addToAllowlist && threat.sender_email) {
+        await tx`
+          INSERT INTO list_entries (
+            tenant_id, list_type, entry_type, value, reason, created_by
+          ) VALUES (
+            ${tenantId}, 'allowlist', 'email', ${(threat.sender_email as string).toLowerCase()},
+            'Released from quarantine', ${userId}
+          )
+          ON CONFLICT (tenant_id, list_type, entry_type, value) DO NOTHING
+        `;
+      }
+
+      await tx`
+        INSERT INTO audit_log (
+          tenant_id, actor_id, action, resource_type, resource_id, after_state
+        ) VALUES (
+          ${tenantId}, ${userId}, 'threat.release', 'threat', ${threatId},
+          ${JSON.stringify({
+            messageId: threat.message_id,
+            addedToAllowlist: addToAllowlist,
+          })}::jsonb
+        )
+      `;
     });
 
     return {
@@ -256,21 +256,22 @@ export async function deleteQuarantinedEmail(
       }
     }
 
-    // Update threat status
-    await sql`
-      UPDATE threats
-      SET status = 'deleted', deleted_at = NOW(), deleted_by = ${userId}
-      WHERE id = ${threatId}
-    `;
+    // Update threat status and audit log atomically
+    await withTransaction(async (tx) => {
+      await tx`
+        UPDATE threats
+        SET status = 'deleted', deleted_at = NOW(), deleted_by = ${userId}
+        WHERE id = ${threatId}
+      `;
 
-    await logAuditEvent({
-      tenantId,
-      actorId: userId,
-      actorEmail: null,
-      action: 'threat.delete',
-      resourceType: 'threat',
-      resourceId: threatId,
-      afterState: { messageId: threat.message_id },
+      await tx`
+        INSERT INTO audit_log (
+          tenant_id, actor_id, action, resource_type, resource_id, after_state
+        ) VALUES (
+          ${tenantId}, ${userId}, 'threat.delete', 'threat', ${threatId},
+          ${JSON.stringify({ messageId: threat.message_id })}::jsonb
+        )
+      `;
     });
 
     return {

@@ -1,4 +1,4 @@
-import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
+import { neon, Pool, type NeonQueryFunction } from '@neondatabase/serverless';
 
 // Lazy-initialized SQL client to prevent build-time initialization errors
 let _sql: NeonQueryFunction<false, false> | null = null;
@@ -22,6 +22,75 @@ export const sql = new Proxy((() => {}) as unknown as NeonQueryFunction<false, f
     return (getSqlClient() as unknown as Record<string | symbol, unknown>)[prop];
   },
 });
+
+/**
+ * Execute a callback within a database transaction.
+ *
+ * Uses the Neon serverless Pool (WebSocket) to obtain a single connection,
+ * then runs BEGIN / callback / COMMIT (or ROLLBACK on error).
+ *
+ * The callback receives a `query` helper that accepts the same tagged-template
+ * syntax as the top-level `sql` function but runs on the transactional
+ * connection.
+ *
+ * @example
+ * ```ts
+ * const userId = await withTransaction(async (tx) => {
+ *   const [user] = await tx`INSERT INTO users (email) VALUES (${'a@b.com'}) RETURNING id`;
+ *   await tx`INSERT INTO audit_log (user_id) VALUES (${user.id})`;
+ *   return user.id;
+ * });
+ * ```
+ */
+
+/** Tagged-template query function available inside a transaction callback. */
+export interface TransactionQueryFn {
+  (strings: TemplateStringsArray, ...values: unknown[]): Promise<Record<string, unknown>[]>;
+}
+
+export async function withTransaction<T>(
+  callback: (tx: TransactionQueryFn) => Promise<T>
+): Promise<T> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not configured');
+  }
+
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Build a tagged-template helper that runs queries on the transactional client
+    const tx: TransactionQueryFn = async (
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Promise<Record<string, unknown>[]> => {
+      // Build a parameterized query from the tagged template
+      let queryText = '';
+      for (let i = 0; i < strings.length; i++) {
+        queryText += strings[i];
+        if (i < values.length) {
+          queryText += `$${i + 1}`;
+        }
+      }
+
+      const result = await client.query(queryText, values);
+      return result.rows as Record<string, unknown>[];
+    };
+
+    const result = await callback(tx);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+    // End the pool so we don't leak connections in a serverless environment
+    await pool.end();
+  }
+}
 
 // Types for our database entities
 export interface Tenant {

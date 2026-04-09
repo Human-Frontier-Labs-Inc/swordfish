@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { sql } from '@/lib/db';
+import { sql, withTransaction } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 
 export async function POST(request: NextRequest) {
@@ -73,35 +73,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create invitation record
-    const invitation = await sql`
-      INSERT INTO user_invitations (
-        email,
-        role,
-        tenant_id,
-        invited_by,
-        expires_at,
-        created_at
-      ) VALUES (
-        ${email},
-        ${role || 'viewer'},
-        ${tenantId},
-        ${userId},
-        NOW() + INTERVAL '7 days',
-        NOW()
-      )
-      RETURNING id, email, role, expires_at
-    `;
+    // Create invitation and audit log atomically
+    const invitation = await withTransaction(async (tx) => {
+      const invResult = await tx`
+        INSERT INTO user_invitations (
+          email,
+          role,
+          tenant_id,
+          invited_by,
+          expires_at,
+          created_at
+        ) VALUES (
+          ${email},
+          ${role || 'viewer'},
+          ${tenantId},
+          ${userId},
+          NOW() + INTERVAL '7 days',
+          NOW()
+        )
+        RETURNING id, email, role, expires_at
+      `;
 
-    // Audit log
-    await logAuditEvent({
-      tenantId: tenant[0].clerk_org_id as string,
-      actorId: userId,
-      actorEmail: user?.email as string || null,
-      action: 'user.invited',
-      resourceType: 'user',
-      resourceId: invitation[0].id as string,
-      afterState: { email, role, tenantName: tenant[0].name },
+      await tx`
+        INSERT INTO audit_log (
+          tenant_id, actor_id, actor_email, action, resource_type, resource_id, after_state
+        ) VALUES (
+          ${tenant[0].clerk_org_id as string},
+          ${userId},
+          ${(user?.email as string) || null},
+          'user.invited',
+          'user',
+          ${invResult[0].id as string},
+          ${JSON.stringify({ email, role, tenantName: tenant[0].name })}::jsonb
+        )
+      `;
+
+      return invResult;
     });
 
     // In production, send email invitation here

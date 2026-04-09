@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { Webhook } from 'svix';
-import { sql } from '@/lib/db';
+import { sql, withTransaction } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 
 // Clerk webhook event types
@@ -176,55 +176,71 @@ async function handleUserCreated(event: ClerkUserEvent) {
     `;
 
     if (existingUser.length === 0) {
-      // Create user with invitation role
-      const insertResult = await sql`
-        INSERT INTO users (
-          clerk_user_id,
-          email,
-          name,
-          role,
-          tenant_id,
-          status,
-          is_msp_user,
-          created_at,
-          updated_at
-        ) VALUES (
-          ${clerkUserId},
-          ${primaryEmail},
-          ${userName},
-          ${invitation.role},
-          ${invitation.tenant_id}::uuid,
-          'active',
-          ${invitation.role === 'msp_admin'},
-          NOW(),
-          NOW()
-        )
-        RETURNING id
-      `;
+      // Wrap user creation + invitation acceptance + audit log in a transaction
+      // so all three succeed or none do — prevents orphaned users or untracked invitations
+      await withTransaction(async (tx) => {
+        // Create user with invitation role
+        const insertResult = await tx`
+          INSERT INTO users (
+            clerk_user_id,
+            email,
+            name,
+            role,
+            tenant_id,
+            status,
+            is_msp_user,
+            created_at,
+            updated_at
+          ) VALUES (
+            ${clerkUserId},
+            ${primaryEmail},
+            ${userName},
+            ${invitation.role},
+            ${invitation.tenant_id}::uuid,
+            'active',
+            ${invitation.role === 'msp_admin'},
+            NOW(),
+            NOW()
+          )
+          RETURNING id
+        `;
 
-      // Mark invitation as accepted
-      await sql`
-        UPDATE user_invitations
-        SET
-          accepted_at = NOW(),
-          accepted_by = ${insertResult[0].id}::uuid
-        WHERE id = ${invitation.id}::uuid
-      `;
+        const newUserId = insertResult[0].id as string;
 
-      // Log audit event
-      await logAuditEvent({
-        tenantId: invitation.clerk_org_id,
-        actorId: clerkUserId,
-        actorEmail: primaryEmail,
-        action: 'user.created_via_webhook',
-        resourceType: 'user',
-        resourceId: insertResult[0].id,
-        afterState: {
-          email: primaryEmail,
-          role: invitation.role,
-          source: 'clerk_webhook',
-          invitationId: invitation.id,
-        },
+        // Mark invitation as accepted
+        await tx`
+          UPDATE user_invitations
+          SET
+            accepted_at = NOW(),
+            accepted_by = ${newUserId}::uuid
+          WHERE id = ${invitation.id}::uuid
+        `;
+
+        // Log audit event within the same transaction
+        await tx`
+          INSERT INTO audit_log (
+            tenant_id,
+            actor_id,
+            actor_email,
+            action,
+            resource_type,
+            resource_id,
+            after_state
+          ) VALUES (
+            ${invitation.clerk_org_id as string},
+            ${clerkUserId},
+            ${primaryEmail},
+            'user.created_via_webhook',
+            'user',
+            ${newUserId},
+            ${JSON.stringify({
+              email: primaryEmail,
+              role: invitation.role,
+              source: 'clerk_webhook',
+              invitationId: invitation.id,
+            })}::jsonb
+          )
+        `;
       });
 
       console.log(`User ${primaryEmail} created with invitation role: ${invitation.role}`);
