@@ -125,16 +125,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (integrations.length === 0) {
-      // SECURITY: No fallback - only process emails for verified integrations
-      log.warn('SECURITY: No verified integration found, ignoring to prevent cross-tenant data leakage', {
+      // SECURITY: No fallback - reject immediately to prevent cross-tenant data leakage.
+      // Never fall through to process emails without a verified integration match.
+      log.warn('SECURITY: No verified integration found, rejecting webhook', {
         emailAddress,
         alertType: 'cross_tenant_prevention',
       });
-    }
-
-    if (integrations.length === 0) {
-      log.info('No active integration found', { emailAddress });
-      return NextResponse.json({ status: 'ignored' });
+      return NextResponse.json({ error: 'No matching integration' }, { status: 404 });
     }
 
     const integration = integrations[0];

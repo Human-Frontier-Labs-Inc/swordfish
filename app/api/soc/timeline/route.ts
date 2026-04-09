@@ -5,17 +5,20 @@
  */
 
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
+import { getTenantId, Unauthorized } from '@/lib/auth/tenant';
 
 export async function GET() {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    let tenantId: string;
+    try {
+      tenantId = await getTenantId();
+    } catch (e) {
+      if (e instanceof Unauthorized) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      throw e;
     }
-
-    const tenantId = orgId || userId;
 
     // Fetch recent events from threats and audit logs
     const threats = await sql`

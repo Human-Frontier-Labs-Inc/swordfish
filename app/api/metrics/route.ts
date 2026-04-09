@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { collectMetrics, formatPrometheusMetrics } from '@/lib/monitoring/metrics';
+import { getTenantId } from '@/lib/auth/tenant';
 
 /**
  * GET /api/metrics
@@ -15,20 +16,29 @@ import { collectMetrics, formatPrometheusMetrics } from '@/lib/monitoring/metric
  */
 export async function GET(request: NextRequest) {
   try {
-    const { userId, orgId } = await auth();
+    const { userId } = await auth();
 
     // Allow unauthenticated access for monitoring systems with token
     const authToken = request.headers.get('Authorization');
     const metricsToken = process.env.METRICS_AUTH_TOKEN;
+    const isTokenAuth = metricsToken && authToken === `Bearer ${metricsToken}`;
 
-    const isAuthenticated = userId || (metricsToken && authToken === `Bearer ${metricsToken}`);
-
-    if (!isAuthenticated) {
+    if (!userId && !isTokenAuth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get tenant-specific metrics if authenticated user, otherwise system-wide
-    const tenantId = orgId || userId || undefined;
+    // Get tenant-specific metrics if authenticated user, otherwise system-wide for token auth
+    let tenantId: string | undefined;
+    if (userId) {
+      try {
+        tenantId = await getTenantId();
+      } catch {
+        // If getTenantId fails but we have token auth, fall through to system-wide
+        if (!isTokenAuth) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+      }
+    }
 
     // Collect metrics
     const metrics = await collectMetrics(tenantId);

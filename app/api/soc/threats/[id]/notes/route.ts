@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
 import { nanoid } from 'nanoid';
+import { getTenantId, Unauthorized } from '@/lib/auth/tenant';
 
 interface NoteBody {
   content: string;
@@ -18,13 +19,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    let tenantId: string;
+    try {
+      tenantId = await getTenantId();
+    } catch (e) {
+      if (e instanceof Unauthorized) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      throw e;
     }
 
     const { id: threatId } = await params;
-    const tenantId = orgId || userId;
     const body: NoteBody = await request.json();
 
     if (!body.content?.trim()) {
@@ -42,7 +47,8 @@ export async function POST(
       return NextResponse.json({ error: 'Threat not found' }, { status: 404 });
     }
 
-    // Get user name
+    // Get user info for audit trail
+    const { userId } = await auth();
     const user = await currentUser();
     const authorName = user?.fullName || user?.emailAddresses?.[0]?.emailAddress || 'Unknown';
 
@@ -76,13 +82,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    let tenantId: string;
+    try {
+      tenantId = await getTenantId();
+    } catch (e) {
+      if (e instanceof Unauthorized) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      throw e;
     }
 
     const { id: threatId } = await params;
-    const tenantId = orgId || userId;
 
     const notes = await sql`
       SELECT id, author, content, created_at

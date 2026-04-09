@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
+import { getTenantId, Unauthorized } from '@/lib/auth/tenant';
 
 interface ActionBody {
   action: 'release' | 'delete' | 'block_sender';
@@ -17,13 +18,18 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { userId } = await auth();
+    let tenantId: string;
+    try {
+      tenantId = await getTenantId();
+    } catch (e) {
+      if (e instanceof Unauthorized) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      throw e;
     }
 
     const { id: threatId } = await params;
-    const tenantId = orgId || userId;
     const body: ActionBody = await request.json();
 
     // Verify threat exists and belongs to tenant

@@ -11,6 +11,7 @@ import { sql } from '@/lib/db';
 import { nanoid } from 'nanoid';
 import { runDeterministicAnalysis } from '@/lib/detection/deterministic';
 import { sendNotification } from '@/lib/notifications/service';
+import { sanitizeHtml } from '@/lib/security/validation';
 import type { ParsedEmail, Signal } from '@/lib/detection/types';
 
 // ============================================
@@ -175,6 +176,11 @@ export class PhishReportService {
     const safeComments = truncate(reportData.reporterComments, 2000);
     const safeMessageId = truncate(reportData.originalMessageId, 250);
 
+    // SECURITY: Sanitize HTML body before storage to prevent stored XSS
+    const sanitizedBodyHtml = reportData.emailBodyHtml
+      ? sanitizeHtml(reportData.emailBodyHtml, { decodeEntities: true })
+      : null;
+
     // Insert the report
     await sql`
       INSERT INTO phish_reports (
@@ -216,7 +222,7 @@ export class PhishReportService {
         '[]'::jsonb,
         ${reportData.emailHeaders ? JSON.stringify(reportData.emailHeaders) : null},
         ${reportData.emailBodyText || null},
-        ${reportData.emailBodyHtml || null},
+        ${sanitizedBodyHtml},
         ${reportData.clientInfo ? JSON.stringify(reportData.clientInfo) : null},
         false,
         NOW(),

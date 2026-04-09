@@ -5,19 +5,22 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { generateSOC2Report } from '@/lib/reports/compliance/soc2';
 import { generateHIPAAReport } from '@/lib/reports/compliance/hipaa';
 import { generateSOC2PDF, generateHIPAAPDF } from '@/lib/reports/pdf-generator';
+import { getTenantId, Unauthorized } from '@/lib/auth/tenant';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    let tenantId: string;
+    try {
+      tenantId = await getTenantId();
+    } catch (e) {
+      if (e instanceof Unauthorized) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      throw e;
     }
-
-    const tenantId = orgId || userId;
     const body = await request.json();
 
     const {
@@ -106,9 +109,13 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    try {
+      await getTenantId();
+    } catch (e) {
+      if (e instanceof Unauthorized) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      throw e;
     }
 
     // Return available report types and options
