@@ -3,8 +3,20 @@
 import { useOrganization, useSession, useUser } from "@clerk/nextjs";
 import clsx from "clsx";
 import { useState } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import dynamic from "next/dynamic";
 import theme from "./theme";
+
+const SyntaxHighlighter = dynamic(
+  () => import("react-syntax-highlighter").then((m) => ({ default: m.Prism })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="p-4 font-mono text-sm text-gray-500 animate-pulse">
+        Loading...
+      </div>
+    ),
+  }
+);
 
 const TYPES = ["user", "session", "organization"];
 

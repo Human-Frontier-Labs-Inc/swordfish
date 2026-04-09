@@ -7,8 +7,33 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ThreatTimeline, TimelineEvent } from '@/components/soc/ThreatTimeline';
-import { InvestigationPanel, ThreatDetails } from '@/components/soc/InvestigationPanel';
+import dynamic from 'next/dynamic';
+import type { TimelineEvent } from '@/components/soc/ThreatTimeline';
+import type { ThreatDetails } from '@/components/soc/InvestigationPanel';
+
+const ThreatTimeline = dynamic(
+  () => import('@/components/soc/ThreatTimeline').then(m => ({ default: m.ThreatTimeline })),
+  {
+    loading: () => (
+      <div className="bg-white rounded-lg border p-8 text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+        <p className="mt-4 text-sm text-gray-500">Loading timeline...</p>
+      </div>
+    ),
+  }
+);
+
+const InvestigationPanel = dynamic(
+  () => import('@/components/soc/InvestigationPanel').then(m => ({ default: m.InvestigationPanel })),
+  {
+    loading: () => (
+      <div className="bg-white rounded-lg border p-8 text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+        <p className="mt-4 text-sm text-gray-500">Loading investigation panel...</p>
+      </div>
+    ),
+  }
+);
 
 export default function SOCDashboardPage() {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
