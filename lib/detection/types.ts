@@ -301,6 +301,7 @@ export interface DetectionConfig {
   skipLLM?: boolean; // Skip LLM layer entirely (for background sync)
 
   // LLM settings
+  llmProvider?: 'anthropic' | 'gemini';
   llmModel: string;
   llmMaxTokens: number;
   llmDailyLimitPerTenant: number;

@@ -3,8 +3,8 @@
  * Uses Claude Haiku for nuanced phishing detection on edge cases
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import type { ParsedEmail, Signal, LayerResult, EmailClassificationResult } from './types';
+import { createLLMProvider, type LLMProvider, type LLMAnalysisResult } from './llm-provider';
 
 /**
  * Phase 4: Enhanced context for LLM analysis
@@ -39,7 +39,15 @@ export interface LLMAnalysisContext {
   };
 }
 
-const anthropic = new Anthropic();
+/** LLM provider instance, created lazily via factory */
+let llmProvider: LLMProvider | null = null;
+
+function getProvider(): LLMProvider {
+  if (!llmProvider) {
+    llmProvider = createLLMProvider();
+  }
+  return llmProvider;
+}
 
 /**
  * Phase 4: Enhanced system prompt with context-awareness and threat calibration
@@ -224,18 +232,7 @@ Brief note only if any minor concerns worth noting.
 
 Be thorough but context-aware. Not all urgency is malicious. Not all tracking URLs are threats. Use the provided context to distinguish legitimate business communication from attacks.`;
 
-interface LLMAnalysisResult {
-  verdict: 'safe' | 'suspicious' | 'likely_phishing' | 'phishing' | 'likely_bec' | 'bec';
-  confidence: number;
-  threatType?: 'none' | 'phishing' | 'bec' | 'malware' | 'spam';
-  signals: Array<{
-    type: string;
-    severity: 'info' | 'warning' | 'critical';
-    detail: string;
-  }>;
-  explanation: string;
-  recommendation: string;
-}
+// LLMAnalysisResult is now imported from ./llm-provider
 
 /**
  * Run LLM analysis on an email
@@ -252,26 +249,11 @@ export async function runLLMAnalysis(
     // Format email for analysis with Phase 1-3 context
     const emailContent = formatEmailForAnalysis(email, priorSignals, context);
 
-    const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: emailContent,
-        },
-      ],
-    });
-
-    // Extract text content
-    const textContent = response.content.find((c) => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from LLM');
-    }
+    const provider = getProvider();
+    const rawResponse = await provider.analyze(SYSTEM_PROMPT, emailContent, 1024);
 
     // Parse JSON response
-    const analysis = parseAnalysisResponse(textContent.text);
+    const analysis = parseAnalysisResponse(rawResponse);
     const signals = convertToSignals(analysis);
 
     // Calculate score based on verdict
