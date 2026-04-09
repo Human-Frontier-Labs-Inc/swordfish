@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { rateLimit } from '@/lib/api/rate-limit';
 import { sql } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
@@ -13,6 +14,12 @@ export async function GET(request: NextRequest) {
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Rate limit: 30 req/min
+    const limit = rateLimit(userId, 30, 60000);
+    if (!limit.success) {
+      return new Response('Too Many Requests', { status: 429 });
     }
 
     // Check MSP admin access

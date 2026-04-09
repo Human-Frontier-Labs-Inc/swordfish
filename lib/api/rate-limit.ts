@@ -169,3 +169,27 @@ export function cleanupExpiredEntries(): number {
 
 // Note: In serverless environments, cleanup happens on each request
 // For persistent servers, call cleanupExpiredEntries() periodically
+
+/**
+ * Simple rate limit check for route handlers.
+ * Cleans expired entries on each call.
+ *
+ * Usage:
+ *   const limit = rateLimit(userId || ip || 'anon', 60, 60000)
+ *   if (!limit.success) return new Response('Too Many Requests', { status: 429 })
+ */
+export function rateLimit(
+  identifier: string,
+  maxRequests = 60,
+  windowMs = 60000,
+): { success: boolean; remaining: number } {
+  // Lazy cleanup of expired entries
+  cleanupExpiredEntries();
+
+  const { allowed, remaining } = checkRateLimit(identifier, {
+    maxRequests,
+    windowMs,
+  });
+
+  return { success: allowed, remaining };
+}

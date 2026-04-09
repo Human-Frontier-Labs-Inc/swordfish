@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { rateLimit } from '@/lib/api/rate-limit';
 import { getTopThreats } from '@/lib/detection/storage';
 
 export async function GET(request: NextRequest) {
@@ -16,6 +17,12 @@ export async function GET(request: NextRequest) {
         { error: 'Unauthorized' },
         { status: 401 }
       );
+    }
+
+    // Rate limit: 60 req/min
+    const limit = rateLimit(userId, 60, 60000);
+    if (!limit.success) {
+      return new Response('Too Many Requests', { status: 429 });
     }
 
     const tenantId = orgId || `personal_${userId}`;
