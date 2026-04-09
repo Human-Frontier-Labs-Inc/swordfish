@@ -61,11 +61,43 @@ export async function GET(request: NextRequest) {
       RETURNING id
     `;
 
+    // Cleanup old email verdicts per tenant retention period
+    // Uses tenant plan's retention setting, defaulting to 90 days
+    const verdictsCleanedResult = await sql`
+      WITH tenant_retention AS (
+        SELECT
+          t.id AS tenant_id,
+          COALESCE(
+            CASE t.plan
+              WHEN 'enterprise' THEN 365
+              WHEN 'pro' THEN 90
+              ELSE 30
+            END,
+            90
+          ) AS retention_days
+        FROM tenants t
+      )
+      DELETE FROM email_verdicts ev
+      USING tenant_retention tr
+      WHERE ev.tenant_id = tr.tenant_id
+      AND ev.created_at < NOW() - (tr.retention_days || ' days')::INTERVAL
+      RETURNING ev.id
+    `;
+
+    // Cleanup old quarantine items (older than 90 days)
+    const quarantineCleaned = await sql`
+      DELETE FROM quarantine
+      WHERE created_at < NOW() - INTERVAL '90 days'
+      RETURNING id
+    `;
+
     return NextResponse.json({
       success: true,
       expiredExportsDeleted: deleted,
       staleExportsCleaned: cleaned.length,
       oldReportsCleaned: reportsCleaned.length,
+      oldVerdictsCleaned: verdictsCleanedResult.length,
+      oldQuarantineCleaned: quarantineCleaned.length,
     });
   } catch (error) {
     console.error('Cleanup exports cron error:', error);
