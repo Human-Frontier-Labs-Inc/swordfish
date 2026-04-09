@@ -322,7 +322,11 @@ export default function OnboardingPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto mb-8">
               {/* Single Company Option */}
               <div
+                role="button"
+                tabIndex={0}
+                aria-pressed={accountType === 'single'}
                 onClick={() => handleAccountTypeSelect('single')}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAccountTypeSelect('single'); } }}
                 className={`p-6 border-2 rounded-xl cursor-pointer transition-all ${
                   accountType === 'single'
                     ? 'border-blue-500 bg-blue-50 shadow-md'
@@ -358,7 +362,11 @@ export default function OnboardingPage() {
 
               {/* MSP Option */}
               <div
+                role="button"
+                tabIndex={0}
+                aria-pressed={accountType === 'msp'}
                 onClick={() => handleAccountTypeSelect('msp')}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAccountTypeSelect('msp'); } }}
                 className={`p-6 border-2 rounded-xl cursor-pointer transition-all ${
                   accountType === 'msp'
                     ? 'border-purple-500 bg-purple-50 shadow-md'
@@ -468,14 +476,19 @@ export default function OnboardingPage() {
             <div className="max-w-md mx-auto space-y-6">
               <div>
                 <div className="flex justify-between mb-2">
-                  <label className="font-medium">Suspicious Threshold</label>
+                  <label htmlFor="suspicious-threshold" className="font-medium">Suspicious Threshold</label>
                   <span className="text-gray-500">{settings.detection.suspiciousThreshold}%</span>
                 </div>
                 <input
+                  id="suspicious-threshold"
                   type="range"
                   min="10"
                   max="50"
                   value={settings.detection.suspiciousThreshold}
+                  aria-valuemin={10}
+                  aria-valuemax={50}
+                  aria-valuenow={settings.detection.suspiciousThreshold}
+                  aria-label="Suspicious threshold percentage"
                   onChange={(e) => setSettings(prev => ({
                     ...prev,
                     detection: { ...prev.detection, suspiciousThreshold: parseInt(e.target.value) },
@@ -488,14 +501,19 @@ export default function OnboardingPage() {
               </div>
               <div>
                 <div className="flex justify-between mb-2">
-                  <label className="font-medium">Quarantine Threshold</label>
+                  <label htmlFor="quarantine-threshold" className="font-medium">Quarantine Threshold</label>
                   <span className="text-gray-500">{settings.detection.quarantineThreshold}%</span>
                 </div>
                 <input
+                  id="quarantine-threshold"
                   type="range"
                   min="40"
                   max="80"
                   value={settings.detection.quarantineThreshold}
+                  aria-valuemin={40}
+                  aria-valuemax={80}
+                  aria-valuenow={settings.detection.quarantineThreshold}
+                  aria-label="Quarantine threshold percentage"
                   onChange={(e) => setSettings(prev => ({
                     ...prev,
                     detection: { ...prev.detection, quarantineThreshold: parseInt(e.target.value) },
@@ -508,14 +526,19 @@ export default function OnboardingPage() {
               </div>
               <div>
                 <div className="flex justify-between mb-2">
-                  <label className="font-medium">Block Threshold</label>
+                  <label htmlFor="block-threshold" className="font-medium">Block Threshold</label>
                   <span className="text-gray-500">{settings.detection.blockThreshold}%</span>
                 </div>
                 <input
+                  id="block-threshold"
                   type="range"
                   min="60"
                   max="95"
                   value={settings.detection.blockThreshold}
+                  aria-valuemin={60}
+                  aria-valuemax={95}
+                  aria-valuenow={settings.detection.blockThreshold}
+                  aria-label="Block threshold percentage"
                   onChange={(e) => setSettings(prev => ({
                     ...prev,
                     detection: { ...prev.detection, blockThreshold: parseInt(e.target.value) },
@@ -550,6 +573,7 @@ export default function OnboardingPage() {
                   <input
                     type="checkbox"
                     checked={settings.notifications.emailEnabled}
+                    aria-label="Toggle email notifications"
                     onChange={(e) => setSettings(prev => ({
                       ...prev,
                       notifications: { ...prev.notifications, emailEnabled: e.target.checked },
@@ -573,6 +597,7 @@ export default function OnboardingPage() {
                   <input
                     type="checkbox"
                     checked={settings.notifications.slackEnabled}
+                    aria-label="Toggle Slack notifications"
                     onChange={(e) => setSettings(prev => ({
                       ...prev,
                       notifications: { ...prev.notifications, slackEnabled: e.target.checked },

@@ -31,6 +31,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="flex h-screen bg-gray-100">
+      {/* Skip to main content link */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-white focus:text-blue-600"
+      >
+        Skip to main content
+      </a>
+
       {/* Desktop Sidebar */}
       <div className="hidden lg:flex lg:flex-shrink-0">
         <Sidebar />
@@ -58,6 +66,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             type="button"
             className="lg:hidden -ml-0.5 -mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-500 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
             onClick={() => setIsMobileSidebarOpen(true)}
+            aria-label="Open sidebar"
           >
             <span className="sr-only">Open sidebar</span>
             <MenuIcon className="h-6 w-6" />
@@ -99,6 +108,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <button
               className="relative rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               title="Notifications coming soon"
+              aria-label="Notifications (coming soon)"
               onClick={() => alert('Notifications feature coming soon!')}
             >
               <BellIcon className="h-5 w-5" />
@@ -117,7 +127,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto p-6" data-testid="dashboard-loaded">
+        <main id="main-content" role="main" className="flex-1 overflow-auto p-6" data-testid="dashboard-loaded">
           {currentTenant ? (
             children
           ) : (

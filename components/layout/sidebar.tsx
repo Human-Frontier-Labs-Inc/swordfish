@@ -70,7 +70,7 @@ export function Sidebar() {
       )}
 
       {/* Main Navigation */}
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="flex-1 space-y-1 px-3" role="navigation" aria-label="Main navigation">
         {navigation.map((item) => {
           const isActive = pathname === item.href ||
             (item.href !== '/dashboard' && pathname.startsWith(item.href));
