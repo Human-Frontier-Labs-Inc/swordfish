@@ -236,7 +236,7 @@ function renderSOC2ReportHTML(data: SOC2ReportData): string {
     <!-- Footer -->
     <div class="footer">
       <p>Report ID: ${data.reportId}</p>
-      <p>This report was generated automatically by Swordfish Email Security Platform.</p>
+      <p>This report was generated automatically by SwordPhish Email Security Platform.</p>
       <p>Confidential - For authorized recipients only.</p>
     </div>
   </div>
@@ -374,7 +374,7 @@ function renderHIPAAReportHTML(data: HIPAAReportData): string {
     <!-- Footer -->
     <div class="footer">
       <p>Report ID: ${data.reportId}</p>
-      <p>This report was generated automatically by Swordfish Email Security Platform.</p>
+      <p>This report was generated automatically by SwordPhish Email Security Platform.</p>
       <p>Confidential - For authorized recipients only.</p>
     </div>
   </div>

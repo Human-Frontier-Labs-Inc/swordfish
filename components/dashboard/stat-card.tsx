@@ -1,6 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
+import { useEffect, useRef, useState } from 'react';
 
 interface StatCardProps {
   title: string;
@@ -16,31 +17,65 @@ interface StatCardProps {
 
 const colorClasses = {
   blue: {
-    bg: 'bg-blue-50',
-    icon: 'bg-blue-100 text-blue-600',
-    text: 'text-blue-600',
+    border: 'border-l-blue-500',
+    iconBg: 'bg-gradient-to-br from-blue-500/20 to-blue-600/10',
+    iconText: 'text-blue-500',
+    gradient: 'from-blue-500/5 via-transparent to-transparent',
   },
   green: {
-    bg: 'bg-green-50',
-    icon: 'bg-green-100 text-green-600',
-    text: 'text-green-600',
+    border: 'border-l-emerald-500',
+    iconBg: 'bg-gradient-to-br from-emerald-500/20 to-emerald-600/10',
+    iconText: 'text-emerald-500',
+    gradient: 'from-emerald-500/5 via-transparent to-transparent',
   },
   yellow: {
-    bg: 'bg-yellow-50',
-    icon: 'bg-yellow-100 text-yellow-600',
-    text: 'text-yellow-600',
+    border: 'border-l-amber-500',
+    iconBg: 'bg-gradient-to-br from-amber-500/20 to-amber-600/10',
+    iconText: 'text-amber-500',
+    gradient: 'from-amber-500/5 via-transparent to-transparent',
   },
   red: {
-    bg: 'bg-red-50',
-    icon: 'bg-red-100 text-red-600',
-    text: 'text-red-600',
+    border: 'border-l-red-500',
+    iconBg: 'bg-gradient-to-br from-red-500/20 to-red-600/10',
+    iconText: 'text-red-500',
+    gradient: 'from-red-500/5 via-transparent to-transparent',
   },
   gray: {
-    bg: 'bg-gray-50',
-    icon: 'bg-gray-100 text-gray-600',
-    text: 'text-gray-600',
+    border: 'border-l-slate-500',
+    iconBg: 'bg-gradient-to-br from-slate-500/20 to-slate-600/10',
+    iconText: 'text-slate-500',
+    gradient: 'from-slate-500/5 via-transparent to-transparent',
   },
 };
+
+function useCountUp(target: number, duration: number = 1200): number {
+  const [current, setCurrent] = useState(0);
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (target === 0) {
+      setCurrent(0);
+      return;
+    }
+    const startTime = performance.now();
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCurrent(Math.round(eased * target));
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(animate);
+      }
+    };
+    frameRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    };
+  }, [target, duration]);
+
+  return current;
+}
 
 export function StatCard({
   title,
@@ -51,32 +86,57 @@ export function StatCard({
   testId,
 }: StatCardProps) {
   const colors = colorClasses[color];
+  const numericValue = typeof value === 'number' ? value : null;
+  const animatedValue = useCountUp(numericValue ?? 0);
+  const displayValue = numericValue !== null ? animatedValue : value;
+
+  // Pulsing glow for red (threats) when value > 0
+  const shouldPulse = color === 'red' && numericValue !== null && numericValue > 0;
 
   return (
-    <div className="overflow-hidden rounded-lg bg-white shadow" data-testid={testId}>
-      <div className="p-5">
+    <div
+      className={clsx(
+        'relative overflow-hidden rounded-lg border-l-4 bg-white shadow-sm transition-all duration-200 hover:shadow-md',
+        'dark:bg-slate-800 dark:shadow-slate-900/50',
+        colors.border,
+        shouldPulse && 'ring-1 ring-red-500/30 animate-[threat-pulse_2s_ease-in-out_infinite]'
+      )}
+      data-testid={testId}
+    >
+      {/* Subtle gradient overlay */}
+      <div className={clsx('absolute inset-0 bg-gradient-to-br', colors.gradient)} />
+
+      <div className="relative p-5">
         <div className="flex items-center">
-          <div className={clsx('flex-shrink-0 rounded-md p-3', colors.icon)}>
-            <Icon className="h-6 w-6" />
+          <div className={clsx(
+            'flex-shrink-0 rounded-lg p-3 backdrop-blur-sm',
+            colors.iconBg,
+            'animate-[shimmer_3s_ease-in-out_infinite]'
+          )}>
+            <Icon className={clsx('h-6 w-6', colors.iconText)} />
           </div>
           <div className="ml-5 w-0 flex-1">
             <dl>
-              <dt className="truncate text-sm font-medium text-gray-500">{title}</dt>
+              <dt className="truncate text-sm font-medium text-slate-500 dark:text-slate-400">{title}</dt>
               <dd className="flex items-baseline">
-                <div className="text-2xl font-semibold text-gray-900">{value}</div>
+                <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+                  {displayValue}
+                </div>
                 {change && (
                   <div
                     className={clsx(
-                      'ml-2 flex items-baseline text-sm font-semibold',
-                      change.type === 'increase' ? 'text-green-600' : 'text-red-600'
+                      'ml-2 flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold',
+                      change.type === 'increase'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                     )}
                   >
                     {change.type === 'increase' ? (
-                      <ArrowUpIcon className="h-4 w-4 flex-shrink-0 self-center" />
+                      <ArrowUpIcon className="h-3 w-3" />
                     ) : (
-                      <ArrowDownIcon className="h-4 w-4 flex-shrink-0 self-center" />
+                      <ArrowDownIcon className="h-3 w-3" />
                     )}
-                    <span className="ml-1">{Math.abs(change.value)}%</span>
+                    <span>{Math.abs(change.value)}%</span>
                   </div>
                 )}
               </dd>

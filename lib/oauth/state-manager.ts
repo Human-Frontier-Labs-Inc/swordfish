@@ -15,7 +15,7 @@ export interface OAuthStateParams {
   userId: string;
   provider: IntegrationType;
   redirectUri: string;
-  expectedEmail: string; // The email we expect to be connected (user's Swordfish email)
+  expectedEmail: string; // The email we expect to be connected (user's SwordPhish email)
 }
 
 export interface OAuthState {
@@ -186,7 +186,7 @@ export async function validateOAuthState(stateToken: string): Promise<StateValid
 /**
  * Verify that the email from OAuth matches the expected email
  *
- * @param expectedEmail Email we expected (user's Swordfish email)
+ * @param expectedEmail Email we expected (user's SwordPhish email)
  * @param actualEmail Email returned by OAuth provider
  * @returns Whether the emails match (case-insensitive)
  */

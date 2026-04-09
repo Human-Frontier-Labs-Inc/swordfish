@@ -3,7 +3,7 @@
  *
  * Handles the OAuth code exchange with SECURITY VALIDATIONS:
  * 1. Validates state token (CSRF protection)
- * 2. Verifies the connected email matches the user's Swordfish email
+ * 2. Verifies the connected email matches the user's SwordPhish email
  * 3. Ensures the email isn't already connected by another tenant
  * 4. Stores tokens encrypted with direct OAuth (no Nango)
  */
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(
         new URL(
           `/dashboard/integrations?error=${encodeURIComponent(
-            `Email mismatch: You signed in with ${connectedEmail} but your Swordfish account uses ${expectedEmail}. Please try again and sign in with ${expectedEmail}.`
+            `Email mismatch: You signed in with ${connectedEmail} but your SwordPhish account uses ${expectedEmail}. Please try again and sign in with ${expectedEmail}.`
           )}`,
           request.url
         )

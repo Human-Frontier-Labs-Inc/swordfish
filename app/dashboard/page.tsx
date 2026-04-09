@@ -73,25 +73,36 @@ export default function DashboardPage() {
     : isDemo ? demoThreats : [];
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
+      {/* Subtle dot pattern background */}
+      <div className="fixed inset-0 pointer-events-none opacity-[0.02] dark:opacity-[0.04]"
+        style={{
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(100,116,139,0.8) 1px, transparent 0)',
+          backgroundSize: '32px 32px',
+        }}
+      />
+
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
+      <div className="relative">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Overview of your email security status for {currentTenant?.name || 'your organization'}
         </p>
       </div>
 
       {/* Demo Banner */}
       {isDemo && !isLoading && (
-        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <InfoIcon className="h-5 w-5 text-blue-400" />
+        <div className="relative overflow-hidden rounded-lg border border-blue-500/20 bg-gradient-to-r from-blue-600/10 via-blue-500/5 to-cyan-500/10 p-4 dark:from-blue-900/30 dark:via-blue-800/20 dark:to-cyan-900/30">
+          {/* Animated background accent */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl" />
+          <div className="relative flex items-start gap-3">
+            <div className="flex-shrink-0 rounded-lg bg-blue-500/20 p-2">
+              <InfoIcon className="h-5 w-5 text-blue-500 dark:text-blue-400" />
             </div>
-            <div className="ml-3">
-              <p className="text-sm text-blue-700">
-                <strong>Demo Mode:</strong> No emails have been scanned yet. Connect an email integration to start protecting your inbox, or use the API to analyze emails.
+            <div>
+              <p className="font-medium text-blue-900 dark:text-blue-200">Demo Mode</p>
+              <p className="mt-0.5 text-sm text-blue-700 dark:text-blue-300/80">
+                No emails have been scanned yet. Connect an email integration to start protecting your inbox, or use the API to analyze emails.
               </p>
             </div>
           </div>
@@ -142,32 +153,36 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick Actions */}
-      <div className="rounded-lg bg-white p-6 shadow">
-        <h3 className="text-lg font-medium text-gray-900">Quick Actions</h3>
+      <div className="rounded-lg bg-white p-6 shadow-sm dark:bg-slate-800 dark:shadow-slate-900/50">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Quick Actions</h3>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <QuickAction
             title="Review Quarantine"
             description={`${displayStats.quarantined} emails pending`}
             href="/dashboard/quarantine"
             icon={InboxIcon}
+            accentColor="amber"
           />
           <QuickAction
             title="Add Policy"
             description="Create allow/block rules"
             href="/dashboard/policies/new"
             icon={PlusIcon}
+            accentColor="blue"
           />
           <QuickAction
             title="View Reports"
             description="Download security reports"
             href="/dashboard/reports"
             icon={DocumentIcon}
+            accentColor="emerald"
           />
           <QuickAction
             title="Connect Integration"
             description="Add email provider"
             href="/dashboard/integrations"
             icon={PlugIcon}
+            accentColor="cyan"
           />
         </div>
       </div>
@@ -181,23 +196,46 @@ function QuickAction({
   description,
   href,
   icon: Icon,
+  accentColor,
 }: {
   title: string;
   description: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  accentColor: 'amber' | 'blue' | 'emerald' | 'cyan';
 }) {
+  const colorMap = {
+    amber: 'group-hover:border-amber-500/50 group-hover:shadow-amber-500/10',
+    blue: 'group-hover:border-blue-500/50 group-hover:shadow-blue-500/10',
+    emerald: 'group-hover:border-emerald-500/50 group-hover:shadow-emerald-500/10',
+    cyan: 'group-hover:border-cyan-500/50 group-hover:shadow-cyan-500/10',
+  };
+
+  const iconBgMap = {
+    amber: 'bg-amber-500/10 group-hover:bg-amber-500/20',
+    blue: 'bg-blue-500/10 group-hover:bg-blue-500/20',
+    emerald: 'bg-emerald-500/10 group-hover:bg-emerald-500/20',
+    cyan: 'bg-cyan-500/10 group-hover:bg-cyan-500/20',
+  };
+
+  const iconColorMap = {
+    amber: 'text-amber-600 dark:text-amber-400',
+    blue: 'text-blue-600 dark:text-blue-400',
+    emerald: 'text-emerald-600 dark:text-emerald-400',
+    cyan: 'text-cyan-600 dark:text-cyan-400',
+  };
+
   return (
     <a
       href={href}
-      className="group relative flex items-center gap-4 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-blue-50 transition-colors"
+      className={`group relative flex items-center gap-4 rounded-lg border border-slate-200 p-4 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg dark:border-slate-700 dark:hover:border-slate-600 ${colorMap[accentColor]}`}
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 group-hover:bg-blue-100">
-        <Icon className="h-5 w-5 text-gray-600 group-hover:text-blue-600" />
+      <div className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-200 ${iconBgMap[accentColor]}`}>
+        <Icon className={`h-5 w-5 transition-colors duration-200 ${iconColorMap[accentColor]}`} />
       </div>
       <div>
-        <p className="font-medium text-gray-900 group-hover:text-blue-900">{title}</p>
-        <p className="text-sm text-gray-500 group-hover:text-blue-600">{description}</p>
+        <p className="font-medium text-slate-900 dark:text-white">{title}</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>
       </div>
     </a>
   );

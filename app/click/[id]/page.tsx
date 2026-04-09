@@ -37,7 +37,7 @@ import {
 } from '@/lib/protection/click-scanner';
 
 export const metadata: Metadata = {
-  title: 'Link Safety Check | Swordfish',
+  title: 'Link Safety Check | SwordPhish',
   description: 'Verifying link safety before proceeding',
 };
 
@@ -489,7 +489,7 @@ export default async function ClickPage({ params }: ClickPageProps) {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Shield className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-bold">Swordfish Link Protection</h1>
+            <h1 className="text-2xl font-bold">SwordPhish Link Protection</h1>
           </div>
           <p className="text-muted-foreground">
             Analyzing link safety before you proceed

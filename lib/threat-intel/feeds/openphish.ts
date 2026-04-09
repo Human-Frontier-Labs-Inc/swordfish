@@ -23,7 +23,7 @@ export async function fetchOpenPhishFeed(): Promise<string[]> {
   try {
     const response = await fetch(OPENPHISH_FEED_URL, {
       headers: {
-        'User-Agent': 'Swordfish-Email-Security/1.0',
+        'User-Agent': 'SwordPhish-Email-Security/1.0',
       },
     });
 

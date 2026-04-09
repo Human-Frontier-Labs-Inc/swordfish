@@ -51,7 +51,7 @@ export async function fetchURLhausFeed(): Promise<URLhausEntry[]> {
     const response = await fetch(URLHAUS_JSON_URL, {
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'Swordfish-Email-Security/1.0',
+        'User-Agent': 'SwordPhish-Email-Security/1.0',
       },
     });
 

@@ -307,14 +307,14 @@ async function sendReportEmail(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: process.env.EMAIL_FROM || 'Swordfish <reports@swordfish.security>',
+        from: process.env.EMAIL_FROM || 'SwordPhish <reports@swordphish.security>',
         to: [to],
-        subject: `[Swordfish] ${frequencyLabel} Report: ${reportName}`,
+        subject: `[SwordPhish] ${frequencyLabel} Report: ${reportName}`,
         text: `Your ${frequency} security report is attached.\n\n${content}`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background: #1e40af; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-              <h1 style="margin: 0; font-size: 20px;">Swordfish ${frequencyLabel} Report</h1>
+              <h1 style="margin: 0; font-size: 20px;">SwordPhish ${frequencyLabel} Report</h1>
               <p style="margin: 8px 0 0 0; opacity: 0.9;">${reportName}</p>
             </div>
             <div style="padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none;">
@@ -322,7 +322,7 @@ async function sendReportEmail(
               <pre style="background: #fff; padding: 16px; border-radius: 4px; overflow-x: auto; font-size: 12px; border: 1px solid #e5e7eb;">${content.slice(0, 2000)}${content.length > 2000 ? '\n...(truncated)' : ''}</pre>
             </div>
             <p style="color: #6b7280; font-size: 12px; margin-top: 16px; text-align: center;">
-              Swordfish Email Security | <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/reports">View Full Report</a>
+              SwordPhish Email Security | <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/reports">View Full Report</a>
             </p>
           </div>
         `,

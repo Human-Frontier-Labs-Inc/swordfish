@@ -178,7 +178,7 @@ export default function ScannedEmailsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Scanned Emails</h1>
           <p className="mt-1 text-sm text-gray-500">
-            All emails analyzed by Swordfish ({total} total)
+            All emails analyzed by SwordPhish ({total} total)
             {lastUpdated && (
               <span className="ml-2 text-xs text-gray-400">
                 Last updated: {lastUpdated.toLocaleTimeString()}

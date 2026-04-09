@@ -43,7 +43,7 @@ const DEFAULT_STEPS: OnboardingStep[] = [
   {
     id: 'welcome',
     title: 'Welcome',
-    description: 'Welcome to Swordfish email security',
+    description: 'Welcome to SwordPhish email security',
     order: 1,
     optional: false,
   },
@@ -325,7 +325,7 @@ const MICROSOFT_365_GUIDE: IntegrationGuide = {
     {
       order: 1,
       title: 'Azure AD App Registration',
-      description: 'Navigate to Azure Portal > Azure Active Directory > App registrations and click "New registration". Enter a name for your application (e.g., "Swordfish Email Security") and select the appropriate account type.',
+      description: 'Navigate to Azure Portal > Azure Active Directory > App registrations and click "New registration". Enter a name for your application (e.g., "SwordPhish Email Security") and select the appropriate account type.',
     },
     {
       order: 2,
@@ -340,12 +340,12 @@ const MICROSOFT_365_GUIDE: IntegrationGuide = {
     {
       order: 4,
       title: 'Configure Redirect URI',
-      description: 'In "Authentication", add a redirect URI: https://app.swordfish.com/api/auth/callback/microsoft. Ensure "Access tokens" and "ID tokens" are checked.',
+      description: 'In "Authentication", add a redirect URI: https://app.swordphish.com/api/auth/callback/microsoft. Ensure "Access tokens" and "ID tokens" are checked.',
     },
     {
       order: 5,
-      title: 'Enter Credentials in Swordfish',
-      description: 'Copy your Application (client) ID, Directory (tenant) ID, and client secret into Swordfish. Click "Connect" to complete the integration.',
+      title: 'Enter Credentials in SwordPhish',
+      description: 'Copy your Application (client) ID, Directory (tenant) ID, and client secret into SwordPhish. Click "Connect" to complete the integration.',
     },
   ],
   requiredPermissions: [
@@ -355,7 +355,7 @@ const MICROSOFT_365_GUIDE: IntegrationGuide = {
     'offline_access',
   ],
   estimatedTime: '10-15 minutes',
-  helpUrl: 'https://docs.swordfish.com/integrations/microsoft365',
+  helpUrl: 'https://docs.swordphish.com/integrations/microsoft365',
 };
 
 const GOOGLE_WORKSPACE_GUIDE: IntegrationGuide = {
@@ -384,8 +384,8 @@ const GOOGLE_WORKSPACE_GUIDE: IntegrationGuide = {
     },
     {
       order: 5,
-      title: 'Connect to Swordfish',
-      description: 'Copy your Client ID and Client Secret into Swordfish. Click "Authorize with Google" to complete the OAuth flow.',
+      title: 'Connect to SwordPhish',
+      description: 'Copy your Client ID and Client Secret into SwordPhish. Click "Authorize with Google" to complete the OAuth flow.',
     },
   ],
   requiredPermissions: [
@@ -395,7 +395,7 @@ const GOOGLE_WORKSPACE_GUIDE: IntegrationGuide = {
     'https://www.googleapis.com/auth/userinfo.profile',
   ],
   estimatedTime: '10-15 minutes',
-  helpUrl: 'https://docs.swordfish.com/integrations/google-workspace',
+  helpUrl: 'https://docs.swordphish.com/integrations/google-workspace',
 };
 
 const INTEGRATION_GUIDES: Record<string, IntegrationGuide> = {

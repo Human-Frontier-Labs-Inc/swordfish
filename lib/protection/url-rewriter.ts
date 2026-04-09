@@ -1,8 +1,8 @@
 /**
  * URL Rewriter Module
  *
- * Comprehensive URL rewriting system for Swordfish email security platform.
- * Rewrites URLs in emails to route through Swordfish proxy for click-time protection
+ * Comprehensive URL rewriting system for SwordPhish email security platform.
+ * Rewrites URLs in emails to route through SwordPhish proxy for click-time protection
  * while preserving the original URL display for user transparency.
  */
 
@@ -64,7 +64,7 @@ export interface UrlMapping {
   trackingId: string;
   /** Original URL from the email */
   originalUrl: string;
-  /** Rewritten Swordfish proxy URL */
+  /** Rewritten SwordPhish proxy URL */
   rewrittenUrl: string;
   /** Whether the URL was rewritten */
   wasRewritten: boolean;
@@ -84,7 +84,7 @@ export type RewriteReason =
   | 'non-http'           // mailto:, tel:, data: etc., not rewritten
   | 'safe-domain'        // Known safe domain (Google, Microsoft, etc.)
   | 'malformed'          // Invalid URL format
-  | 'already-rewritten'; // URL already points to Swordfish
+  | 'already-rewritten'; // URL already points to SwordPhish
 
 export interface RewrittenUrlRecord {
   /** Click tracking ID (primary key) */
@@ -391,7 +391,7 @@ export class UrlRewriter {
         return { shouldRewrite: false, reason: 'non-http' };
       }
 
-      // Don't rewrite URLs that already point to Swordfish
+      // Don't rewrite URLs that already point to SwordPhish
       if (url.startsWith(this.config.baseUrl)) {
         return { shouldRewrite: false, reason: 'already-rewritten' };
       }
@@ -439,7 +439,7 @@ export class UrlRewriter {
   }
 
   /**
-   * Restore the original URL from a rewritten Swordfish URL
+   * Restore the original URL from a rewritten SwordPhish URL
    */
   async restoreOriginalUrl(rewrittenUrl: string): Promise<string | null> {
     try {
@@ -687,7 +687,7 @@ export class UrlRewriter {
         redirect: 'manual',
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Swordfish-Security-Scanner/1.0',
+          'User-Agent': 'SwordPhish-Security-Scanner/1.0',
         },
       });
 
@@ -730,7 +730,7 @@ export class UrlRewriter {
         redirect: 'manual',
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Swordfish-Security-Scanner/1.0',
+          'User-Agent': 'SwordPhish-Security-Scanner/1.0',
         },
       });
 

@@ -94,7 +94,7 @@ export function threatToCEF(threat: Record<string, unknown>): CEFEvent {
 
   return {
     version: '0',
-    deviceVendor: 'Swordfish',
+    deviceVendor: 'SwordPhish',
     deviceProduct: 'Email Security',
     deviceVersion: '1.0',
     signatureId: threat.verdict as string || 'unknown',
@@ -126,7 +126,7 @@ export function policyToCEF(
 ): CEFEvent {
   return {
     version: '0',
-    deviceVendor: 'Swordfish',
+    deviceVendor: 'SwordPhish',
     deviceProduct: 'Email Security',
     deviceVersion: '1.0',
     signatureId: `policy.${action}`,
@@ -156,7 +156,7 @@ export function quarantineToCEF(
 ): CEFEvent {
   return {
     version: '0',
-    deviceVendor: 'Swordfish',
+    deviceVendor: 'SwordPhish',
     deviceProduct: 'Email Security',
     deviceVersion: '1.0',
     signatureId: `quarantine.${action}`,
@@ -354,14 +354,14 @@ export async function dispatchQuarantineToSplunk(
 export async function testSplunkConnection(config: SplunkConfig): Promise<{ success: boolean; error?: string }> {
   const testEvent: CEFEvent = {
     version: '0',
-    deviceVendor: 'Swordfish',
+    deviceVendor: 'SwordPhish',
     deviceProduct: 'Email Security',
     deviceVersion: '1.0',
     signatureId: 'test',
     name: 'Connection Test',
     severity: 0,
     extensions: {
-      msg: 'Swordfish connection test event',
+      msg: 'SwordPhish connection test event',
       rt: Date.now(),
     },
   };

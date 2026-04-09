@@ -1,6 +1,6 @@
 /**
  * Link Rewriting System
- * Rewrites suspicious URLs to proxy through Swordfish for click-time protection
+ * Rewrites suspicious URLs to proxy through SwordPhish for click-time protection
  */
 
 import { createHash } from 'crypto';

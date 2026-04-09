@@ -384,7 +384,7 @@ export async function deleteO365Subscription(params: {
 export async function getOrCreateQuarantineFolder(accessToken: string): Promise<string> {
   // First try to find existing folder
   const listResponse = await fetch(
-    `${GRAPH_API_URL}/me/mailFolders?$filter=displayName eq 'Swordfish Quarantine'`,
+    `${GRAPH_API_URL}/me/mailFolders?$filter=displayName eq 'SwordPhish Quarantine'`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
@@ -403,7 +403,7 @@ export async function getOrCreateQuarantineFolder(accessToken: string): Promise<
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      displayName: 'Swordfish Quarantine',
+      displayName: 'SwordPhish Quarantine',
       isHidden: false,
     }),
   });

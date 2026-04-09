@@ -301,7 +301,7 @@ async function sendEmailNotification(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: process.env.EMAIL_FROM || 'Swordfish <alerts@swordfish.security>',
+        from: process.env.EMAIL_FROM || 'SwordPhish <alerts@swordphish.security>',
         to: [to],
         subject: `[${severity.toUpperCase()}] ${title}`,
         text: message,
@@ -314,7 +314,7 @@ async function sendEmailNotification(
               <p style="margin: 0; color: #374151;">${message}</p>
             </div>
             <p style="color: #6b7280; font-size: 12px; margin-top: 16px;">
-              Swordfish Email Security
+              SwordPhish Email Security
             </p>
           </div>
         `,
@@ -363,7 +363,7 @@ async function sendSlackNotification(
               elements: [
                 {
                   type: 'mrkdwn',
-                  text: `Swordfish Email Security | ${new Date().toISOString()}`,
+                  text: `SwordPhish Email Security | ${new Date().toISOString()}`,
                 },
               ],
             },

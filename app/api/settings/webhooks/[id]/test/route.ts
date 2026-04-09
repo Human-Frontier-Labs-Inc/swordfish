@@ -41,7 +41,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       event: 'test',
       timestamp: new Date().toISOString(),
       data: {
-        message: 'This is a test webhook from Swordfish',
+        message: 'This is a test webhook from SwordPhish',
         tenant_id: tenantId,
       },
     };
@@ -64,9 +64,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Swordfish-Signature': signature,
-          'X-Swordfish-Event': 'test',
-          'X-Swordfish-Timestamp': testPayload.timestamp,
+          'X-SwordPhish-Signature': signature,
+          'X-SwordPhish-Event': 'test',
+          'X-SwordPhish-Timestamp': testPayload.timestamp,
         },
         body: payloadString,
       });

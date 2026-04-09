@@ -531,7 +531,7 @@ export async function getOrCreateQuarantineLabel(accessToken: string): Promise<s
 
   if (listResponse.ok) {
     const data = await listResponse.json();
-    const existing = data.labels?.find((l: { name: string }) => l.name === 'Swordfish/Quarantine');
+    const existing = data.labels?.find((l: { name: string }) => l.name === 'SwordPhish/Quarantine');
     if (existing) {
       return existing.id;
     }
@@ -540,7 +540,7 @@ export async function getOrCreateQuarantineLabel(accessToken: string): Promise<s
   // Create new label
   const label = await createGmailLabel({
     accessToken,
-    name: 'Swordfish/Quarantine',
+    name: 'SwordPhish/Quarantine',
     labelListVisibility: 'labelShow',
     messageListVisibility: 'show',
   });

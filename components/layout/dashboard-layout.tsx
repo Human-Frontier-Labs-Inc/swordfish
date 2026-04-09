@@ -13,6 +13,43 @@ interface DashboardLayoutProps {
   children: ReactNode;
 }
 
+function DarkModeToggle() {
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('swordphish-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const shouldBeDark = stored === 'dark' || (!stored && prefersDark);
+    setIsDark(shouldBeDark);
+    if (shouldBeDark) {
+      document.documentElement.classList.add('dark');
+    }
+  }, []);
+
+  const toggle = () => {
+    const next = !isDark;
+    setIsDark(next);
+    if (next) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('swordphish-theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('swordphish-theme', 'light');
+    }
+  };
+
+  return (
+    <button
+      onClick={toggle}
+      className="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-all duration-200"
+      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+    >
+      {isDark ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+    </button>
+  );
+}
+
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { currentTenant, availableTenants, setCurrentTenant, isMspUser, isLoadingRole } = useTenant();
   const pathname = usePathname();
@@ -40,7 +77,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [handleKeyDown]);
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-slate-100 dark:bg-slate-950">
       {/* Skip to main content link */}
       <a
         href="#main-content"
@@ -58,7 +95,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       {isMobileSidebarOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div
-            className="fixed inset-0 bg-gray-600 bg-opacity-75"
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
             onClick={() => setIsMobileSidebarOpen(false)}
           />
           <div className="relative flex w-full max-w-xs flex-1">
@@ -70,11 +107,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top Header */}
-        <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 lg:px-6">
+        <header className="relative flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-6 dark:bg-slate-900 dark:border-slate-800">
+          {/* Bottom gradient accent */}
+          <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent" />
+
           {/* Mobile menu button */}
           <button
             type="button"
-            className="lg:hidden -ml-0.5 -mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-500 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+            className="lg:hidden -ml-0.5 -mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:text-slate-900 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors duration-200"
             onClick={() => setIsMobileSidebarOpen(true)}
             aria-label="Open sidebar"
           >
@@ -86,12 +126,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="flex items-center gap-4">
             {/* MSP breadcrumb context indicator */}
             {!isLoadingRole && isMspUser && (
-              <nav className="hidden sm:flex items-center text-sm text-gray-500" aria-label="Breadcrumb">
-                <span className="font-medium text-gray-900">{breadcrumbSection}</span>
+              <nav className="hidden sm:flex items-center text-sm text-slate-500 dark:text-slate-400" aria-label="Breadcrumb">
+                <span className="font-medium text-slate-900 dark:text-white">{breadcrumbSection}</span>
                 {breadcrumbSection !== 'Dashboard' && (
                   <>
-                    <ChevronRightIcon className="mx-2 h-4 w-4 text-gray-400" />
-                    <a href="/dashboard" className="hover:text-gray-700 transition-colors">
+                    <ChevronRightIcon className="mx-2 h-4 w-4 text-slate-400" />
+                    <a href="/dashboard" className="hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
                       Dashboard
                     </a>
                   </>
@@ -121,7 +161,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* Mobile search button */}
             <button
               onClick={() => setIsCommandPaletteOpen(true)}
-              className="sm:hidden inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+              className="sm:hidden inline-flex items-center justify-center rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors duration-200"
               aria-label="Open search"
             >
               <SearchIcon className="h-5 w-5" />
@@ -130,33 +170,36 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* Desktop search button */}
             <button
               onClick={() => setIsCommandPaletteOpen(true)}
-              className="hidden sm:flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100"
+              className="hidden sm:flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:border-blue-600 transition-all duration-200"
               data-testid="global-search"
             >
               <SearchIcon className="h-4 w-4" />
               <span>Search...</span>
-              <kbd className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-500">
-                ⌘K
+              <kbd className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+                Cmd+K
               </kbd>
             </button>
           </div>
 
           {/* Right side */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {/* MSP Admin Quick Access */}
             {!isLoadingRole && isMspUser && (
               <a
                 href="/admin"
-                className="flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition-colors duration-200 shadow-sm"
               >
                 <AdminIcon className="h-4 w-4" />
                 <span className="hidden sm:inline">MSP Admin</span>
               </a>
             )}
 
-            {/* Notifications - Coming Soon */}
+            {/* Dark mode toggle */}
+            <DarkModeToggle />
+
+            {/* Notifications */}
             <button
-              className="relative rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              className="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-all duration-200"
               title="Notifications coming soon"
               aria-label="Notifications (coming soon)"
               onClick={() => alert('Notifications feature coming soon!')}
@@ -177,14 +220,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main id="main-content" role="main" className="flex-1 overflow-auto p-6" data-testid="dashboard-loaded">
+        <main id="main-content" role="main" className="flex-1 overflow-auto p-6 dark:bg-slate-950" data-testid="dashboard-loaded">
           {currentTenant ? (
             children
           ) : (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
                 <LoadingSpinner />
-                <p className="mt-4 text-gray-500">Loading tenant...</p>
+                <p className="mt-4 text-slate-500 dark:text-slate-400">Loading tenant...</p>
               </div>
             </div>
           )}
@@ -238,6 +281,22 @@ function AdminIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
+function SunIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+    </svg>
+  );
+}
+
+function MoonIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
     </svg>
   );
 }

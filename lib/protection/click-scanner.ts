@@ -421,7 +421,7 @@ export class ClickScanner {
           redirect: 'manual',
           signal: controller.signal,
           headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; SwordfishBot/1.0; +https://swordfish.security)',
+            'User-Agent': 'Mozilla/5.0 (compatible; SwordPhishBot/1.0; +https://swordphish.security)',
           },
         });
 
@@ -805,7 +805,7 @@ export class ClickScanner {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${headerText} | Swordfish Security</title>
+  <title>${headerText} | SwordPhish Security</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -986,7 +986,7 @@ export class ClickScanner {
     </div>
 
     <div class="footer">
-      <p>Protected by Swordfish Email Security</p>
+      <p>Protected by SwordPhish Email Security</p>
     </div>
   </div>
 

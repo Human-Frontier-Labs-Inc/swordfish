@@ -138,7 +138,7 @@ export async function deliverWebhook(
           'X-Webhook-Signature': `sha256=${signature}`,
           'X-Webhook-Timestamp': payload.timestamp,
           'X-Webhook-Delivery': payload.id,
-          'User-Agent': 'Swordfish-Webhook/1.0',
+          'User-Agent': 'SwordPhish-Webhook/1.0',
           ...webhook.headers,
         },
         body: payloadString,

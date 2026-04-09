@@ -367,12 +367,12 @@ export async function notifyUser(
   };
 
   if (options.includeVerificationLink) {
-    result.verificationLink = `https://app.swordfish.io/verify/${generateId()}`;
+    result.verificationLink = `https://app.swordphish.io/verify/${generateId()}`;
     result.verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
   }
 
   if (options.allowFalsePositiveReport) {
-    result.falsePositiveReportLink = `https://app.swordfish.io/report/${generateId()}`;
+    result.falsePositiveReportLink = `https://app.swordphish.io/report/${generateId()}`;
   }
 
   return result;

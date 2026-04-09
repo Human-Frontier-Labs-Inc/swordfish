@@ -5,7 +5,7 @@
  * DELETE - Disconnect integration
  *
  * SECURITY: Uses direct OAuth with email verification.
- * The connected Gmail account MUST match the user's Swordfish email.
+ * The connected Gmail account MUST match the user's SwordPhish email.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -44,7 +44,7 @@ async function handleAuthRequest(_request: NextRequest) {
 
     const tenantId = orgId || `personal_${userId}`;
 
-    // Get user's Swordfish email - this is the email that MUST be used for Gmail
+    // Get user's SwordPhish email - this is the email that MUST be used for Gmail
     const user = await currentUser();
     const userEmail = user?.emailAddresses?.[0]?.emailAddress;
 

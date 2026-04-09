@@ -55,9 +55,9 @@ export interface ObservabilityConfig {
 }
 
 /**
- * Application-specific metrics for Swordfish
+ * Application-specific metrics for SwordPhish
  */
-export interface SwordfishMetrics {
+export interface SwordPhishMetrics {
   // Email processing
   emailsProcessed: Counter;
   emailProcessingDuration: Histogram;
@@ -324,7 +324,7 @@ export interface ObservabilityInstance {
   errorTracker: ErrorTracker;
   alertManager: AlertManager;
   alertBridge: AlertNotificationBridge | null;
-  swordfishMetrics: SwordfishMetrics;
+  swordfishMetrics: SwordPhishMetrics;
 
   // Utility methods
   getMetricsEndpoint: () => string;
@@ -351,8 +351,8 @@ export function initObservability(config: ObservabilityConfig): ObservabilityIns
   // Initialize metrics collector
   const metricsCollector = new MetricsCollector();
 
-  // Create Swordfish-specific metrics
-  const swordfishMetrics = createSwordfishMetrics(metricsCollector, config.metrics?.prefix ?? 'swordfish');
+  // Create SwordPhish-specific metrics
+  const swordfishMetrics = createSwordPhishMetrics(metricsCollector, config.metrics?.prefix ?? 'swordfish');
 
   // Initialize tracer
   const tracerConfig = config.tracing ?? {};
@@ -496,9 +496,9 @@ export function initObservability(config: ObservabilityConfig): ObservabilityIns
 }
 
 /**
- * Create Swordfish-specific metrics
+ * Create SwordPhish-specific metrics
  */
-function createSwordfishMetrics(collector: MetricsCollector, prefix: string): SwordfishMetrics {
+function createSwordPhishMetrics(collector: MetricsCollector, prefix: string): SwordPhishMetrics {
   return {
     // Email processing
     emailsProcessed: collector.counter(

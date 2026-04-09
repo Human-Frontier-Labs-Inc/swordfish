@@ -15,13 +15,13 @@ interface OnboardingStep {
 const ONBOARDING_STEPS: Omit<OnboardingStep, 'completed'>[] = [
   {
     id: 1,
-    title: 'Welcome to Swordfish',
+    title: 'Welcome to SwordPhish',
     description: 'Protect your organization from email threats with AI-powered detection.',
   },
   {
     id: 2,
     title: 'Choose Account Type',
-    description: 'Select how you will use Swordfish.',
+    description: 'Select how you will use SwordPhish.',
   },
   {
     id: 3,
@@ -285,7 +285,7 @@ export default function OnboardingPage() {
             <div className="text-6xl mb-6">
               <Shield className="w-16 h-16 mx-auto text-blue-600" />
             </div>
-            <h2 className="text-2xl font-bold mb-4">Welcome to Swordfish</h2>
+            <h2 className="text-2xl font-bold mb-4">Welcome to SwordPhish</h2>
             <p className="text-gray-600 mb-6">
               Your AI-powered email security platform. We&apos;ll help you set up protection
               against phishing, BEC, malware, and spam in just a few minutes.
@@ -314,7 +314,7 @@ export default function OnboardingPage() {
       case 2:
         return (
           <div className="text-center">
-            <h2 className="text-2xl font-bold mb-4">How will you use Swordfish?</h2>
+            <h2 className="text-2xl font-bold mb-4">How will you use SwordPhish?</h2>
             <p className="text-gray-600 mb-8">
               Select the option that best describes your organization.
             </p>
@@ -621,7 +621,7 @@ export default function OnboardingPage() {
             <p className="text-gray-600 mb-6">
               {accountType === 'msp'
                 ? 'Your MSP dashboard is ready. Start onboarding your clients!'
-                : `Swordfish is now protecting your ${organization?.name || 'organization'}'s email.`
+                : `SwordPhish is now protecting your ${organization?.name || 'organization'}'s email.`
               }
             </p>
             <div className="bg-gray-50 rounded-lg p-6 max-w-md mx-auto text-left">

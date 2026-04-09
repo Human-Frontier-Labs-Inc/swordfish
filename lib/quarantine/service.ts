@@ -445,7 +445,7 @@ async function moveToMicrosoftQuarantine(
   // Get or create quarantine folder
   const quarantineFolderId = await getOrCreateMicrosoftFolder(
     accessToken,
-    'Swordfish Quarantine'
+    'SwordPhish Quarantine'
   );
 
   // Move message to quarantine folder
@@ -554,7 +554,7 @@ async function moveToGmailQuarantine(
   // Get or create quarantine label
   const quarantineLabelId = await getOrCreateGmailLabel(
     accessToken,
-    'Swordfish-Quarantine'
+    'SwordPhish-Quarantine'
   );
 
   // Modify labels: add quarantine, remove INBOX
@@ -596,7 +596,7 @@ async function releaseFromGmailQuarantine(
 
   const quarantineLabelId = await getOrCreateGmailLabel(
     accessToken,
-    'Swordfish-Quarantine'
+    'SwordPhish-Quarantine'
   );
 
   // Modify labels: remove quarantine, add INBOX

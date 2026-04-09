@@ -122,7 +122,7 @@ function injectBannerIntoText(text: string, config: BannerConfig): string {
 }
 
 /**
- * Remove existing Swordfish banners from content
+ * Remove existing SwordPhish banners from content
  */
 export function removeBanners(html: string | undefined, text: string | undefined): {
   html?: string;

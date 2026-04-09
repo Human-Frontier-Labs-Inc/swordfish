@@ -91,7 +91,7 @@ export async function fetchPhishTankFeed(): Promise<PhishTankEntry[]> {
       const response = await fetch(PHISHTANK_DATA_URL, {
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'Swordfish-Email-Security/1.0',
+          'User-Agent': 'SwordPhish-Email-Security/1.0',
         },
       });
 

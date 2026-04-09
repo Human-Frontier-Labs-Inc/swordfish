@@ -2,7 +2,7 @@
  * Protection Module
  *
  * Provides URL rewriting, click-time protection, and other security measures
- * for email content passing through Swordfish.
+ * for email content passing through SwordPhish.
  */
 
 // URL Rewriter exports

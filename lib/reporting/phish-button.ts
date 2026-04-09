@@ -1373,7 +1373,7 @@ export function generateOutlookManifest(
   xsi:type="MailApp">
   <Id>${addinId}</Id>
   <Version>${version}</Version>
-  <ProviderName>Swordfish Security</ProviderName>
+  <ProviderName>SwordPhish Security</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="${displayName}"/>
   <Description DefaultValue="${description}"/>
@@ -1481,7 +1481,7 @@ export function generateOutlookManifest(
           <bt:Url id="taskpaneUrl" DefaultValue="${baseUrl}/addins/outlook/taskpane?tenantId=${tenantId}"/>
         </bt:Urls>
         <bt:ShortStrings>
-          <bt:String id="groupLabel" DefaultValue="Swordfish Security"/>
+          <bt:String id="groupLabel" DefaultValue="SwordPhish Security"/>
           <bt:String id="reportBtnLabel" DefaultValue="Report Phish"/>
         </bt:ShortStrings>
         <bt:LongStrings>
@@ -1557,7 +1557,7 @@ export function generateGmailAppsScript(
   apiKey: string
 ): string {
   return `/**
- * Swordfish Phish Report Gmail Add-on
+ * SwordPhish Phish Report Gmail Add-on
  * Generated for tenant: ${tenantId}
  */
 

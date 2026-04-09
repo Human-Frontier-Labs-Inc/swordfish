@@ -19,42 +19,58 @@ interface RecentThreatsProps {
 const verdictConfig = {
   block: {
     label: 'Blocked',
-    bgClass: 'bg-red-100',
-    textClass: 'text-red-800',
+    bgClass: 'bg-red-500/15 border border-red-500/25',
+    textClass: 'text-red-600 dark:text-red-400',
+    dotColor: 'bg-red-500',
+    shouldPulse: true,
   },
   quarantine: {
     label: 'Quarantined',
-    bgClass: 'bg-yellow-100',
-    textClass: 'text-yellow-800',
+    bgClass: 'bg-amber-500/15 border border-amber-500/25',
+    textClass: 'text-amber-600 dark:text-amber-400',
+    dotColor: 'bg-amber-500',
+    shouldPulse: false,
   },
   review: {
     label: 'Review',
-    bgClass: 'bg-blue-100',
-    textClass: 'text-blue-800',
+    bgClass: 'bg-blue-500/15 border border-blue-500/25',
+    textClass: 'text-blue-600 dark:text-blue-400',
+    dotColor: 'bg-blue-500',
+    shouldPulse: false,
   },
   suspicious: {
     label: 'Suspicious',
-    bgClass: 'bg-orange-100',
-    textClass: 'text-orange-800',
+    bgClass: 'bg-orange-500/15 border border-orange-500/25',
+    textClass: 'text-orange-600 dark:text-orange-400',
+    dotColor: 'bg-orange-500',
+    shouldPulse: false,
   },
 };
 
 export function RecentThreats({ threats, isDemo = false }: RecentThreatsProps) {
   return (
-    <div className="overflow-hidden rounded-lg bg-white shadow">
-      <div className="border-b border-gray-200 px-5 py-4">
+    <div className="overflow-hidden rounded-lg bg-white shadow-sm dark:bg-slate-800 dark:shadow-slate-900/50">
+      <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-medium text-gray-900">Recent Threats</h3>
-            {isDemo && (
-              <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Threats</h3>
+            {isDemo ? (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400">
                 Demo
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                Live
               </span>
             )}
           </div>
           <a
             href="/dashboard/threats"
-            className="text-sm font-medium text-blue-600 hover:text-blue-500"
+            className="text-sm font-medium text-blue-500 hover:text-blue-400 transition-colors duration-200"
           >
             View all
           </a>
@@ -63,28 +79,48 @@ export function RecentThreats({ threats, isDemo = false }: RecentThreatsProps) {
 
       {threats.length === 0 ? (
         <div className="px-5 py-12 text-center">
-          <ShieldCheckIcon className="mx-auto h-12 w-12 text-green-300" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No threats detected</h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <ShieldCheckIcon className="mx-auto h-12 w-12 text-emerald-400/60" />
+          <h3 className="mt-2 text-sm font-medium text-slate-900 dark:text-white">No threats detected</h3>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Your inbox is clean. We&apos;ll alert you when threats are detected.
           </p>
         </div>
       ) : (
-        <ul className="divide-y divide-gray-200">
+        <ul className="divide-y divide-slate-100 dark:divide-slate-700/50">
           {threats.map((threat) => {
             const verdict = verdictConfig[threat.verdict];
 
             return (
-              <li key={threat.id} className="px-5 py-4 hover:bg-gray-50">
-                <a href={`/dashboard/threats/${threat.id}`} className="block">
+              <li
+                key={threat.id}
+                className="group transition-all duration-200 hover:bg-slate-50 hover:translate-x-1 dark:hover:bg-slate-700/30"
+              >
+                <a href={`/dashboard/threats/${threat.id}`} className="block px-5 py-4">
                   <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="truncate font-medium text-gray-900">{threat.subject}</p>
-                      <p className="mt-1 truncate text-sm text-gray-500">{threat.from}</p>
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      {/* Pulsing dot for blocked threats */}
+                      {verdict.shouldPulse && (
+                        <span className="relative mt-1.5 flex h-2.5 w-2.5 flex-shrink-0">
+                          <span className={clsx(
+                            'absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping',
+                            verdict.dotColor
+                          )} />
+                          <span className={clsx(
+                            'relative inline-flex h-2.5 w-2.5 rounded-full',
+                            verdict.dotColor
+                          )} />
+                        </span>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate font-medium text-slate-900 group-hover:text-blue-600 transition-colors duration-200 dark:text-white dark:group-hover:text-blue-400">
+                          {threat.subject}
+                        </p>
+                        <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">{threat.from}</p>
+                      </div>
                     </div>
                     <span
                       className={clsx(
-                        'ml-3 inline-flex flex-shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+                        'ml-3 inline-flex flex-shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
                         verdict.bgClass,
                         verdict.textClass
                       )}
@@ -92,22 +128,22 @@ export function RecentThreats({ threats, isDemo = false }: RecentThreatsProps) {
                       {verdict.label}
                     </span>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1">
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     {threat.signals.slice(0, 3).map((signal, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                        className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300"
                       >
                         {signal}
                       </span>
                     ))}
                     {threat.signals.length > 3 && (
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-slate-400">
                         +{threat.signals.length - 3} more
                       </span>
                     )}
                   </div>
-                  <p className="mt-2 text-xs text-gray-400">
+                  <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
                     {formatRelativeTime(threat.timestamp)}
                   </p>
                 </a>
