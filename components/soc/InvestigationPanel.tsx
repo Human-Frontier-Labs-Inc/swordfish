@@ -1,13 +1,20 @@
 /**
  * SOC Investigation Panel Component
  *
- * Detailed threat investigation interface for SOC analysts
+ * Detailed threat investigation interface for SOC analysts.
+ * Composes sub-components for threat details, actions, signals, and notes.
  */
 
 'use client';
 
 import { useState } from 'react';
 import clsx from 'clsx';
+import { ThreatDetailsView } from './ThreatDetailsView';
+import { InvestigationActions } from './InvestigationActions';
+import { SignalsList } from './SignalsList';
+import { InvestigationNotes } from './InvestigationNotes';
+
+// --- Shared types (re-exported for consumers) ---
 
 export interface ThreatDetails {
   id: string;
@@ -58,6 +65,8 @@ export interface InvestigationNote {
   createdAt: Date;
 }
 
+// --- Component props ---
+
 interface InvestigationPanelProps {
   threat: ThreatDetails | null;
   onClose?: () => void;
@@ -66,6 +75,8 @@ interface InvestigationPanelProps {
 }
 
 type TabId = 'overview' | 'signals' | 'urls' | 'headers' | 'attachments' | 'notes';
+
+// --- Main component ---
 
 export function InvestigationPanel({
   threat,
@@ -151,29 +162,7 @@ export function InvestigationPanel({
       </div>
 
       {/* Action Buttons */}
-      <div className="px-4 py-2 border-b border-gray-200 flex gap-2 flex-wrap">
-        <ActionButton
-          variant="success"
-          onClick={() => onAction?.('release')}
-          icon={<CheckIcon className="h-4 w-4" />}
-        >
-          Release
-        </ActionButton>
-        <ActionButton
-          variant="danger"
-          onClick={() => onAction?.('delete')}
-          icon={<TrashIcon className="h-4 w-4" />}
-        >
-          Delete
-        </ActionButton>
-        <ActionButton
-          variant="warning"
-          onClick={() => onAction?.('block_sender')}
-          icon={<BanIcon className="h-4 w-4" />}
-        >
-          Block Sender
-        </ActionButton>
-      </div>
+      <InvestigationActions onAction={onAction} />
 
       {/* Tabs */}
       <div className="border-b border-gray-200 px-4">
@@ -208,10 +197,10 @@ export function InvestigationPanel({
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'overview' && (
-          <OverviewTab threat={threat} />
+          <ThreatDetailsView threat={threat} />
         )}
         {activeTab === 'signals' && (
-          <SignalsTab signals={threat.signals} />
+          <SignalsList signals={threat.signals} />
         )}
         {activeTab === 'urls' && (
           <UrlsTab urls={threat.urls} />
@@ -223,7 +212,7 @@ export function InvestigationPanel({
           <AttachmentsTab attachments={threat.attachments} />
         )}
         {activeTab === 'notes' && (
-          <NotesTab
+          <InvestigationNotes
             notes={threat.investigation || []}
             noteContent={noteContent}
             setNoteContent={setNoteContent}
@@ -236,87 +225,7 @@ export function InvestigationPanel({
   );
 }
 
-// Tab Components
-function OverviewTab({ threat }: { threat: ThreatDetails }) {
-  return (
-    <div className="space-y-4">
-      {/* Confidence Score */}
-      <div>
-        <h5 className="text-sm font-medium text-gray-700 mb-2">Threat Score</h5>
-        <div className="flex items-center gap-3">
-          <div className="flex-1 bg-gray-200 rounded-full h-3">
-            <div
-              className={clsx(
-                'h-3 rounded-full transition-all',
-                threat.confidence >= 80 ? 'bg-red-500' :
-                threat.confidence >= 60 ? 'bg-orange-500' :
-                threat.confidence >= 40 ? 'bg-yellow-500' : 'bg-green-500'
-              )}
-              style={{ width: `${threat.confidence}%` }}
-            />
-          </div>
-          <span className="text-lg font-bold text-gray-900">{threat.confidence}</span>
-        </div>
-      </div>
-
-      {/* Recipients */}
-      <div>
-        <h5 className="text-sm font-medium text-gray-700 mb-2">Recipients</h5>
-        <div className="flex flex-wrap gap-1">
-          {threat.toAddresses.map((addr, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-700"
-            >
-              {addr}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Body Preview */}
-      {threat.bodyPreview && (
-        <div>
-          <h5 className="text-sm font-medium text-gray-700 mb-2">Body Preview</h5>
-          <div className="bg-gray-50 rounded p-3 text-sm text-gray-600 max-h-40 overflow-y-auto">
-            {threat.bodyPreview}
-          </div>
-        </div>
-      )}
-
-      {/* Key Indicators */}
-      <div>
-        <h5 className="text-sm font-medium text-gray-700 mb-2">Key Indicators</h5>
-        <div className="grid grid-cols-2 gap-2">
-          <StatCard label="Signals" value={threat.signals.length} />
-          <StatCard label="URLs" value={threat.urls.length} />
-          <StatCard label="Attachments" value={threat.attachments.length} />
-          <StatCard
-            label="Malicious URLs"
-            value={threat.urls.filter((u) => u.reputation === 'malicious').length}
-            variant="danger"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SignalsTab({ signals }: { signals: ThreatSignal[] }) {
-  const sortedSignals = [...signals].sort((a, b) => b.score - a.score);
-
-  return (
-    <div className="space-y-3">
-      {sortedSignals.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-4">No signals detected</p>
-      ) : (
-        sortedSignals.map((signal, i) => (
-          <SignalCard key={i} signal={signal} />
-        ))
-      )}
-    </div>
-  );
-}
+// --- Inline tab components (URLs, Headers, Attachments kept here as they are small) ---
 
 function UrlsTab({ urls }: { urls: ExtractedUrl[] }) {
   const reputationOrder = { malicious: 0, suspicious: 1, unknown: 2, clean: 3 };
@@ -411,62 +320,8 @@ function AttachmentsTab({ attachments }: { attachments: Attachment[] }) {
   );
 }
 
-function NotesTab({
-  notes,
-  noteContent,
-  setNoteContent,
-  onAddNote,
-  isSubmitting,
-}: {
-  notes: InvestigationNote[];
-  noteContent: string;
-  setNoteContent: (content: string) => void;
-  onAddNote: () => void;
-  isSubmitting: boolean;
-}) {
-  return (
-    <div className="space-y-4">
-      {/* Add Note */}
-      <div>
-        <textarea
-          value={noteContent}
-          onChange={(e) => setNoteContent(e.target.value)}
-          placeholder="Add investigation note..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-          rows={3}
-        />
-        <button
-          onClick={onAddNote}
-          disabled={!noteContent.trim() || isSubmitting}
-          className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isSubmitting ? 'Adding...' : 'Add Note'}
-        </button>
-      </div>
+// --- Helper components ---
 
-      {/* Notes List */}
-      <div className="space-y-3">
-        {notes.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-4">No investigation notes</p>
-        ) : (
-          notes.map((note) => (
-            <div key={note.id} className="bg-gray-50 rounded p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-900">{note.author}</span>
-                <span className="text-xs text-gray-500">
-                  {new Date(note.createdAt).toLocaleString()}
-                </span>
-              </div>
-              <p className="text-sm text-gray-600">{note.content}</p>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Helper Components
 function VerdictBadge({ verdict, confidence }: { verdict: string; confidence: number }) {
   const config: Record<string, { bg: string; text: string }> = {
     block: { bg: 'bg-red-100', text: 'text-red-800' },
@@ -480,80 +335,6 @@ function VerdictBadge({ verdict, confidence }: { verdict: string; confidence: nu
     <span className={clsx('px-2 py-1 rounded text-xs font-semibold', style.bg, style.text)}>
       {verdict.toUpperCase()} ({confidence}%)
     </span>
-  );
-}
-
-function ActionButton({
-  children,
-  variant,
-  onClick,
-  icon,
-}: {
-  children: React.ReactNode;
-  variant: 'success' | 'danger' | 'warning';
-  onClick?: () => void;
-  icon?: React.ReactNode;
-}) {
-  const variants = {
-    success: 'bg-green-100 text-green-700 hover:bg-green-200',
-    danger: 'bg-red-100 text-red-700 hover:bg-red-200',
-    warning: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200',
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      className={clsx(
-        'inline-flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition-colors',
-        variants[variant]
-      )}
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  variant,
-}: {
-  label: string;
-  value: number;
-  variant?: 'danger';
-}) {
-  return (
-    <div className={clsx('p-2 rounded', variant === 'danger' ? 'bg-red-50' : 'bg-gray-50')}>
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className={clsx('text-lg font-bold', variant === 'danger' ? 'text-red-600' : 'text-gray-900')}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function SignalCard({ signal }: { signal: ThreatSignal }) {
-  const severityColors = {
-    critical: 'border-red-500 bg-red-50',
-    high: 'border-orange-500 bg-orange-50',
-    medium: 'border-yellow-500 bg-yellow-50',
-    low: 'border-blue-500 bg-blue-50',
-  };
-
-  return (
-    <div className={clsx('border-l-4 rounded p-3', severityColors[signal.severity])}>
-      <div className="flex items-center justify-between">
-        <span className="font-medium text-sm text-gray-900">{signal.type}</span>
-        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">+{signal.score}</span>
-      </div>
-      <p className="text-sm text-gray-600 mt-1">{signal.description}</p>
-      {signal.evidence && (
-        <p className="text-xs text-gray-500 mt-1 font-mono bg-white/50 p-1 rounded">
-          {signal.evidence}
-        </p>
-      )}
-    </div>
   );
 }
 
@@ -606,7 +387,7 @@ function AttachmentCard({ attachment }: { attachment: Attachment }) {
         <div>
           <p className="text-sm font-medium text-gray-900">{attachment.filename}</p>
           <p className="text-xs text-gray-500">
-            {attachment.contentType} • {formatSize(attachment.size)}
+            {attachment.contentType} - {formatSize(attachment.size)}
           </p>
         </div>
       </div>
@@ -619,7 +400,8 @@ function AttachmentCard({ attachment }: { attachment: Attachment }) {
   );
 }
 
-// Icons
+// --- Icons ---
+
 function SearchIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -640,30 +422,6 @@ function XIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  );
-}
-
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-function TrashIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-    </svg>
-  );
-}
-
-function BanIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
     </svg>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface Threat {
   id: string;
@@ -237,7 +238,7 @@ export default function AdminThreatsPage() {
       <div className="bg-white rounded-lg border overflow-hidden">
         {loading ? (
           <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+            <LoadingSpinner className="mx-auto" />
           </div>
         ) : threats.length === 0 ? (
           <div className="p-8 text-center text-gray-500">

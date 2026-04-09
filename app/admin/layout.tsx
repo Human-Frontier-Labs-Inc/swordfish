@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -34,7 +35,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   if (isAdmin === null) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <LoadingSpinner />
       </div>
     );
   }
