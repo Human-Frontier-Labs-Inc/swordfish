@@ -154,6 +154,92 @@ export default function ThreatDetailPage() {
     );
   }
 
+  const getVerdictLabel = (verdict: string): string => {
+    switch (verdict?.toLowerCase()) {
+      case 'block': return 'BLOCKED';
+      case 'quarantine': return 'QUARANTINED';
+      case 'suspicious': return 'SUSPICIOUS';
+      case 'pass': return 'ALLOWED';
+      default: return verdict?.toUpperCase() || 'UNKNOWN';
+    }
+  };
+
+  const getVerdictIcon = (verdict: string): string => {
+    switch (verdict?.toLowerCase()) {
+      case 'block': return 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636';
+      case 'quarantine': return 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z';
+      case 'pass': return 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z';
+      default: return 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z';
+    }
+  };
+
+  const getSeverityIcon = (severity: string): string => {
+    switch (severity?.toLowerCase()) {
+      case 'critical': return 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z';
+      case 'high': return 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z';
+      case 'warning': return 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z';
+      case 'medium': return 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z';
+      case 'low':
+      case 'info':
+      default: return 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z';
+    }
+  };
+
+  const getSeverityIconColor = (severity: string): string => {
+    switch (severity?.toLowerCase()) {
+      case 'critical': return 'text-red-600';
+      case 'high': return 'text-orange-500';
+      case 'warning': return 'text-orange-500';
+      case 'medium': return 'text-yellow-500';
+      case 'low': return 'text-blue-500';
+      case 'info': return 'text-blue-400';
+      default: return 'text-gray-400';
+    }
+  };
+
+  const getScoreColor = (score: number): string => {
+    if (score >= 80) return 'text-red-600';
+    if (score >= 50) return 'text-orange-500';
+    if (score >= 30) return 'text-yellow-600';
+    return 'text-green-600';
+  };
+
+  const getScoreBarColor = (score: number): string => {
+    if (score >= 80) return 'bg-red-500';
+    if (score >= 50) return 'bg-orange-500';
+    if (score >= 30) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
+  const sortedSignals = threat.signals
+    ? [...threat.signals].sort((a, b) => {
+        const severityOrder: Record<string, number> = { critical: 0, high: 1, warning: 2, medium: 3, low: 4, info: 5 };
+        return (severityOrder[a.severity] ?? 6) - (severityOrder[b.severity] ?? 6);
+      })
+    : [];
+
+  const criticalSignals = sortedSignals.filter(s => s.severity === 'critical' || s.severity === 'high');
+  const warningSignals = sortedSignals.filter(s => s.severity === 'warning' || s.severity === 'medium');
+  const infoSignals = sortedSignals.filter(s => s.severity === 'low' || s.severity === 'info');
+
+  const generateWhyFlagged = (): string[] => {
+    const reasons: string[] = [];
+    for (const signal of criticalSignals.slice(0, 3)) {
+      reasons.push(signal.description || signal.type);
+    }
+    for (const signal of warningSignals.slice(0, 2)) {
+      if (reasons.length < 4) {
+        reasons.push(signal.description || signal.type);
+      }
+    }
+    if (reasons.length === 0 && threat.explanation) {
+      reasons.push(threat.explanation);
+    }
+    return reasons;
+  };
+
+  const whyFlaggedReasons = generateWhyFlagged();
+
   return (
     <div className="space-y-6">
       {/* Header with Back Button */}
@@ -189,39 +275,99 @@ export default function ThreatDetailPage() {
         </div>
       </div>
 
-      {/* Overview Card */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Verdict</h3>
-            <span className={`mt-1 inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getVerdictColor(threat.verdict)}`}>
-              {threat.verdict?.toUpperCase() || 'UNKNOWN'}
-            </span>
+      {/* Verdict Banner */}
+      <div className={`rounded-lg shadow-lg p-6 ${getVerdictColor(threat.verdict)}`}>
+        <div className="flex items-center gap-4">
+          <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d={getVerdictIcon(threat.verdict)} />
+          </svg>
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold tracking-wide">{getVerdictLabel(threat.verdict)}</h2>
+            <p className="text-sm opacity-90 mt-1">
+              {threat.verdict?.toLowerCase() === 'block' && 'This email was blocked from delivery due to high-confidence threat indicators.'}
+              {threat.verdict?.toLowerCase() === 'quarantine' && 'This email was quarantined for review. It may contain threats.'}
+              {threat.verdict?.toLowerCase() === 'suspicious' && 'This email has suspicious characteristics. Exercise caution.'}
+              {threat.verdict?.toLowerCase() === 'pass' && 'This email passed security checks and was allowed through.'}
+            </p>
           </div>
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Threat Score</h3>
-            <div className="mt-1 flex items-center gap-3">
-              <div className="flex-1 bg-gray-200 rounded-full h-3 max-w-24">
-                <div
-                  className={`h-3 rounded-full ${threat.score >= 80 ? 'bg-red-500' : threat.score >= 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                  style={{ width: `${threat.score}%` }}
-                />
-              </div>
-              <span className="text-2xl font-bold text-gray-900">{threat.score}</span>
-            </div>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Status</h3>
+          <div className="text-right">
             <span className={`mt-1 inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusBadge(threat.status)}`}>
               {threat.status}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Confidence Score */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900">Threat Confidence Score</h3>
+          <span className={`text-3xl font-bold ${getScoreColor(threat.score)}`}>{threat.score}/100</span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-4">
+          <div
+            className={`h-4 rounded-full transition-all duration-500 ${getScoreBarColor(threat.score)}`}
+            style={{ width: `${threat.score}%` }}
+          />
+        </div>
+        <div className="flex justify-between mt-2 text-xs text-gray-500">
+          <span>Safe</span>
+          <span>Suspicious</span>
+          <span>Dangerous</span>
+          <span>Critical</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
           <div>
-            <h3 className="text-sm font-medium text-gray-500">Provider</h3>
-            <p className="mt-1 text-lg text-gray-900">{threat.provider || 'Unknown'}</p>
+            <h4 className="text-sm font-medium text-gray-500">Provider</h4>
+            <p className="mt-1 text-gray-900">{threat.provider || 'Unknown'}</p>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-gray-500">Detected</h4>
+            <p className="mt-1 text-gray-900">
+              {threat.quarantinedAt ? new Date(threat.quarantinedAt).toLocaleString() : 'N/A'}
+            </p>
           </div>
         </div>
       </div>
+
+      {/* Why Was This Flagged? */}
+      {whyFlaggedReasons.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg shadow p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <svg className="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h2 className="text-lg font-semibold text-amber-900">Why was this flagged?</h2>
+          </div>
+          <ul className="space-y-2">
+            {whyFlaggedReasons.map((reason, index) => (
+              <li key={index} className="flex items-start gap-3">
+                <span className="mt-1 flex-shrink-0 h-2 w-2 rounded-full bg-amber-500" />
+                <span className="text-amber-900">{reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* AI Explanation - always visible when available */}
+      {(threat.explanation || threat.recommendation) && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">AI Analysis</h2>
+          {threat.explanation && (
+            <div className="mb-4">
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Explanation</h3>
+              <p className="text-gray-800 bg-gray-50 rounded-lg p-4 text-base leading-relaxed">{threat.explanation}</p>
+            </div>
+          )}
+          {threat.recommendation && (
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Recommendation</h3>
+              <p className="text-gray-800 bg-blue-50 rounded-lg p-4 text-base leading-relaxed">{threat.recommendation}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Email Details Card */}
       <div className="bg-white rounded-lg shadow p-6">
@@ -243,12 +389,6 @@ export default function ThreatDetailPage() {
             <dt className="text-sm font-medium text-gray-500">To</dt>
             <dd className="mt-1 text-gray-900">{threat.recipientEmail}</dd>
           </div>
-          <div>
-            <dt className="text-sm font-medium text-gray-500">Detected</dt>
-            <dd className="mt-1 text-gray-900">
-              {threat.quarantinedAt ? new Date(threat.quarantinedAt).toLocaleString() : 'N/A'}
-            </dd>
-          </div>
           {threat.releasedAt && (
             <div>
               <dt className="text-sm font-medium text-gray-500">Released</dt>
@@ -261,43 +401,39 @@ export default function ThreatDetailPage() {
         </dl>
       </div>
 
-      {/* AI Explanation Card */}
-      {(threat.explanation || threat.recommendation) && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">AI Analysis</h2>
-          {threat.explanation && (
-            <div className="mb-4">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Explanation</h3>
-              <p className="text-gray-700 bg-gray-50 rounded-lg p-4">{threat.explanation}</p>
-            </div>
-          )}
-          {threat.recommendation && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Recommendation</h3>
-              <p className="text-gray-700 bg-blue-50 rounded-lg p-4">{threat.recommendation}</p>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Detection Signals Card */}
-      {threat.signals && threat.signals.length > 0 && (
+      {sortedSignals.length > 0 && (
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Detection Signals</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Detection Signals</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            {criticalSignals.length} critical, {warningSignals.length} warning, {infoSignals.length} informational
+          </p>
           <div className="space-y-3">
-            {threat.signals.map((signal, index) => (
+            {sortedSignals.map((signal, index) => (
               <div
                 key={index}
-                className={`border rounded-lg p-4 ${getSeverityColor(signal.severity)}`}
+                className={`border-l-4 rounded-lg p-4 ${getSeverityColor(signal.severity)}`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">{signal.type}</span>
+                <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm uppercase">{signal.severity}</span>
-                    <span className="text-sm font-mono">+{signal.score}</span>
+                    <svg className={`h-5 w-5 flex-shrink-0 ${getSeverityIconColor(signal.severity)}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d={getSeverityIcon(signal.severity)} />
+                    </svg>
+                    <span className="font-semibold text-gray-900">{signal.type.replace(/_/g, ' ')}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${
+                      signal.severity === 'critical' ? 'bg-red-200 text-red-800' :
+                      signal.severity === 'high' ? 'bg-orange-200 text-orange-800' :
+                      signal.severity === 'warning' ? 'bg-orange-100 text-orange-700' :
+                      signal.severity === 'medium' ? 'bg-yellow-200 text-yellow-800' :
+                      signal.severity === 'info' ? 'bg-blue-100 text-blue-700' :
+                      'bg-gray-200 text-gray-700'
+                    }`}>{signal.severity}</span>
+                    <span className="text-sm font-mono text-gray-600">+{signal.score}</span>
                   </div>
                 </div>
-                <p className="text-sm">{signal.description}</p>
+                <p className="text-sm text-gray-700 ml-7">{signal.description}</p>
               </div>
             ))}
           </div>

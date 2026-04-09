@@ -236,7 +236,9 @@ export type SignalType =
   | 'verified_bec_attack'
   | 'credential_harvesting'
   | 'trusted_sender_bypass'
-  | 'url';
+  | 'url'
+  // Pipeline status
+  | 'pipeline_error';
 
 // Analysis result from each layer
 export interface LayerResult {
@@ -282,6 +284,11 @@ export interface EmailVerdict {
     policyName?: string;
     action?: string;
   };
+  // Analysis completion status
+  // 'complete' = analysis finished successfully
+  // 'analysis_failed' = analysis encountered a fatal error, verdict may be unreliable
+  analysisStatus?: 'complete' | 'analysis_failed';
+  analysisError?: string;
   // Email classification (runs before threat detection)
   emailClassification?: EmailClassificationResult;
 }
