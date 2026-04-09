@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useTenant } from '@/lib/auth/tenant-context';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import Link from 'next/link';
 
 interface Threat {
@@ -24,6 +25,10 @@ export default function ThreatsPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'quarantined' | 'released' | 'deleted'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; threatId: string | null }>({
+    open: false,
+    threatId: null,
+  });
 
   const fetchThreats = useCallback(async () => {
     if (!currentTenant) return;
@@ -70,8 +75,14 @@ export default function ThreatsPage() {
     }
   }
 
-  async function deleteThreat(threatId: string) {
-    if (!confirm('Permanently delete this email?')) return;
+  function requestDeleteThreat(threatId: string) {
+    setDeleteConfirm({ open: true, threatId });
+  }
+
+  async function executeDeleteThreat() {
+    const threatId = deleteConfirm.threatId;
+    if (!threatId) return;
+    setDeleteConfirm({ open: false, threatId: null });
     setActionLoading(threatId);
     try {
       const response = await fetch(`/api/threats/${threatId}`, {
@@ -253,7 +264,7 @@ export default function ThreatsPage() {
                           {actionLoading === threat.id ? '...' : 'Release'}
                         </button>
                         <button
-                          onClick={() => deleteThreat(threat.id)}
+                          onClick={() => requestDeleteThreat(threat.id)}
                           disabled={actionLoading === threat.id}
                           className="text-red-600 hover:text-red-900 disabled:opacity-50"
                         >
@@ -268,6 +279,18 @@ export default function ThreatsPage() {
           </table>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, threatId: open ? deleteConfirm.threatId : null })}
+        title="Delete Email"
+        description="Permanently delete this email? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={executeDeleteThreat}
+        variant="danger"
+      />
     </div>
   );
 }
