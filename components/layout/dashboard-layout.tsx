@@ -52,7 +52,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             onClick={() => setIsMobileSidebarOpen(false)}
           />
           <div className="relative flex w-full max-w-xs flex-1">
-            <Sidebar />
+            <Sidebar onNavigate={() => setIsMobileSidebarOpen(false)} />
           </div>
         </div>
       )}

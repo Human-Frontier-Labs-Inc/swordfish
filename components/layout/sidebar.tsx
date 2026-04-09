@@ -18,11 +18,13 @@ const navigation = [
 
 const adminNavigation = [
   { name: 'Settings', href: '/dashboard/settings', icon: CogIcon },
-  { name: 'Users', href: '/dashboard/users', icon: UsersIcon },
-  { name: 'Audit Log', href: '/dashboard/audit', icon: ClipboardIcon },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const { currentTenant, canManageTenant, isMspUser } = useTenant();
 
@@ -30,7 +32,7 @@ export function Sidebar() {
     <div className="flex h-full w-64 flex-col bg-gray-900">
       {/* Logo */}
       <div className="flex h-16 items-center px-6">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href="/dashboard" className="flex items-center gap-2" onClick={onNavigate}>
           <SwordfishLogo className="h-8 w-8 text-blue-500" />
           <span className="text-xl font-bold text-white">Swordfish</span>
         </Link>
@@ -47,6 +49,7 @@ export function Sidebar() {
                 ? 'bg-purple-600 text-white'
                 : 'bg-purple-900/50 text-purple-200 hover:bg-purple-800 hover:text-white'
             )}
+            onClick={onNavigate}
           >
             <BuildingIcon className="h-5 w-5" />
             MSP Dashboard
@@ -79,6 +82,7 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={onNavigate}
               className={clsx(
                 'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
@@ -111,6 +115,7 @@ export function Sidebar() {
                 <Link
                   key={item.name}
                   href={item.href}
+                  onClick={onNavigate}
                   className={clsx(
                     'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                     isActive
@@ -132,16 +137,8 @@ export function Sidebar() {
         )}
       </nav>
 
-      {/* Bottom section */}
-      <div className="border-t border-gray-700 p-4">
-        <Link
-          href="/dashboard/support"
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
-        >
-          <HelpIcon className="h-5 w-5 text-gray-400" />
-          Help & Support
-        </Link>
-      </div>
+      {/* Bottom section - spacer */}
+      <div className="border-t border-gray-700 p-4" />
     </div>
   );
 }
