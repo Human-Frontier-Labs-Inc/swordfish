@@ -41,7 +41,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       event: 'test',
       timestamp: new Date().toISOString(),
       data: {
-        message: 'This is a test webhook from Swordfish',
+        message: 'This is a test webhook from SwordPhish',
         tenant_id: tenantId,
       },
     };

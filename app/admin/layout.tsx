@@ -51,7 +51,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/admin" className="font-bold text-lg">
-              Swordfish Admin
+              SwordPhish Admin
             </Link>
             <span className="bg-red-500 text-xs px-2 py-1 rounded">MSP</span>
           </div>

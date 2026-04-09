@@ -2,7 +2,7 @@
 
 /**
  * API Documentation Page
- * Interactive API reference for Swordfish
+ * Interactive API reference for SwordPhish
  */
 
 import { useState } from 'react';
@@ -401,7 +401,7 @@ export default function ApiDocsPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">API Documentation</h1>
           <p className="mt-2 text-gray-600">
-            Complete reference for the Swordfish Email Security API
+            Complete reference for the SwordPhish Email Security API
           </p>
         </div>
 

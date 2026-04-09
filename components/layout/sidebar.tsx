@@ -34,7 +34,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       <div className="flex h-16 items-center px-6">
         <Link href="/dashboard" className="flex items-center gap-2" onClick={onNavigate}>
           <SwordfishLogo className="h-8 w-8 text-blue-500" />
-          <span className="text-xl font-bold text-white">Swordfish</span>
+          <span className="text-xl font-bold text-white">Sword<span className="text-blue-400">Phish</span></span>
         </Link>
       </div>
 

@@ -59,7 +59,7 @@ export default function NewTenantPage() {
         </Link>
         <h1 className="text-3xl font-bold">Add New Client</h1>
         <p className="text-muted-foreground mt-2">
-          Set up a new client organization in the Swordfish platform
+          Set up a new client organization in the SwordPhish platform
         </p>
       </div>
 
