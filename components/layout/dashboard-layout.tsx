@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useState, useEffect, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import { Sidebar } from './sidebar';
 import { TenantSwitcher } from '@/components/msp/TenantSwitcher';
@@ -14,8 +15,16 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { currentTenant, availableTenants, setCurrentTenant, isMspUser, isLoadingRole } = useTenant();
+  const pathname = usePathname();
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Derive breadcrumb context for MSP users
+  const breadcrumbSection = pathname.startsWith('/admin')
+    ? 'MSP Admin'
+    : pathname.startsWith('/msp')
+      ? 'MSP Dashboard'
+      : 'Dashboard';
 
   // Handle Cmd+K keyboard shortcut
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
@@ -75,6 +84,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
           {/* Left side */}
           <div className="flex items-center gap-4">
+            {/* MSP breadcrumb context indicator */}
+            {!isLoadingRole && isMspUser && (
+              <nav className="hidden sm:flex items-center text-sm text-gray-500" aria-label="Breadcrumb">
+                <span className="font-medium text-gray-900">{breadcrumbSection}</span>
+                {breadcrumbSection !== 'Dashboard' && (
+                  <>
+                    <ChevronRightIcon className="mx-2 h-4 w-4 text-gray-400" />
+                    <a href="/dashboard" className="hover:text-gray-700 transition-colors">
+                      Dashboard
+                    </a>
+                  </>
+                )}
+              </nav>
+            )}
+
             {/* Tenant switcher for MSP users */}
             {!isLoadingRole && isMspUser && (
               <TenantSwitcher
@@ -94,7 +118,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               />
             )}
 
-            {/* Search button */}
+            {/* Mobile search button */}
+            <button
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="sm:hidden inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+              aria-label="Open search"
+            >
+              <SearchIcon className="h-5 w-5" />
+            </button>
+
+            {/* Desktop search button */}
             <button
               onClick={() => setIsCommandPaletteOpen(true)}
               className="hidden sm:flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100"
@@ -188,6 +221,14 @@ function BellIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
     </svg>
   );
 }
