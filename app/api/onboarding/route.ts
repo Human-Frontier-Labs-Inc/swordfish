@@ -113,9 +113,10 @@ export async function PUT(request: NextRequest) {
       ...(accountType && { accountType, isMsp: accountType === 'msp' }),
     };
 
-    // Format arrays as Postgres array literals for INTEGER[] columns
-    const completedStepsArray = `{${completedSteps.join(',')}}`;
-    const skippedStepsArray = `{${skippedSteps.join(',')}}`;
+    // Convert JS arrays to Postgres-compatible array literals for INTEGER[] columns.
+    // Neon's tagged template passes values as parameterized strings, so we format
+    // as '{1,2,3}' which Postgres can cast to integer[] via the parameter type.
+    const pgArray = (arr: number[]): string => `{${arr.join(',')}}`;
 
     if (existingData) {
       // Update existing record
@@ -123,10 +124,10 @@ export async function PUT(request: NextRequest) {
         UPDATE onboarding_progress
         SET
           current_step = ${currentStep || existingData.current_step},
-          completed_steps = ${completedStepsArray}::integer[],
-          skipped_steps = ${skippedStepsArray}::integer[],
+          completed_steps = ${pgArray(completedSteps)},
+          skipped_steps = ${pgArray(skippedSteps)},
           completed_at = ${completed ? new Date().toISOString() : null},
-          metadata = ${JSON.stringify(mergedMetadata)}::jsonb,
+          metadata = ${JSON.stringify(mergedMetadata)},
           updated_at = NOW()
         WHERE tenant_id = ${tenantId}
       `;
@@ -145,10 +146,10 @@ export async function PUT(request: NextRequest) {
           ${tenantId},
           ${userId},
           ${currentStep || 1},
-          ${completedStepsArray}::integer[],
-          ${skippedStepsArray}::integer[],
+          ${pgArray(completedSteps)},
+          ${pgArray(skippedSteps)},
           ${completed ? new Date().toISOString() : null},
-          ${JSON.stringify(mergedMetadata)}::jsonb
+          ${JSON.stringify(mergedMetadata)}
         )
       `;
     }
@@ -194,8 +195,9 @@ export async function PUT(request: NextRequest) {
     });
   } catch (error) {
     console.error('Update onboarding error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to update onboarding' },
+      { error: 'Failed to update onboarding', detail: message },
       { status: 500 }
     );
   }
