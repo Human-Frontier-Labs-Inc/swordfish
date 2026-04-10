@@ -1205,10 +1205,11 @@ function calculateFinalScore(
   const warningBoost = Math.min(12, warningSignals.length * 2);
 
   // Hard floor: if high-severity threat indicators fire, guarantee minimum score
-  // Malware/executable/credential theft with 3+ critical signals should never pass as safe
-  const highSeverityTypes = ['ml_malware_detected', 'executable', 'dangerous_attachment', 'bec_compound_attack', 'bec_detected', 'ml_phishing_detected', 'credential_request'];
+  // Any critical signal from these types should push above suspicious threshold at minimum
+  const highSeverityTypes = ['ml_malware_detected', 'executable', 'dangerous_attachment', 'bec_compound_attack', 'bec_detected', 'ml_phishing_detected', 'credential_request', 'malicious_url', 'lookalike_domain', 'ml_personal_info_request'];
   const highSeverityCount = criticalSignals.filter((s) => highSeverityTypes.includes(s.type)).length;
-  const threatFloor = highSeverityCount >= 2 ? 75 : highSeverityCount >= 1 ? 55 : 0;
+  // 3+ high-severity = block (85), 2 = quarantine (75), 1 = suspicious (55)
+  const threatFloor = highSeverityCount >= 3 ? 85 : highSeverityCount >= 2 ? 75 : highSeverityCount >= 1 ? 55 : 0;
 
   const calculatedScore = Math.round(normalizedScore * (totalWeight / 0.8) + criticalBoost + warningBoost);
 
