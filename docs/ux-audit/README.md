@@ -29,8 +29,9 @@ Full UX audit covering:
 | Severity | Count |
 |----------|-------|
 | P0 | 2 (both fixed) |
-| P1 | 3 |
+| P1 | 4 |
 | P2 | 5 |
+| Info | 1 (code review) |
 
 ## Findings Index
 
@@ -42,6 +43,7 @@ Full UX audit covering:
 - [002 - Dark mode broken across app](./002-dark-mode-broken.md)
 - [003 - Mobile sidebar overlapped by Clerk popover](./003-mobile-sidebar-overlap.md)
 - [004 - Dashboard stat cards don't respond to dark mode](./004-dashboard-no-dark-mode.md)
+- [011 - Search/command palette has no commands](./011-search-command-palette-empty.md)
 
 ### P2 — Polish
 - [005 - Default Next.js 404 page, no branding](./005-generic-404.md)
@@ -49,6 +51,19 @@ Full UX audit covering:
 - [007 - Onboarding "What's Next" items not clickable](./007-whats-next-not-links.md)
 - [008 - No error feedback on API failures](./008-no-error-feedback.md)
 - [009 - No billing/subscription page in navigation](./009-missing-billing-page.md)
+
+### Info — Code Review
+- [012 - Gmail integration code review](./012-gmail-integration-review.md)
+
+## Functional Tests Performed
+
+| Test | Result |
+|------|--------|
+| Settings save/load | **Pass** — changed threshold 30→50, persisted in DB, survived page reload |
+| Policy creation | **Fail (fixed)** — UUID type mismatch, P0 bug |
+| Search/Cmd+K | **Fail** — command palette opens but no commands registered |
+| Gmail OAuth redirect | **Pass** — reaches Google consent page with correct callback URL |
+| Gmail OAuth completion | **Blocked** — Google rejects headless Chrome, needs manual test |
 
 ## What Works Well
 
