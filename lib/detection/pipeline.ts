@@ -533,6 +533,17 @@ export async function analyzeEmail(
     overallScore = cappedScore;
   }
 
+  // SAFETY NET: Re-apply threat floor after all modifiers/reductions
+  // Prevents classification or trust modifiers from reducing genuinely dangerous emails
+  const postModifierCriticals = allSignals.filter((s) => s.severity === 'critical');
+  const postHighSeverityTypes = ['ml_malware_detected', 'executable', 'dangerous_attachment', 'bec_compound_attack', 'bec_detected', 'ml_phishing_detected', 'credential_request', 'malicious_url', 'lookalike_domain', 'ml_personal_info_request'];
+  const postHighCount = postModifierCriticals.filter((s) => postHighSeverityTypes.includes(s.type)).length;
+  if (postHighCount >= 3 && overallScore < 85) {
+    overallScore = 85;
+  } else if (postHighCount >= 2 && overallScore < 75) {
+    overallScore = 75;
+  }
+
   const verdict = determineVerdict(overallScore, config);
 
   // Generate explanation from signals
