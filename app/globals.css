@@ -1,6 +1,9 @@
 @layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
 
+/* Enable class-based dark mode (toggle via .dark class on <html>) */
+@custom-variant dark (&:is(.dark *));
+
 @theme {
   --color-primary-600: #6c47ff;
   --color-primary-700: #5639cc;
