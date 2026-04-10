@@ -536,7 +536,7 @@ export async function analyzeEmail(
   // SAFETY NET: Re-apply threat floor after all modifiers/reductions
   // Prevents classification or trust modifiers from reducing genuinely dangerous emails
   const postModifierCriticals = allSignals.filter((s) => s.severity === 'critical');
-  const postHighSeverityTypes = ['ml_malware_detected', 'executable', 'dangerous_attachment', 'bec_compound_attack', 'bec_detected', 'ml_phishing_detected', 'credential_request', 'malicious_url', 'lookalike_domain', 'ml_personal_info_request'];
+  const postHighSeverityTypes = ['ml_malware_detected', 'executable', 'dangerous_attachment', 'bec_compound_attack', 'bec_detected', 'ml_phishing_detected', 'credential_request', 'malicious_url', 'lookalike_domain', 'ml_personal_info_request', 'bec_secrecy_request', 'ml_financial_request', 'bec_wire_transfer_request', 'bec_financial_risk'];
   const postHighCount = postModifierCriticals.filter((s) => postHighSeverityTypes.includes(s.type)).length;
   if (postHighCount >= 3 && overallScore < 85) {
     overallScore = 85;
@@ -1217,7 +1217,7 @@ function calculateFinalScore(
 
   // Hard floor: if high-severity threat indicators fire, guarantee minimum score
   // Any critical signal from these types should push above suspicious threshold at minimum
-  const highSeverityTypes = ['ml_malware_detected', 'executable', 'dangerous_attachment', 'bec_compound_attack', 'bec_detected', 'ml_phishing_detected', 'credential_request', 'malicious_url', 'lookalike_domain', 'ml_personal_info_request'];
+  const highSeverityTypes = ['ml_malware_detected', 'executable', 'dangerous_attachment', 'bec_compound_attack', 'bec_detected', 'ml_phishing_detected', 'credential_request', 'malicious_url', 'lookalike_domain', 'ml_personal_info_request', 'bec_secrecy_request', 'ml_financial_request', 'bec_wire_transfer_request', 'bec_financial_risk'];
   const highSeverityCount = criticalSignals.filter((s) => highSeverityTypes.includes(s.type)).length;
   // 3+ high-severity = block (85), 2 = quarantine (75), 1 = suspicious (55)
   const threatFloor = highSeverityCount >= 3 ? 85 : highSeverityCount >= 2 ? 75 : highSeverityCount >= 1 ? 55 : 0;
