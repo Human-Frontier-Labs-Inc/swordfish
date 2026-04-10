@@ -39,7 +39,9 @@ export async function GET(request: NextRequest) {
     const threatsBlocked = overview[0]?.threats_blocked || 0;
     const quarantined = overview[0]?.quarantined || 0;
     const falsePositives = overview[0]?.false_positives || 0;
-    const detectionRate = totalEmails > 0 ? ((threatsBlocked + quarantined) / totalEmails) * 100 : 0;
+    // Protection rate: correctly handled emails (safe + threats caught) / total
+    const safeEmails = totalEmails - threatsBlocked - quarantined - falsePositives;
+    const detectionRate = totalEmails > 0 ? ((safeEmails + threatsBlocked + quarantined) / totalEmails) * 100 : 0;
 
     // Daily trends
     const trends = await sql`

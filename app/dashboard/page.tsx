@@ -132,7 +132,7 @@ export default function DashboardPage() {
           color="blue"
         />
         <StatCard
-          title="Detection Rate"
+          title="Protection Rate"
           value={displayStats.emailsScanned > 0 ? `${displayStats.detectionRate}%` : '--'}
           icon={ChartIcon}
           color="green"
