@@ -1199,14 +1199,21 @@ function calculateFinalScore(
   const criticalSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'critical'));
   const warningSignals = results.flatMap((r) => r.signals.filter((s) => s.severity === 'warning'));
 
-  // Phase 4: Reduced boosting to avoid false positives on legitimate emails
-  // Critical signals add 7 points each (max 28), warnings add 2 each (max 10)
-  // Ensures real threats still get flagged but newsletters/legitimate emails have buffer
-  const criticalBoost = Math.min(28, criticalSignals.length * 7);   // Reduced from 11/44
-  const warningBoost = Math.min(10, warningSignals.length * 2);     // Reduced from 2.5/12
+  // Critical signals: 9 points each (max 54), warnings: 2 each (max 12)
+  // Higher cap ensures emails with multiple critical signals (malware, BEC) reach block threshold
+  const criticalBoost = Math.min(54, criticalSignals.length * 9);
+  const warningBoost = Math.min(12, warningSignals.length * 2);
+
+  // Hard floor: if high-severity threat indicators fire, guarantee minimum score
+  // Malware/executable/credential theft with 3+ critical signals should never pass as safe
+  const highSeverityTypes = ['ml_malware_detected', 'executable', 'dangerous_attachment', 'bec_compound_attack', 'bec_detected', 'ml_phishing_detected', 'credential_request'];
+  const highSeverityCount = criticalSignals.filter((s) => highSeverityTypes.includes(s.type)).length;
+  const threatFloor = highSeverityCount >= 2 ? 75 : highSeverityCount >= 1 ? 55 : 0;
+
+  const calculatedScore = Math.round(normalizedScore * (totalWeight / 0.8) + criticalBoost + warningBoost);
 
   return {
-    overallScore: Math.min(100, Math.round(normalizedScore * (totalWeight / 0.8) + criticalBoost + warningBoost)),
+    overallScore: Math.min(100, Math.max(threatFloor, calculatedScore)),
     confidence: normalizedConfidence,
   };
 }
