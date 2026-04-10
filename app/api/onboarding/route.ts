@@ -113,16 +113,20 @@ export async function PUT(request: NextRequest) {
       ...(accountType && { accountType, isMsp: accountType === 'msp' }),
     };
 
+    // Format arrays as Postgres array literals for INTEGER[] columns
+    const completedStepsArray = `{${completedSteps.join(',')}}`;
+    const skippedStepsArray = `{${skippedSteps.join(',')}}`;
+
     if (existingData) {
       // Update existing record
       await sql`
         UPDATE onboarding_progress
         SET
           current_step = ${currentStep || existingData.current_step},
-          completed_steps = ${JSON.stringify(completedSteps)},
-          skipped_steps = ${JSON.stringify(skippedSteps)},
+          completed_steps = ${completedStepsArray}::integer[],
+          skipped_steps = ${skippedStepsArray}::integer[],
           completed_at = ${completed ? new Date().toISOString() : null},
-          metadata = ${JSON.stringify(mergedMetadata)},
+          metadata = ${JSON.stringify(mergedMetadata)}::jsonb,
           updated_at = NOW()
         WHERE tenant_id = ${tenantId}
       `;
@@ -141,10 +145,10 @@ export async function PUT(request: NextRequest) {
           ${tenantId},
           ${userId},
           ${currentStep || 1},
-          ${JSON.stringify(completedSteps)},
-          ${JSON.stringify(skippedSteps)},
+          ${completedStepsArray}::integer[],
+          ${skippedStepsArray}::integer[],
           ${completed ? new Date().toISOString() : null},
-          ${JSON.stringify(mergedMetadata)}
+          ${JSON.stringify(mergedMetadata)}::jsonb
         )
       `;
     }

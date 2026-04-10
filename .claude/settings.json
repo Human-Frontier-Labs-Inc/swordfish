@@ -107,7 +107,7 @@
     ]
   },
   "includeCoAuthoredBy": true,
-  "enabledMcpjsonServers": ["claude-flow", "ruv-swarm"],
+  "enabledMcpjsonServers": ["claude-flow", "ruv-swarm", "puppeteer"],
   "statusLine": {
     "type": "command",
     "command": ".claude/statusline-command.sh"
