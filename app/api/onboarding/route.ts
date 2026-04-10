@@ -69,7 +69,9 @@ export async function PUT(request: NextRequest) {
 
     const tenantId = orgId || `personal_${userId}`;
     const body = await request.json();
-    const { currentStep, completedStep, skippedStep, completed, metadata, accountType } = body;
+    const { completedStep, skippedStep, completed, metadata, accountType } = body;
+    // Default currentStep to 6 if marking as completed, otherwise use body value or 1
+    const currentStep: number = body.currentStep ?? (completed ? 6 : 1);
 
     // Get current progress
     const current = await sql`
@@ -123,7 +125,7 @@ export async function PUT(request: NextRequest) {
       await sql`
         UPDATE onboarding_progress
         SET
-          current_step = ${currentStep || existingData.current_step},
+          current_step = ${currentStep ?? existingData?.current_step ?? 1},
           completed_steps = ${pgArray(completedSteps)},
           skipped_steps = ${pgArray(skippedSteps)},
           completed_at = ${completed ? new Date().toISOString() : null},
@@ -145,7 +147,7 @@ export async function PUT(request: NextRequest) {
         ) VALUES (
           ${tenantId},
           ${userId},
-          ${currentStep || 1},
+          ${currentStep ?? 1},
           ${pgArray(completedSteps)},
           ${pgArray(skippedSteps)},
           ${completed ? new Date().toISOString() : null},
