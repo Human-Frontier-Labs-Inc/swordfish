@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
         al.metadata,
         al.created_at
       FROM audit_log al
-      LEFT JOIN tenants t ON al.tenant_id::text = t.clerk_org_id OR al.tenant_id::uuid = t.id
+      LEFT JOIN tenants t ON al.tenant_id::text = t.clerk_org_id OR safe_uuid(al.tenant_id) = t.id
       ORDER BY al.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;

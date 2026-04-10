@@ -56,7 +56,7 @@ export async function GET() {
         al.action,
         al.created_at as timestamp
       FROM audit_log al
-      JOIN tenants t ON al.tenant_id::text = t.clerk_org_id OR al.tenant_id::uuid = t.id
+      JOIN tenants t ON al.tenant_id::text = t.clerk_org_id OR safe_uuid(al.tenant_id) = t.id
       ORDER BY al.created_at DESC
       LIMIT 10
     `;

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const targetUsers = await sql`
       SELECT u.id, u.email, u.tenant_id, t.clerk_org_id
       FROM users u
-      LEFT JOIN tenants t ON u.tenant_id::text = t.clerk_org_id OR u.tenant_id::uuid = t.id
+      LEFT JOIN tenants t ON u.tenant_id::text = t.clerk_org_id OR safe_uuid(u.tenant_id) = t.id
       WHERE u.id = ${id}::uuid
       LIMIT 1
     `;
