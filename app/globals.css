@@ -78,3 +78,12 @@ html {
 html.dark {
   color-scheme: dark;
 }
+
+/* Dark mode overrides for shadcn/ui theme tokens */
+html.dark *,
+html.dark ::after,
+html.dark ::before,
+html.dark ::backdrop,
+html.dark ::file-selector-button {
+  border-color: var(--color-slate-700, currentcolor);
+}

@@ -93,7 +93,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Mobile Sidebar Overlay */}
       {isMobileSidebarOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-[60] lg:hidden">
           <div
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
             onClick={() => setIsMobileSidebarOpen(false)}

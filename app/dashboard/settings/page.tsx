@@ -100,8 +100,8 @@ export default function SettingsPage() {
     return (
       <div className="p-8">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-48" />
-          <div className="h-64 bg-gray-200 rounded" />
+          <div className="h-8 bg-gray-200 dark:bg-slate-700 rounded w-48" />
+          <div className="h-64 bg-gray-200 dark:bg-slate-700 rounded" />
         </div>
       </div>
     );
@@ -127,7 +127,7 @@ export default function SettingsPage() {
 
   return (
     <div className="p-8 max-w-4xl">
-      <h1 className="text-2xl font-bold mb-6">Settings</h1>
+      <h1 className="text-2xl font-bold mb-6 dark:text-white">Settings</h1>
 
       {/* Status messages */}
       {error && (
@@ -142,7 +142,7 @@ export default function SettingsPage() {
       )}
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-gray-200 dark:border-slate-700 mb-6">
         <nav className="flex gap-4">
           {tabs.map(tab => (
             <button
@@ -150,8 +150,8 @@ export default function SettingsPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white hover:border-gray-300 dark:hover:border-slate-600'
               }`}
             >
               {tab.label}
@@ -222,15 +222,15 @@ function DetectionSettings({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold mb-4">Score Thresholds</h3>
-        <p className="text-sm text-gray-600 mb-4">
+      <div className="bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-700 p-6">
+        <h3 className="font-semibold mb-4 dark:text-white">Score Thresholds</h3>
+        <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
           Configure the score thresholds for email classification. Higher scores indicate more suspicious emails.
         </p>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">
+            <label className="block text-sm font-medium mb-1 dark:text-slate-200">
               Suspicious Threshold ({values.suspiciousThreshold})
             </label>
             <input
@@ -241,11 +241,11 @@ function DetectionSettings({
               onChange={(e) => setValues({ ...values, suspiciousThreshold: Number(e.target.value) })}
               className="w-full"
             />
-            <p className="text-xs text-gray-500">Emails above this score will be marked as suspicious</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">Emails above this score will be marked as suspicious</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">
+            <label className="block text-sm font-medium mb-1 dark:text-slate-200">
               Quarantine Threshold ({values.quarantineThreshold})
             </label>
             <input
@@ -256,11 +256,11 @@ function DetectionSettings({
               onChange={(e) => setValues({ ...values, quarantineThreshold: Number(e.target.value) })}
               className="w-full"
             />
-            <p className="text-xs text-gray-500">Emails above this score will be quarantined</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">Emails above this score will be quarantined</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">
+            <label className="block text-sm font-medium mb-1 dark:text-slate-200">
               Block Threshold ({values.blockThreshold})
             </label>
             <input
@@ -271,13 +271,13 @@ function DetectionSettings({
               onChange={(e) => setValues({ ...values, blockThreshold: Number(e.target.value) })}
               className="w-full"
             />
-            <p className="text-xs text-gray-500">Emails above this score will be blocked</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">Emails above this score will be blocked</p>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold mb-4">AI Analysis</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-700 p-6">
+        <h3 className="font-semibold mb-4 dark:text-white">AI Analysis</h3>
 
         <div className="space-y-4">
           <label className="flex items-center gap-3">
@@ -287,18 +287,18 @@ function DetectionSettings({
               onChange={(e) => setValues({ ...values, enableLlmAnalysis: e.target.checked })}
               className="rounded"
             />
-            <span className="text-sm">Enable LLM analysis for uncertain emails</span>
+            <span className="text-sm dark:text-slate-200">Enable LLM analysis for uncertain emails</span>
           </label>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Daily LLM Request Limit</label>
+            <label className="block text-sm font-medium mb-1 dark:text-slate-200">Daily LLM Request Limit</label>
             <input
               type="number"
               min="0"
               max="1000"
               value={values.llmDailyLimit}
               onChange={(e) => setValues({ ...values, llmDailyLimit: Number(e.target.value) })}
-              className="border rounded px-3 py-2 w-32"
+              className="border dark:border-slate-600 rounded px-3 py-2 w-32 dark:bg-slate-700 dark:text-white"
             />
           </div>
         </div>
@@ -347,8 +347,8 @@ function NotificationSettings({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold mb-4">Email Notifications</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-700 p-6">
+        <h3 className="font-semibold mb-4 dark:text-white">Email Notifications</h3>
 
         <div className="space-y-4">
           <label className="flex items-center gap-3">
@@ -358,23 +358,23 @@ function NotificationSettings({
               onChange={(e) => setValues({ ...values, emailEnabled: e.target.checked })}
               className="rounded"
             />
-            <span className="text-sm">Enable email notifications</span>
+            <span className="text-sm dark:text-slate-200">Enable email notifications</span>
           </label>
 
           {values.emailEnabled && (
             <div>
-              <label className="block text-sm font-medium mb-2">Recipients</label>
+              <label className="block text-sm font-medium mb-2 dark:text-slate-200">Recipients</label>
               <div className="flex gap-2 mb-2">
                 <input
                   type="email"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   placeholder="email@example.com"
-                  className="border rounded px-3 py-2 flex-1"
+                  className="border dark:border-slate-600 rounded px-3 py-2 flex-1 dark:bg-slate-700 dark:text-white"
                 />
                 <button
                   onClick={addEmail}
-                  className="bg-gray-100 px-4 py-2 rounded hover:bg-gray-200"
+                  className="bg-gray-100 dark:bg-slate-700 dark:text-white px-4 py-2 rounded hover:bg-gray-200 dark:hover:bg-slate-600"
                 >
                   Add
                 </button>
@@ -383,7 +383,7 @@ function NotificationSettings({
                 {values.emailRecipients.map((email) => (
                   <span
                     key={email}
-                    className="bg-gray-100 px-3 py-1 rounded-full text-sm flex items-center gap-2"
+                    className="bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full text-sm dark:text-slate-200 flex items-center gap-2"
                   >
                     {email}
                     <button onClick={() => removeEmail(email)} className="text-gray-500 hover:text-red-500">
@@ -397,8 +397,8 @@ function NotificationSettings({
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold mb-4">Slack Notifications</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-700 p-6">
+        <h3 className="font-semibold mb-4 dark:text-white">Slack Notifications</h3>
 
         <div className="space-y-4">
           <label className="flex items-center gap-3">
@@ -408,33 +408,33 @@ function NotificationSettings({
               onChange={(e) => setValues({ ...values, slackEnabled: e.target.checked })}
               className="rounded"
             />
-            <span className="text-sm">Enable Slack notifications</span>
+            <span className="text-sm dark:text-slate-200">Enable Slack notifications</span>
           </label>
 
           {values.slackEnabled && (
             <div>
-              <label className="block text-sm font-medium mb-1">Webhook URL</label>
+              <label className="block text-sm font-medium mb-1 dark:text-slate-200">Webhook URL</label>
               <input
                 type="url"
                 value={values.slackWebhookUrl || ''}
                 onChange={(e) => setValues({ ...values, slackWebhookUrl: e.target.value })}
                 placeholder="https://hooks.slack.com/services/..."
-                className="border rounded px-3 py-2 w-full"
+                className="border dark:border-slate-600 rounded px-3 py-2 w-full dark:bg-slate-700 dark:text-white"
               />
             </div>
           )}
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold mb-4">Severity Filter</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-700 p-6">
+        <h3 className="font-semibold mb-4 dark:text-white">Severity Filter</h3>
 
         <div>
-          <label className="block text-sm font-medium mb-2">Minimum Severity</label>
+          <label className="block text-sm font-medium mb-2 dark:text-slate-200">Minimum Severity</label>
           <select
             value={values.severityThreshold}
             onChange={(e) => setValues({ ...values, severityThreshold: e.target.value as 'info' | 'warning' | 'critical' })}
-            className="border rounded px-3 py-2"
+            className="border dark:border-slate-600 rounded px-3 py-2 dark:bg-slate-700 dark:text-white"
           >
             <option value="info">All notifications</option>
             <option value="warning">Warning and critical only</option>
@@ -468,21 +468,21 @@ function QuarantineSettings({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold mb-4">Quarantine Behavior</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-700 p-6">
+        <h3 className="font-semibold mb-4 dark:text-white">Quarantine Behavior</h3>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Auto-delete after (days)</label>
+            <label className="block text-sm font-medium mb-1 dark:text-slate-200">Auto-delete after (days)</label>
             <input
               type="number"
               min="1"
               max="365"
               value={values.autoDeleteAfterDays}
               onChange={(e) => setValues({ ...values, autoDeleteAfterDays: Number(e.target.value) })}
-              className="border rounded px-3 py-2 w-32"
+              className="border dark:border-slate-600 rounded px-3 py-2 w-32 dark:bg-slate-700 dark:text-white"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
               Quarantined emails will be automatically deleted after this period
             </p>
           </div>
@@ -494,7 +494,7 @@ function QuarantineSettings({
               onChange={(e) => setValues({ ...values, allowUserRelease: e.target.checked })}
               className="rounded"
             />
-            <span className="text-sm">Allow users to release their own quarantined emails</span>
+            <span className="text-sm dark:text-slate-200">Allow users to release their own quarantined emails</span>
           </label>
 
           <label className="flex items-center gap-3">
@@ -504,7 +504,7 @@ function QuarantineSettings({
               onChange={(e) => setValues({ ...values, notifyOnRelease: e.target.checked })}
               className="rounded"
             />
-            <span className="text-sm">Send notification when emails are released from quarantine</span>
+            <span className="text-sm dark:text-slate-200">Send notification when emails are released from quarantine</span>
           </label>
         </div>
       </div>
@@ -541,8 +541,8 @@ function IntegrationSettings({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold mb-4">Email Providers</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-700 p-6">
+        <h3 className="font-semibold mb-4 dark:text-white">Email Providers</h3>
 
         <div className="space-y-4">
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
@@ -595,15 +595,15 @@ function IntegrationSettings({
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold mb-4">Webhook API</h3>
-        <p className="text-sm text-gray-600 mb-4">
+      <div className="bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-700 p-6">
+        <h3 className="font-semibold mb-4 dark:text-white">Webhook API</h3>
+        <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
           Use this token to authenticate webhook requests to the email processing API.
         </p>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Webhook Token</label>
+            <label className="block text-sm font-medium mb-1 dark:text-slate-200">Webhook Token</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -614,7 +614,7 @@ function IntegrationSettings({
               />
               <button
                 onClick={generateToken}
-                className="bg-gray-100 px-4 py-2 rounded hover:bg-gray-200"
+                className="bg-gray-100 dark:bg-slate-700 dark:text-white px-4 py-2 rounded hover:bg-gray-200 dark:hover:bg-slate-600"
               >
                 Generate
               </button>
@@ -626,7 +626,7 @@ function IntegrationSettings({
             <code className="text-sm text-gray-700 break-all">
               POST /api/webhooks/email
             </code>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-2">
               Include header: <code>X-Webhook-Token: {webhookToken || '<your-token>'}</code>
             </p>
           </div>
@@ -671,12 +671,12 @@ function DisplaySettings({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="font-semibold mb-4">Display Preferences</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-700 p-6">
+        <h3 className="font-semibold mb-4 dark:text-white">Display Preferences</h3>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Timezone</label>
+            <label className="block text-sm font-medium mb-1 dark:text-slate-200">Timezone</label>
             <select
               value={values.timezone}
               onChange={(e) => setValues({ ...values, timezone: e.target.value })}
@@ -691,11 +691,11 @@ function DisplaySettings({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Date Format</label>
+            <label className="block text-sm font-medium mb-1 dark:text-slate-200">Date Format</label>
             <select
               value={values.dateFormat}
               onChange={(e) => setValues({ ...values, dateFormat: e.target.value })}
-              className="border rounded px-3 py-2"
+              className="border dark:border-slate-600 rounded px-3 py-2 dark:bg-slate-700 dark:text-white"
             >
               <option value="YYYY-MM-DD">2024-01-15 (ISO)</option>
               <option value="MM/DD/YYYY">01/15/2024 (US)</option>
@@ -705,11 +705,11 @@ function DisplaySettings({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Items Per Page</label>
+            <label className="block text-sm font-medium mb-1 dark:text-slate-200">Items Per Page</label>
             <select
               value={values.itemsPerPage}
               onChange={(e) => setValues({ ...values, itemsPerPage: Number(e.target.value) })}
-              className="border rounded px-3 py-2"
+              className="border dark:border-slate-600 rounded px-3 py-2 dark:bg-slate-700 dark:text-white"
             >
               <option value={25}>25</option>
               <option value={50}>50</option>

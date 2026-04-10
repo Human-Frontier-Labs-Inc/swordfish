@@ -116,11 +116,11 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" data-testid="global-search">
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} />
+      <div className="fixed inset-0 bg-gray-500/75 dark:bg-black/60 transition-opacity" onClick={onClose} />
 
       {/* Dialog */}
-      <div className="flex min-h-full items-start justify-center p-4 pt-[15vh]">
-        <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black ring-opacity-5">
+      <div className="relative z-10 flex min-h-full items-start justify-center p-4 pt-[15vh]">
+        <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white dark:bg-slate-800 shadow-2xl ring-1 ring-black/5 dark:ring-white/10">
           {/* Search Input */}
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
@@ -133,17 +133,17 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                 setSelectedIndex(0);
               }}
               placeholder="Search commands..."
-              className="h-12 w-full border-0 bg-transparent pl-11 pr-4 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0 sm:text-sm"
+              className="h-12 w-full border-0 bg-transparent pl-11 pr-4 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-0 sm:text-sm"
               data-testid="global-search-input"
             />
           </div>
 
           {/* Results */}
           {flatCommands.length > 0 ? (
-            <div className="max-h-80 scroll-py-2 overflow-y-auto border-t border-gray-100 py-2">
+            <div className="max-h-80 scroll-py-2 overflow-y-auto border-t border-gray-100 dark:border-slate-700 py-2">
               {Object.entries(groupedCommands).map(([category, categoryCommands]) => (
                 <div key={category}>
-                  <h2 className="px-4 py-2 text-xs font-semibold text-gray-500">
+                  <h2 className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-slate-400">
                     {categoryLabels[category] || category}
                   </h2>
                   {categoryCommands.map((command) => {
@@ -159,14 +159,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                         }}
                         className={clsx(
                           'flex w-full cursor-pointer select-none items-center gap-3 px-4 py-2',
-                          isSelected ? 'bg-blue-600 text-white' : 'text-gray-900'
+                          isSelected ? 'bg-blue-600 text-white' : 'text-gray-900 dark:text-white'
                         )}
                         onMouseEnter={() => setSelectedIndex(globalIndex)}
                       >
                         <command.icon
                           className={clsx(
                             'h-5 w-5 flex-shrink-0',
-                            isSelected ? 'text-white' : 'text-gray-400'
+                            isSelected ? 'text-white' : 'text-gray-400 dark:text-slate-500'
                           )}
                         />
                         <div className="flex-1 text-left">
@@ -190,13 +190,13 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
               ))}
             </div>
           ) : (
-            <div className="border-t border-gray-100 px-4 py-14 text-center">
-              <p className="text-sm text-gray-500">No commands found.</p>
+            <div className="border-t border-gray-100 dark:border-slate-700 px-4 py-14 text-center">
+              <p className="text-sm text-gray-500 dark:text-slate-400">No commands found.</p>
             </div>
           )}
 
           {/* Footer */}
-          <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-4 py-2.5">
+          <div className="flex items-center justify-between border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 px-4 py-2.5">
             <div className="flex items-center gap-4 text-xs text-gray-500">
               <span className="flex items-center gap-1">
                 <kbd className="rounded bg-gray-200 px-1.5 py-0.5">↑↓</kbd> to navigate
