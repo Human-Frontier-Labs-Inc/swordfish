@@ -28,7 +28,7 @@ Full UX audit covering:
 
 | Severity | Count |
 |----------|-------|
-| P0 | 1 (fixed) |
+| P0 | 2 (both fixed) |
 | P1 | 3 |
 | P2 | 5 |
 
@@ -36,6 +36,7 @@ Full UX audit covering:
 
 ### P0 — Broken
 - [001 - Onboarding completion not persisting](./001-onboarding-completion-broken.md) **FIXED**
+- [010 - Policy creation fails (UUID mismatch)](./010-policy-creation-fails.md) **FIXED**
 
 ### P1 — Glitchy
 - [002 - Dark mode broken across app](./002-dark-mode-broken.md)

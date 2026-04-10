@@ -124,6 +124,12 @@ export async function POST(request: NextRequest) {
     // Convert string priority to integer for database storage
     const priorityInt = PRIORITY_TO_INT[priority as PolicyPriority] ?? 2; // default to medium (2)
 
+    // Look up user's internal UUID from Clerk ID for foreign key columns
+    const userRows = await sql`
+      SELECT id FROM users WHERE clerk_user_id = ${userId} LIMIT 1
+    `;
+    const userUuid = userRows.length > 0 ? userRows[0].id : null;
+
     const result = await sql`
       INSERT INTO policies (
         tenant_id, name, description, type, status, priority, rules, scope, created_by
@@ -136,7 +142,7 @@ export async function POST(request: NextRequest) {
         ${priorityInt},
         ${JSON.stringify(rules)}::jsonb,
         ${scope ? JSON.stringify(scope) : null}::jsonb,
-        ${userId}
+        ${userUuid}
       )
       RETURNING id
     `;

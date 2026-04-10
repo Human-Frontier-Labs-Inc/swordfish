@@ -1,0 +1,5 @@
+-- Migration: 008_fix_policies_user_columns
+-- No schema change needed. The policies table has created_by UUID and updated_by UUID
+-- columns with foreign keys to users(id). The bug was in the API code which passed
+-- Clerk string IDs directly instead of looking up the user's internal UUID first.
+-- Fixed in app/api/policies/route.ts.
