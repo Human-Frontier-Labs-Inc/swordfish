@@ -205,7 +205,7 @@ export default function PoliciesPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white" />
       </div>
     );
   }
@@ -213,7 +213,7 @@ export default function PoliciesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Policies</h1>
+        <h1 className="text-2xl font-bold dark:text-white">Policies</h1>
         <p className="text-muted-foreground">
           Configure detection rules, allowlists, and blocklists for your organization.
         </p>
@@ -225,7 +225,7 @@ export default function PoliciesPage() {
           className={`px-4 py-2 font-medium ${
             activeTab === 'policies'
               ? 'border-b-2 border-blue-500 text-blue-600'
-              : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
+              : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
           onClick={() => setActiveTab('policies')}
         >
@@ -235,7 +235,7 @@ export default function PoliciesPage() {
           className={`px-4 py-2 font-medium ${
             activeTab === 'allowlist'
               ? 'border-b-2 border-green-500 text-green-600'
-              : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
+              : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
           onClick={() => setActiveTab('allowlist')}
         >
@@ -245,7 +245,7 @@ export default function PoliciesPage() {
           className={`px-4 py-2 font-medium ${
             activeTab === 'blocklist'
               ? 'border-b-2 border-red-500 text-red-600'
-              : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
+              : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
           onClick={() => setActiveTab('blocklist')}
         >
@@ -289,7 +289,7 @@ export default function PoliciesPage() {
                     </label>
                     <select
                       id="policy-type"
-                      className="w-full rounded-md border border-gray-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-700 dark:text-white"
+                      className="w-full rounded-md border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white px-3 py-2"
                       value={newPolicy.type}
                       onChange={(e) => setNewPolicy({ ...newPolicy, type: e.target.value as PolicyType })}
                     >
@@ -306,7 +306,7 @@ export default function PoliciesPage() {
                     </label>
                     <select
                       id="policy-priority"
-                      className="w-full rounded-md border border-gray-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-700 dark:text-white"
+                      className="w-full rounded-md border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white px-3 py-2"
                       value={newPolicy.priority}
                       onChange={(e) => setNewPolicy({ ...newPolicy, priority: e.target.value as PolicyPriority })}
                     >
@@ -405,7 +405,7 @@ export default function PoliciesPage() {
               <div className="mb-6 p-4 bg-gray-50 dark:bg-slate-900 rounded-lg space-y-4">
                 <div className="grid grid-cols-4 gap-4">
                   <select
-                    className="col-span-1 rounded-md border border-gray-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-700 dark:text-white"
+                    className="col-span-1 rounded-md border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white px-3 py-2"
                     value={newEntry.entryType}
                     onChange={(e) =>
                       setNewEntry({ ...newEntry, entryType: e.target.value as EntryType })
@@ -453,7 +453,7 @@ export default function PoliciesPage() {
             ) : (
               <div className="space-y-2">
                 {/* Header */}
-                <div className="grid grid-cols-12 gap-4 p-3 bg-gray-100 dark:bg-slate-900 rounded-lg font-medium text-sm">
+                <div className="grid grid-cols-12 gap-4 p-3 bg-gray-100 dark:bg-slate-900 rounded-lg font-medium text-sm dark:text-slate-200">
                   <div className="col-span-2">Type</div>
                   <div className="col-span-4">Value</div>
                   <div className="col-span-3">Reason</div>

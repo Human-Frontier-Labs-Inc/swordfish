@@ -212,7 +212,7 @@ export default function IntegrationsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white" />
       </div>
     );
   }
@@ -220,7 +220,7 @@ export default function IntegrationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Email Integrations</h1>
+        <h1 className="text-2xl font-bold dark:text-white">Email Integrations</h1>
         <p className="text-muted-foreground">
           Connect your email providers to enable threat detection and protection.
         </p>
@@ -228,20 +228,20 @@ export default function IntegrationsPage() {
 
       {/* Status Messages */}
       {successMessage && (
-        <div className="bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-400 px-4 py-3 rounded-lg">
+        <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-400 px-4 py-3 rounded-lg">
           ✓ {successMessage}
         </div>
       )}
       {errorMessage && (
-        <div className="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-400 px-4 py-3 rounded-lg">
+        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-400 px-4 py-3 rounded-lg">
           ✕ {errorMessage}
         </div>
       )}
       {syncMessage && (
         <div className={`px-4 py-3 rounded-lg ${
           syncMessage.type === 'success'
-            ? 'bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-400'
-            : 'bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-400'
+            ? 'bg-green-50 border border-green-200 text-green-800 dark:bg-green-900/30 dark:border-green-800 dark:text-green-400'
+            : 'bg-red-50 border border-red-200 text-red-800 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400'
         }`}>
           {syncMessage.type === 'success' ? '✓' : '✕'} {syncMessage.message}
         </div>
@@ -291,7 +291,7 @@ export default function IntegrationsPage() {
             <div className="space-y-4">
               <div className="bg-gray-50 dark:bg-slate-900 p-4 rounded-lg">
                 <p className="text-sm text-muted-foreground mb-2">Webhook Endpoint:</p>
-                <code className="text-xs bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded break-all">
+                <code className="text-xs bg-gray-100 dark:bg-slate-700 dark:text-slate-200 px-2 py-1 rounded break-all">
                   {typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/smtp` : '/api/webhooks/smtp'}
                 </code>
               </div>
@@ -463,7 +463,7 @@ function IntegrationCard({
                     {formatDate(integration.lastSyncAt)}
                   </p>
                 )}
-                <div className="bg-orange-50 dark:bg-orange-950/50 border border-orange-200 dark:border-orange-800 rounded-lg p-3 mt-2">
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mt-2">
                   <p className="text-sm text-orange-800 font-medium">
                     {isTokenError ? '🔐 Authentication Expired' : '⚠️ Connection Error'}
                   </p>

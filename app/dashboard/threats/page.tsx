@@ -148,7 +148,7 @@ export default function ThreatsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow dark:shadow-slate-900/50 p-4">
         <div className="flex items-center gap-4">
           <span className="text-sm font-medium text-gray-700 dark:text-slate-200">Filter:</span>
           <div className="flex gap-2">
@@ -159,7 +159,7 @@ export default function ThreatsPage() {
                 className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                   filter === status
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:bg-gray-200 dark:hover:bg-slate-600'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
                 }`}
               >
                 {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -171,13 +171,13 @@ export default function ThreatsPage() {
 
       {/* Error State */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
           <p className="text-red-800 dark:text-red-400">{error}</p>
         </div>
       )}
 
       {/* Threats Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-lg shadow overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow dark:shadow-slate-900/50 overflow-hidden">
         {threats.length === 0 ? (
           <div className="p-8 text-center">
             <ShieldCheckIcon className="mx-auto h-12 w-12 text-green-500" />
