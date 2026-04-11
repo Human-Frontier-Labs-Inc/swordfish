@@ -131,12 +131,18 @@ export default function SettingsPage() {
 
       {/* Status messages */}
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+        <div
+          role="alert"
+          className="mb-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-700 dark:text-red-300"
+        >
           {error}
         </div>
       )}
       {success && (
-        <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-4 text-green-700">
+        <div
+          role="status"
+          className="mb-4 bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 rounded-lg p-4 text-green-700 dark:text-green-300"
+        >
           {success}
         </div>
       )}
