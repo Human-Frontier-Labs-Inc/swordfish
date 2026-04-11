@@ -193,7 +193,7 @@ export default function ReportsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white" />
       </div>
     );
   }
@@ -201,21 +201,21 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Reports</h1>
+        <h1 className="text-2xl font-bold dark:text-white">Reports</h1>
         <p className="text-muted-foreground">
           View analytics, export data, and configure scheduled reports.
         </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b">
+      <div className="flex gap-2 border-b dark:border-slate-700">
         {(['overview', 'scheduled', 'export'] as const).map((tab) => (
           <button
             key={tab}
             className={`px-4 py-2 font-medium capitalize ${
               activeTab === tab
                 ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
+                : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
             onClick={() => setActiveTab(tab)}
           >
@@ -263,23 +263,23 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-5">
-                <div className="text-center p-4 bg-green-50 rounded-lg">
+                <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
                   <div className="text-2xl font-bold text-green-600">{performance.policyEffectiveness.allowlistHits}</div>
                   <p className="text-sm text-muted-foreground">Allowlist Hits</p>
                 </div>
-                <div className="text-center p-4 bg-red-50 rounded-lg">
+                <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
                   <div className="text-2xl font-bold text-red-600">{performance.policyEffectiveness.blocklistHits}</div>
                   <p className="text-sm text-muted-foreground">Blocklist Hits</p>
                 </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                   <div className="text-2xl font-bold text-blue-600">{performance.policyEffectiveness.customPolicyHits}</div>
                   <p className="text-sm text-muted-foreground">Policy Matches</p>
                 </div>
-                <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
                   <div className="text-2xl font-bold text-yellow-600">{performance.policyEffectiveness.falsePositives}</div>
                   <p className="text-sm text-muted-foreground">False Positives</p>
                 </div>
-                <div className="text-center p-4 bg-orange-50 rounded-lg">
+                <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
                   <div className="text-2xl font-bold text-orange-600">{performance.policyEffectiveness.falseNegatives}</div>
                   <p className="text-sm text-muted-foreground">False Negatives</p>
                 </div>
@@ -358,9 +358,9 @@ export default function ReportsPage() {
           <CardContent>
             {/* Create Form */}
             {showCreateForm && (
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+              <div className="mb-6 p-4 bg-gray-50 dark:bg-slate-900 rounded-lg space-y-4">
                 {createError && (
-                  <div className="bg-red-50 text-red-700 px-4 py-3 rounded text-sm">
+                  <div className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 px-4 py-3 rounded text-sm">
                     {createError}
                   </div>
                 )}
@@ -378,7 +378,7 @@ export default function ReportsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <select
-                    className="rounded-md border border-gray-300 px-3 py-2"
+                    className="rounded-md border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white px-3 py-2"
                     value={newReport.type}
                     onChange={(e) => setNewReport({ ...newReport, type: e.target.value as ScheduledReport['type'] })}
                   >
@@ -387,7 +387,7 @@ export default function ReportsPage() {
                     <option value="audit_report">Audit Report</option>
                   </select>
                   <select
-                    className="rounded-md border border-gray-300 px-3 py-2"
+                    className="rounded-md border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white px-3 py-2"
                     value={newReport.frequency}
                     onChange={(e) => setNewReport({ ...newReport, frequency: e.target.value as ScheduledReport['frequency'] })}
                   >
@@ -414,10 +414,10 @@ export default function ReportsPage() {
             ) : (
               <div className="space-y-4">
                 {reports.map((report) => (
-                  <div key={report.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div key={report.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-900 rounded-lg">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-medium">{report.name}</h3>
+                        <h3 className="font-medium dark:text-white">{report.name}</h3>
                         {getFrequencyBadge(report.frequency)}
                         <Badge variant={report.enabled ? 'default' : 'secondary'}>
                           {report.enabled ? 'Active' : 'Paused'}

@@ -205,7 +205,7 @@ export default function PoliciesPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white" />
       </div>
     );
   }
@@ -213,19 +213,19 @@ export default function PoliciesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Policies</h1>
+        <h1 className="text-2xl font-bold dark:text-white">Policies</h1>
         <p className="text-muted-foreground">
           Configure detection rules, allowlists, and blocklists for your organization.
         </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b">
+      <div className="flex gap-2 border-b dark:border-slate-700">
         <button
           className={`px-4 py-2 font-medium ${
             activeTab === 'policies'
               ? 'border-b-2 border-blue-500 text-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
+              : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
           onClick={() => setActiveTab('policies')}
         >
@@ -235,7 +235,7 @@ export default function PoliciesPage() {
           className={`px-4 py-2 font-medium ${
             activeTab === 'allowlist'
               ? 'border-b-2 border-green-500 text-green-600'
-              : 'text-gray-500 hover:text-gray-700'
+              : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
           onClick={() => setActiveTab('allowlist')}
         >
@@ -245,7 +245,7 @@ export default function PoliciesPage() {
           className={`px-4 py-2 font-medium ${
             activeTab === 'blocklist'
               ? 'border-b-2 border-red-500 text-red-600'
-              : 'text-gray-500 hover:text-gray-700'
+              : 'text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
           onClick={() => setActiveTab('blocklist')}
         >
@@ -270,10 +270,10 @@ export default function PoliciesPage() {
           <CardContent>
             {/* Policy Creation Form */}
             {showPolicyForm && (
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+              <div className="mb-6 p-4 bg-gray-50 dark:bg-slate-900 rounded-lg space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label htmlFor="policy-name" className="text-sm font-medium">
+                    <label htmlFor="policy-name" className="text-sm font-medium dark:text-slate-200">
                       Policy Name *
                     </label>
                     <Input
@@ -284,12 +284,12 @@ export default function PoliciesPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label htmlFor="policy-type" className="text-sm font-medium">
+                    <label htmlFor="policy-type" className="text-sm font-medium dark:text-slate-200">
                       Type
                     </label>
                     <select
                       id="policy-type"
-                      className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      className="w-full rounded-md border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white px-3 py-2"
                       value={newPolicy.type}
                       onChange={(e) => setNewPolicy({ ...newPolicy, type: e.target.value as PolicyType })}
                     >
@@ -301,12 +301,12 @@ export default function PoliciesPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label htmlFor="policy-priority" className="text-sm font-medium">
+                    <label htmlFor="policy-priority" className="text-sm font-medium dark:text-slate-200">
                       Priority
                     </label>
                     <select
                       id="policy-priority"
-                      className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      className="w-full rounded-md border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white px-3 py-2"
                       value={newPolicy.priority}
                       onChange={(e) => setNewPolicy({ ...newPolicy, priority: e.target.value as PolicyPriority })}
                     >
@@ -317,7 +317,7 @@ export default function PoliciesPage() {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label htmlFor="policy-description" className="text-sm font-medium">
+                    <label htmlFor="policy-description" className="text-sm font-medium dark:text-slate-200">
                       Description
                     </label>
                     <Input
@@ -352,11 +352,11 @@ export default function PoliciesPage() {
                 {policies.map((policy) => (
                   <div
                     key={policy.id}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-900 rounded-lg"
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-medium">{policy.name}</h3>
+                        <h3 className="font-medium dark:text-white">{policy.name}</h3>
                         {getStatusBadge(policy.status)}
                         {getPriorityBadge(policy.priority)}
                       </div>
@@ -402,10 +402,10 @@ export default function PoliciesPage() {
           <CardContent>
             {/* Add Form */}
             {showAddForm && (
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+              <div className="mb-6 p-4 bg-gray-50 dark:bg-slate-900 rounded-lg space-y-4">
                 <div className="grid grid-cols-4 gap-4">
                   <select
-                    className="col-span-1 rounded-md border border-gray-300 px-3 py-2"
+                    className="col-span-1 rounded-md border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white px-3 py-2"
                     value={newEntry.entryType}
                     onChange={(e) =>
                       setNewEntry({ ...newEntry, entryType: e.target.value as EntryType })
@@ -453,7 +453,7 @@ export default function PoliciesPage() {
             ) : (
               <div className="space-y-2">
                 {/* Header */}
-                <div className="grid grid-cols-12 gap-4 p-3 bg-gray-100 rounded-lg font-medium text-sm">
+                <div className="grid grid-cols-12 gap-4 p-3 bg-gray-100 dark:bg-slate-900 rounded-lg font-medium text-sm dark:text-slate-200">
                   <div className="col-span-2">Type</div>
                   <div className="col-span-4">Value</div>
                   <div className="col-span-3">Reason</div>
@@ -465,7 +465,7 @@ export default function PoliciesPage() {
                 {listEntries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="grid grid-cols-12 gap-4 p-3 rounded-lg border hover:bg-gray-50 items-center"
+                    className="grid grid-cols-12 gap-4 p-3 rounded-lg border dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 items-center"
                   >
                     <div className="col-span-2">
                       <Badge variant="outline" className="capitalize">

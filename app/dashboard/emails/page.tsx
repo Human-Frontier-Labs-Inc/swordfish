@@ -176,11 +176,11 @@ export default function ScannedEmailsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Scanned Emails</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Scanned Emails</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
             All emails analyzed by SwordPhish ({total} total)
             {lastUpdated && (
-              <span className="ml-2 text-xs text-gray-400">
+              <span className="ml-2 text-xs text-gray-400 dark:text-slate-500">
                 Last updated: {lastUpdated.toLocaleTimeString()}
               </span>
             )}
@@ -198,14 +198,14 @@ export default function ScannedEmailsPage() {
               />
               <div className={clsx(
                 'block w-10 h-6 rounded-full transition-colors',
-                autoRefresh ? 'bg-green-500' : 'bg-gray-300'
+                autoRefresh ? 'bg-green-500' : 'bg-gray-300 dark:bg-slate-600'
               )} />
               <div className={clsx(
                 'absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform',
                 autoRefresh ? 'translate-x-4' : 'translate-x-0'
               )} />
             </div>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-gray-600 dark:text-slate-400">
               {autoRefresh ? (
                 <span className="flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
@@ -225,7 +225,7 @@ export default function ScannedEmailsPage() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 dark:border-slate-700">
         <nav className="-mb-px flex space-x-8">
           {[
             { key: 'all', label: 'All', count: total },
@@ -241,7 +241,7 @@ export default function ScannedEmailsPage() {
                 'whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium',
                 filter === tab.key
                   ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200'
               )}
             >
               {tab.label}
@@ -249,8 +249,8 @@ export default function ScannedEmailsPage() {
                 className={clsx(
                   'ml-2 rounded-full px-2.5 py-0.5 text-xs font-medium',
                   filter === tab.key
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'bg-gray-100 text-gray-900'
+                    ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                    : 'bg-gray-100 text-gray-900 dark:bg-slate-700 dark:text-slate-200'
                 )}
               >
                 {tab.count}
@@ -261,29 +261,29 @@ export default function ScannedEmailsPage() {
       </div>
 
       {/* Email List */}
-      <div className="overflow-hidden rounded-lg bg-white shadow">
+      <div className="overflow-hidden rounded-lg bg-white shadow dark:bg-slate-800 dark:shadow-slate-900/50">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
           </div>
         ) : emails.length === 0 ? (
           <div className="px-6 py-12 text-center">
-            <MailIcon className="mx-auto h-12 w-12 text-gray-300" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No emails found</h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <MailIcon className="mx-auto h-12 w-12 text-gray-300 dark:text-slate-600" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No emails found</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
               {filter === 'all'
                 ? 'No emails have been scanned yet. Click "Sync Now" on the Integrations page.'
                 : `No emails with verdict "${filter}" found.`}
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-gray-200 dark:divide-slate-700">
             {emails.map((email) => {
               const config = verdictConfig[email.verdict] || verdictConfig.pass;
               return (
                 <div
                   key={email.id}
-                  className="px-6 py-4 hover:bg-gray-50 cursor-pointer"
+                  className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer"
                   onClick={() => setSelectedEmail(email)}
                 >
                   <div className="flex items-start justify-between">
@@ -310,19 +310,19 @@ export default function ScannedEmailsPage() {
                           Score: {email.score}
                         </span>
                       </div>
-                      <p className="mt-1 truncate font-medium text-gray-900">
+                      <p className="mt-1 truncate font-medium text-gray-900 dark:text-white">
                         {email.subject}
                       </p>
-                      <p className="mt-1 truncate text-sm text-gray-500">
+                      <p className="mt-1 truncate text-sm text-gray-500 dark:text-slate-400">
                         From: {email.from}
                       </p>
                       {email.signalCount > 0 && (
-                        <p className="mt-1 text-sm text-gray-500">
+                        <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                           {email.primarySignal}
                         </p>
                       )}
                     </div>
-                    <div className="ml-4 text-right text-xs text-gray-400">
+                    <div className="ml-4 text-right text-xs text-gray-400 dark:text-slate-500">
                       <div>{formatDate(email.receivedAt)}</div>
                       <div className="mt-1">{email.processingTimeMs}ms</div>
                     </div>
@@ -340,19 +340,19 @@ export default function ScannedEmailsPage() {
           <div className="absolute inset-0 bg-gray-500 bg-opacity-75" onClick={() => setSelectedEmail(null)} />
           <div className="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-10">
             <div className="pointer-events-auto w-screen max-w-lg">
-              <div className="flex h-full flex-col overflow-y-scroll bg-white shadow-xl">
+              <div className="flex h-full flex-col overflow-y-scroll bg-white shadow-xl dark:bg-slate-800">
                 {/* Header */}
-                <div className="bg-gray-50 px-4 py-6 sm:px-6">
+                <div className="bg-gray-50 dark:bg-slate-900 px-4 py-6 sm:px-6">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h2 className="text-lg font-medium text-gray-900">Email Details</h2>
-                      <p className="mt-1 text-sm text-gray-500">
+                      <h2 className="text-lg font-medium text-gray-900 dark:text-white">Email Details</h2>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                         Analysis results and metadata
                       </p>
                     </div>
                     <button
                       onClick={() => setSelectedEmail(null)}
-                      className="rounded-md bg-white text-gray-400 hover:text-gray-500"
+                      className="rounded-md bg-white dark:bg-slate-800 text-gray-400 hover:text-gray-500 dark:text-slate-400 dark:hover:text-slate-300"
                     >
                       <span className="sr-only">Close</span>
                       <XIcon className="h-6 w-6" />
@@ -365,7 +365,7 @@ export default function ScannedEmailsPage() {
                   <dl className="space-y-6">
                     {/* Verdict */}
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Verdict</dt>
+                      <dt className="text-sm font-medium text-gray-500 dark:text-slate-400">Verdict</dt>
                       <dd className="mt-1 flex items-center gap-2">
                         <span
                           className={clsx(
@@ -376,27 +376,27 @@ export default function ScannedEmailsPage() {
                         >
                           {verdictConfig[selectedEmail.verdict].icon} {verdictConfig[selectedEmail.verdict].label}
                         </span>
-                        <span className="text-sm text-gray-500">Score: {selectedEmail.score}/100</span>
+                        <span className="text-sm text-gray-500 dark:text-slate-400">Score: {selectedEmail.score}/100</span>
                       </dd>
                     </div>
 
                     {/* Subject */}
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Subject</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{selectedEmail.subject}</dd>
+                      <dt className="text-sm font-medium text-gray-500 dark:text-slate-400">Subject</dt>
+                      <dd className="mt-1 text-sm text-gray-900 dark:text-white">{selectedEmail.subject}</dd>
                     </div>
 
                     {/* From */}
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">From</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{selectedEmail.from}</dd>
+                      <dt className="text-sm font-medium text-gray-500 dark:text-slate-400">From</dt>
+                      <dd className="mt-1 text-sm text-gray-900 dark:text-white">{selectedEmail.from}</dd>
                     </div>
 
                     {/* To */}
                     {selectedEmail.to && selectedEmail.to.length > 0 && (
                       <div>
-                        <dt className="text-sm font-medium text-gray-500">To</dt>
-                        <dd className="mt-1 text-sm text-gray-900">
+                        <dt className="text-sm font-medium text-gray-500 dark:text-slate-400">To</dt>
+                        <dd className="mt-1 text-sm text-gray-900 dark:text-white">
                           {selectedEmail.to.map(t => t.displayName ? `${t.displayName} <${t.address}>` : t.address).join(', ')}
                         </dd>
                       </div>
@@ -404,19 +404,19 @@ export default function ScannedEmailsPage() {
 
                     {/* Received */}
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Received</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{formatDate(selectedEmail.receivedAt)}</dd>
+                      <dt className="text-sm font-medium text-gray-500 dark:text-slate-400">Received</dt>
+                      <dd className="mt-1 text-sm text-gray-900 dark:text-white">{formatDate(selectedEmail.receivedAt)}</dd>
                     </div>
 
                     {/* Message ID */}
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Message ID</dt>
-                      <dd className="mt-1 text-sm text-gray-500 break-all font-mono text-xs">{selectedEmail.messageId}</dd>
+                      <dt className="text-sm font-medium text-gray-500 dark:text-slate-400">Message ID</dt>
+                      <dd className="mt-1 text-sm text-gray-500 dark:text-slate-400 break-all font-mono text-xs">{selectedEmail.messageId}</dd>
                     </div>
 
                     {/* Signals */}
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Detection Signals ({selectedEmail.signalCount})</dt>
+                      <dt className="text-sm font-medium text-gray-500 dark:text-slate-400">Detection Signals ({selectedEmail.signalCount})</dt>
                       <dd className="mt-2">
                         {selectedEmail.signals.length === 0 ? (
                           <p className="text-sm text-green-600">No security signals detected</p>
@@ -427,9 +427,9 @@ export default function ScannedEmailsPage() {
                                 key={idx}
                                 className={clsx(
                                   'rounded-md px-3 py-2 text-sm',
-                                  signal.severity === 'critical' ? 'bg-red-50 text-red-700' :
-                                  signal.severity === 'warning' ? 'bg-yellow-50 text-yellow-700' :
-                                  'bg-gray-50 text-gray-700'
+                                  signal.severity === 'critical' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                  signal.severity === 'warning' ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                                  'bg-gray-50 text-gray-700 dark:bg-slate-700 dark:text-slate-300'
                                 )}
                               >
                                 <div className="font-medium capitalize">{signal.type.replace(/_/g, ' ')}</div>
@@ -443,22 +443,22 @@ export default function ScannedEmailsPage() {
 
                     {/* Processing */}
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Processing</dt>
-                      <dd className="mt-1 text-sm text-gray-500">
+                      <dt className="text-sm font-medium text-gray-500 dark:text-slate-400">Processing</dt>
+                      <dd className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                         Analyzed in {selectedEmail.processingTimeMs}ms • Confidence: {Math.round(selectedEmail.confidence * 100)}%
                       </dd>
                     </div>
 
                     {/* Scanned At */}
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Scanned At</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{formatDate(selectedEmail.scannedAt)}</dd>
+                      <dt className="text-sm font-medium text-gray-500 dark:text-slate-400">Scanned At</dt>
+                      <dd className="mt-1 text-sm text-gray-900 dark:text-white">{formatDate(selectedEmail.scannedAt)}</dd>
                     </div>
 
                     {/* Actions for blocked/quarantined emails */}
                     {selectedEmail.threatId && selectedEmail.threatStatus === 'quarantined' && (
-                      <div className="border-t pt-6">
-                        <dt className="text-sm font-medium text-gray-500 mb-3">Actions</dt>
+                      <div className="border-t dark:border-slate-700 pt-6">
+                        <dt className="text-sm font-medium text-gray-500 dark:text-slate-400 mb-3">Actions</dt>
                         <dd className="flex gap-3">
                           <button
                             onClick={() => releaseEmail(selectedEmail.threatId!)}
@@ -480,7 +480,7 @@ export default function ScannedEmailsPage() {
                             ✕ Delete
                           </button>
                         </dd>
-                        <p className="mt-2 text-xs text-gray-500">
+                        <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">
                           Release will move this email back to your inbox. Delete will permanently remove it.
                         </p>
                       </div>
@@ -488,8 +488,8 @@ export default function ScannedEmailsPage() {
 
                     {/* Show status if already released or deleted */}
                     {selectedEmail.threatId && selectedEmail.threatStatus === 'released' && (
-                      <div className="border-t pt-6">
-                        <div className="rounded-md bg-green-50 p-3">
+                      <div className="border-t dark:border-slate-700 pt-6">
+                        <div className="rounded-md bg-green-50 dark:bg-green-900/30 p-3">
                           <p className="text-sm text-green-800">
                             ✓ This email has been released to your inbox
                           </p>
@@ -498,9 +498,9 @@ export default function ScannedEmailsPage() {
                     )}
 
                     {selectedEmail.threatId && selectedEmail.threatStatus === 'deleted' && (
-                      <div className="border-t pt-6">
-                        <div className="rounded-md bg-gray-50 p-3">
-                          <p className="text-sm text-gray-600">
+                      <div className="border-t dark:border-slate-700 pt-6">
+                        <div className="rounded-md bg-gray-50 dark:bg-slate-700 p-3">
+                          <p className="text-sm text-gray-600 dark:text-slate-400">
                             This email has been deleted
                           </p>
                         </div>
