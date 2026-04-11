@@ -54,6 +54,50 @@ function buildMimeMessage(email: TestGmailEmail, to: string): string {
   return parts.join('\r\n');
 }
 
+export async function GET() {
+  const { userId, orgId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const tenantId = orgId || `personal_${userId}`;
+
+  try {
+    const accessToken = await getAccessToken(tenantId, 'gmail');
+
+    // List recent inbox messages
+    const listRes = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=10',
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const listData = await listRes.json();
+
+    // Get subject + labels for each
+    const messages = [];
+    for (const msg of (listData.messages || []).slice(0, 10)) {
+      const detail = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      ).then(r => r.json());
+
+      const subject = detail.payload?.headers?.find((h: Record<string, string>) => h.name === 'Subject')?.value || '(no subject)';
+      const from = detail.payload?.headers?.find((h: Record<string, string>) => h.name === 'From')?.value || '(unknown)';
+
+      messages.push({
+        id: msg.id,
+        subject,
+        from,
+        labels: detail.labelIds,
+        internalDate: new Date(parseInt(detail.internalDate)).toISOString(),
+      });
+    }
+
+    return NextResponse.json({ count: listData.resultSizeEstimate, messages });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   const { userId, orgId } = await auth();
   if (!userId) {
