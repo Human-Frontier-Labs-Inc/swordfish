@@ -128,7 +128,28 @@ export async function runDeterministicAnalysis(
   const urlIntelligenceSignals = await analyzeUrlsWithIntelligence(urls);
   signals.push(...urlIntelligenceSignals);
 
-  // 7. Deduplicate URL signals to prevent score inflation (Phase 2)
+  // 7. Check for complete lack of authentication combined with URLs
+  if (
+    authResults.spf.result === 'none' &&
+    authResults.dkim.result === 'none' &&
+    authResults.dmarc.result === 'none' &&
+    urls.length > 0
+  ) {
+    signals.push({
+      type: 'no_authentication',
+      severity: 'warning',
+      score: 20,
+      detail: 'Email has no authentication (SPF/DKIM/DMARC all absent) and contains links — sender did not attempt any email authentication',
+      metadata: {
+        spf: authResults.spf.result,
+        dkim: authResults.dkim.result,
+        dmarc: authResults.dmarc.result,
+        urlCount: urls.length,
+      },
+    });
+  }
+
+  // 8. Deduplicate URL signals to prevent score inflation (Phase 2)
   const deduplicatedSignals = deduplicateURLSignals(signals);
 
   // Calculate overall score (0-100)

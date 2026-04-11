@@ -133,6 +133,26 @@ export async function classifyEmail(email: ParsedEmail): Promise<MLPrediction> {
     contentScore * weights.content +
     behavioralScore * weights.behavioral;
 
+  // Escalate URL shortener signal when combined with other suspicious signals.
+  // A shortener alone is only a warning, but shortener + multiple other warning/critical
+  // signals indicates a coordinated attack pattern (e.g., unknown sender using a
+  // shortened link with urgency language).
+  const shortenerSignalIndex = signals.findIndex(s => s.type === 'ml_shortener');
+  if (shortenerSignalIndex !== -1) {
+    const otherSuspiciousSignals = signals.filter(
+      (s, i) => i !== shortenerSignalIndex &&
+        (s.severity === 'warning' || s.severity === 'critical')
+    );
+    if (otherSuspiciousSignals.length >= 2) {
+      signals[shortenerSignalIndex] = {
+        ...signals[shortenerSignalIndex],
+        severity: 'critical',
+        score: signals[shortenerSignalIndex].score + 20,
+        detail: `${signals[shortenerSignalIndex].detail} — escalated: combined with ${otherSuspiciousSignals.length} other suspicious signals`,
+      };
+    }
+  }
+
   // Normalize to 0-100
   const score = Math.min(100, Math.max(0, Math.round(rawScore)));
 
