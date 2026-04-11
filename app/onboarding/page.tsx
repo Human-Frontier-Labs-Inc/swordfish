@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser, useOrganization, useOrganizationList } from '@clerk/nextjs';
 import { Building2, Users, Shield, Mail, Check } from 'lucide-react';
+import Link from 'next/link';
 
 interface OnboardingStep {
   id: number;
@@ -630,38 +631,38 @@ export default function OnboardingPage() {
                 <ul className="space-y-2 text-sm text-slate-300">
                   <li className="flex items-center gap-2">
                     <span className="text-purple-400">&#8594;</span>
-                    Access your MSP admin dashboard
+                    <Link href="/admin" className="text-purple-400 hover:text-purple-300 hover:underline transition-colors">Access your MSP admin dashboard</Link>
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="text-purple-400">&#8594;</span>
-                    Add your first client organization
+                    <Link href="/admin/clients" className="text-purple-400 hover:text-purple-300 hover:underline transition-colors">Add your first client organization</Link>
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="text-purple-400">&#8594;</span>
-                    Configure default security policies
+                    <Link href="/admin/policies" className="text-purple-400 hover:text-purple-300 hover:underline transition-colors">Configure default security policies</Link>
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="text-purple-400">&#8594;</span>
-                    View cross-client analytics
+                    <Link href="/admin/analytics" className="text-purple-400 hover:text-purple-300 hover:underline transition-colors">View cross-client analytics</Link>
                   </li>
                 </ul>
               ) : (
                 <ul className="space-y-2 text-sm text-slate-300">
                   <li className="flex items-center gap-2">
                     <span className="text-blue-400">&#8594;</span>
-                    View your security dashboard
+                    <Link href="/dashboard" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors">View your security dashboard</Link>
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="text-blue-400">&#8594;</span>
-                    Review detected threats
+                    <Link href="/dashboard/threats" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors">Review detected threats</Link>
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="text-blue-400">&#8594;</span>
-                    Configure advanced policies
+                    <Link href="/dashboard/policies" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors">Configure advanced policies</Link>
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="text-blue-400">&#8594;</span>
-                    Add team members
+                    <Link href="/dashboard/settings" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors">Add team members</Link>
                   </li>
                 </ul>
               )}

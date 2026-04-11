@@ -117,7 +117,7 @@ export function StatCard({
           </div>
           <div className="ml-5 w-0 flex-1">
             <dl>
-              <dt className="truncate text-sm font-medium text-slate-500 dark:text-slate-400">{title}</dt>
+              <dt className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</dt>
               <dd className="flex items-baseline">
                 <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
                   {displayValue}
