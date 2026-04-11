@@ -210,14 +210,14 @@ export default function QuarantinePage() {
       )}
 
       {/* Status Filter Tabs */}
-      <div className="flex gap-2 border-b">
+      <div className="flex gap-2 border-b dark:border-slate-700">
         {(['quarantined', 'released', 'deleted', 'all'] as const).map((status) => (
           <button
             key={status}
             className={`px-4 py-2 font-medium capitalize ${
               statusFilter === status
                 ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
+                : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
             }`}
             onClick={() => {
               setStatusFilter(status);
@@ -281,7 +281,7 @@ export default function QuarantinePage() {
           ) : (
             <div className="space-y-2">
               {/* Header */}
-              <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg font-medium text-sm">
+              <div className="flex items-center gap-4 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg font-medium text-sm">
                 <input
                   type="checkbox"
                   checked={selectedThreats.size === threats.length && threats.length > 0}
@@ -303,7 +303,7 @@ export default function QuarantinePage() {
                 <div
                   key={threat.id}
                   className={`flex items-center gap-4 p-3 rounded-lg border ${
-                    selectedThreats.has(threat.id) ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
+                    selectedThreats.has(threat.id) ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800' : 'hover:bg-gray-50 dark:hover:bg-slate-700'
                   }`}
                 >
                   <input

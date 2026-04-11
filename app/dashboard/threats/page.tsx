@@ -134,8 +134,8 @@ export default function ThreatsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Threats</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Threats</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
             View and manage detected email threats
           </p>
         </div>
@@ -148,9 +148,9 @@ export default function ThreatsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4">
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
         <div className="flex items-center gap-4">
-          <span className="text-sm font-medium text-gray-700">Filter:</span>
+          <span className="text-sm font-medium text-gray-700 dark:text-slate-200">Filter:</span>
           <div className="flex gap-2">
             {(['all', 'quarantined', 'released', 'deleted'] as const).map((status) => (
               <button
@@ -159,7 +159,7 @@ export default function ThreatsPage() {
                 className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                   filter === status
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:bg-gray-200 dark:hover:bg-slate-600'
                 }`}
               >
                 {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -171,55 +171,55 @@ export default function ThreatsPage() {
 
       {/* Error State */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">{error}</p>
+        <div className="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <p className="text-red-800 dark:text-red-400">{error}</p>
         </div>
       )}
 
       {/* Threats Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow overflow-hidden">
         {threats.length === 0 ? (
           <div className="p-8 text-center">
             <ShieldCheckIcon className="mx-auto h-12 w-12 text-green-500" />
-            <h3 className="mt-2 text-lg font-medium text-gray-900">No threats found</h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No threats found</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
               {filter === 'all'
                 ? 'No email threats have been detected yet.'
                 : `No ${filter} threats found.`}
             </p>
           </div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+            <thead className="bg-gray-50 dark:bg-slate-900">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">
                   Threat Type
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">
                   Score
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">
                   Detected
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
               {threats.map((threat) => (
-                <tr key={threat.id} className="hover:bg-gray-50">
+                <tr key={threat.id} className="hover:bg-gray-50 dark:hover:bg-slate-700">
                   <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                    <div className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-xs">
                       {threat.subject || '(No subject)'}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-gray-500 dark:text-slate-400">
                       {threat.sender_name ? `${threat.sender_name} <${threat.sender_email}>` : threat.sender_email}
                     </div>
                   </td>
@@ -230,13 +230,13 @@ export default function ThreatsPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
+                      <div className="w-16 bg-gray-200 dark:bg-slate-600 rounded-full h-2 mr-2">
                         <div
                           className={`h-2 rounded-full ${threat.score >= 80 ? 'bg-red-500' : threat.score >= 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
                           style={{ width: `${threat.score}%` }}
                         />
                       </div>
-                      <span className="text-sm text-gray-700">{threat.score}</span>
+                      <span className="text-sm text-gray-700 dark:text-slate-200">{threat.score}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -244,7 +244,7 @@ export default function ThreatsPage() {
                       {threat.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-slate-400">
                     {threat.quarantined_at ? new Date(threat.quarantined_at).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
