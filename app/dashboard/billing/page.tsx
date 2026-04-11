@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useTenant } from '@/lib/auth/tenant-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,14 +28,21 @@ const PLAN_FEATURES: PlanFeature[] = [
 
 const PLAN_PRICING: Record<PlanTier, { monthly: number; label: string }> = {
   starter: { monthly: 0, label: 'Free' },
-  pro: { monthly: 99, label: '$99/mo' },
-  enterprise: { monthly: 299, label: '$299/mo' },
+  pro: { monthly: 49, label: '$49/mo' },
+  enterprise: { monthly: 199, label: '$199/mo' },
 };
 
 const PLAN_DESCRIPTIONS: Record<PlanTier, string> = {
   starter: 'For individuals and small teams getting started with email security.',
   pro: 'For growing teams that need advanced threat detection and more capacity.',
   enterprise: 'For organizations that require full-scale protection and dedicated support.',
+};
+
+// Map plan tiers to Stripe price IDs (env vars set server-side, these are the test-mode IDs)
+const PLAN_PRICE_IDS: Record<PlanTier, string> = {
+  starter: 'price_1TL60cGjNblFEnhd5HGhlZsm',
+  pro: 'price_1TL60dGjNblFEnhdQk8bIcuk',
+  enterprise: 'price_1TL60eGjNblFEnhd8Nq0QCcM',
 };
 
 function FeatureCheck({ included }: { included: boolean }) {
@@ -55,11 +63,15 @@ function FeatureCheck({ included }: { included: boolean }) {
 function PlanCard({
   tier,
   currentPlan,
+  loadingTier,
+  managingPortal,
   onUpgrade,
   onManage,
 }: {
   tier: PlanTier;
   currentPlan: PlanTier;
+  loadingTier: PlanTier | null;
+  managingPortal: boolean;
   onUpgrade: (tier: PlanTier) => void;
   onManage: () => void;
 }) {
@@ -67,6 +79,8 @@ function PlanCard({
   const isUpgrade = getPlanRank(tier) > getPlanRank(currentPlan);
   const pricing = PLAN_PRICING[tier];
   const description = PLAN_DESCRIPTIONS[tier];
+  const isLoading = loadingTier === tier;
+  const isDisabled = loadingTier !== null || managingPortal;
 
   return (
     <Card
@@ -131,15 +145,31 @@ function PlanCard({
               onClick={onManage}
               variant="outline"
               className="w-full"
+              disabled={isDisabled}
             >
-              Manage Subscription
+              {managingPortal ? (
+                <span className="flex items-center gap-2">
+                  <LoadingSpinner />
+                  Opening portal...
+                </span>
+              ) : (
+                'Manage Subscription'
+              )}
             </Button>
           ) : isUpgrade ? (
             <Button
               onClick={() => onUpgrade(tier)}
               className="w-full bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              disabled={isDisabled}
             >
-              Upgrade to {tier.charAt(0).toUpperCase() + tier.slice(1)}
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <LoadingSpinner />
+                  Redirecting...
+                </span>
+              ) : (
+                `Upgrade to ${tier.charAt(0).toUpperCase() + tier.slice(1)}`
+              )}
             </Button>
           ) : (
             <Button
@@ -156,6 +186,15 @@ function PlanCard({
   );
 }
 
+function LoadingSpinner() {
+  return (
+    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
 function getPlanRank(plan: PlanTier): number {
   const ranks: Record<PlanTier, number> = { starter: 0, pro: 1, enterprise: 2 };
   return ranks[plan];
@@ -165,26 +204,63 @@ export default function BillingPage() {
   const { currentTenant } = useTenant();
   const currentPlan: PlanTier = currentTenant?.plan ?? 'starter';
 
-  // Stripe is not yet configured (env vars are commented out)
-  const stripeConfigured = false;
+  const [loadingTier, setLoadingTier] = useState<PlanTier | null>(null);
+  const [managingPortal, setManagingPortal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleUpgrade(tier: PlanTier) {
+  async function handleUpgrade(tier: PlanTier): Promise<void> {
     if (tier === 'enterprise') {
       window.open('mailto:sales@swordphish.io?subject=Enterprise%20Plan%20Inquiry', '_blank');
       return;
     }
-    if (!stripeConfigured) {
-      // Stripe not configured yet -- no-op, the UI shows a notice
-      return;
+
+    setError(null);
+    setLoadingTier(tier);
+
+    try {
+      const priceId = PLAN_PRICE_IDS[tier];
+      const response = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priceId }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error || 'Failed to create checkout session');
+      }
+
+      const { url } = await response.json() as { url: string };
+      window.location.href = url;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      setError(message);
+      setLoadingTier(null);
     }
-    // Future: redirect to Stripe checkout
   }
 
-  function handleManage() {
-    if (!stripeConfigured) {
-      return;
+  async function handleManage(): Promise<void> {
+    setError(null);
+    setManagingPortal(true);
+
+    try {
+      const response = await fetch('/api/billing/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error || 'Failed to open billing portal');
+      }
+
+      const { url } = await response.json() as { url: string };
+      window.location.href = url;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      setError(message);
+      setManagingPortal(false);
     }
-    // Future: redirect to Stripe customer portal
   }
 
   return (
@@ -196,6 +272,23 @@ export default function BillingPage() {
           Manage your subscription and view plan details.
         </p>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+          <div className="flex items-start gap-3">
+            <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <div>
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                Billing error
+              </p>
+              <p className="mt-1 text-sm text-red-700 dark:text-red-300">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Current plan summary */}
       <Card className="border-gray-200 dark:border-gray-700">
@@ -230,32 +323,6 @@ export default function BillingPage() {
         </CardContent>
       </Card>
 
-      {/* Billing not configured notice */}
-      {!stripeConfigured && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-          <div className="flex items-start gap-3">
-            <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-            </svg>
-            <div>
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                Billing coming soon
-              </p>
-              <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
-                Online payment processing is not yet configured. To upgrade your plan or manage billing,
-                please contact our sales team at{' '}
-                <a
-                  href="mailto:sales@swordphish.io"
-                  className="font-medium underline hover:no-underline"
-                >
-                  sales@swordphish.io
-                </a>.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Plan comparison */}
       <div>
         <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
@@ -267,6 +334,8 @@ export default function BillingPage() {
               key={tier}
               tier={tier}
               currentPlan={currentPlan}
+              loadingTier={loadingTier}
+              managingPortal={managingPortal}
               onUpgrade={handleUpgrade}
               onManage={handleManage}
             />

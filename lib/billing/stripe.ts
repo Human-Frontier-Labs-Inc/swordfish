@@ -6,25 +6,30 @@
 
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
   apiVersion: '2025-12-15.clover',
 });
 
 export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
 export type BillingPeriod = 'month' | 'year';
 
-// Price IDs from Stripe Dashboard
+// Price IDs from Stripe Dashboard (env vars with test-mode fallbacks)
+const STRIPE_STARTER_PRICE_ID = process.env.STRIPE_STARTER_PRICE_ID || 'price_1TL60cGjNblFEnhd5HGhlZsm';
+const STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID || 'price_1TL60dGjNblFEnhdQk8bIcuk';
+const STRIPE_ENTERPRISE_PRICE_ID = process.env.STRIPE_ENTERPRISE_PRICE_ID || 'price_1TL60eGjNblFEnhd8Nq0QCcM';
+export const STRIPE_PORTAL_CONFIG_ID = process.env.STRIPE_PORTAL_CONFIG_ID || 'bpc_1TL63TGjNblFEnhdEGga5vg9';
+
 const PRICE_IDS: Record<SubscriptionTier, { monthly: string; annual: string }> = {
-  free: { monthly: 'price_free', annual: 'price_free' },
-  pro: { monthly: 'price_pro_monthly', annual: 'price_pro_annual' },
-  enterprise: { monthly: 'price_enterprise_monthly', annual: 'price_enterprise_annual' },
+  free: { monthly: STRIPE_STARTER_PRICE_ID, annual: STRIPE_STARTER_PRICE_ID },
+  pro: { monthly: STRIPE_PRO_PRICE_ID, annual: STRIPE_PRO_PRICE_ID },
+  enterprise: { monthly: STRIPE_ENTERPRISE_PRICE_ID, annual: STRIPE_ENTERPRISE_PRICE_ID },
 };
 
 // Pricing in cents
 const PRICING: Record<SubscriptionTier, { monthly: number; annual: number }> = {
   free: { monthly: 0, annual: 0 },
-  pro: { monthly: 9900, annual: 99000 }, // $99/month or $990/year (17% off)
-  enterprise: { monthly: 29900, annual: 299000 }, // $299/month or $2990/year
+  pro: { monthly: 4900, annual: 49000 }, // $49/month or $490/year
+  enterprise: { monthly: 19900, annual: 199000 }, // $199/month or $1990/year
 };
 
 interface TierFeatures {
@@ -217,10 +222,12 @@ export class BillingService {
   async createBillingPortalSession(params: {
     customerId: string;
     returnUrl: string;
+    configurationId?: string;
   }): Promise<Stripe.BillingPortal.Session> {
     return stripe.billingPortal.sessions.create({
       customer: params.customerId,
       return_url: params.returnUrl,
+      ...(params.configurationId ? { configuration: params.configurationId } : {}),
     });
   }
 
