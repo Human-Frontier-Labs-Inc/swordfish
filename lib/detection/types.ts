@@ -229,6 +229,8 @@ export type SignalType =
   | 'qr_url_shortened'
   | 'qr_multiple'
   | 'qr_inline_hidden'
+  // Authentication gaps
+  | 'no_authentication'
   // Pipeline critical signals
   | 'attachment_malware'
   | 'known_malware_url'
