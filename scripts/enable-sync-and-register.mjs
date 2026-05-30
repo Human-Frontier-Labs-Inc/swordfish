@@ -7,7 +7,11 @@
 import https from 'https';
 import http from 'http';
 
-const CRON_SECRET = '8d6d9eb9b5087a2f56b3a2868b4677fc6a9bb6d85d8039c6151c06ab532cdcb2';
+const CRON_SECRET = process.env.CRON_SECRET;
+if (!CRON_SECRET) {
+  console.error('CRON_SECRET env var required. Run: CRON_SECRET=... node scripts/enable-sync-and-register.mjs');
+  process.exit(1);
+}
 const BASE_URL = 'https://swordfish-eight.vercel.app';
 
 async function httpRequest(url, options = {}) {

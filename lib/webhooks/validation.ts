@@ -46,8 +46,14 @@ export async function validateGooglePubSub(params: {
 
   // Check for Bearer token
   if (!authorizationHeader?.startsWith('Bearer ')) {
-    // In development, allow unsigned requests
-    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_UNSIGNED_WEBHOOKS === 'true') {
+    // Local-dev-only bypass. Requires BOTH: no VERCEL_ENV (= local machine, not any deployed env)
+    // AND explicit opt-in. Vercel sets VERCEL_ENV on every deploy (preview, dev, prod), so this
+    // hardens against the prior NODE_ENV=development risk on preview deploys.
+    if (
+      !process.env.VERCEL_ENV &&
+      process.env.NODE_ENV === 'development' &&
+      process.env.ALLOW_UNSIGNED_WEBHOOKS === 'true'
+    ) {
       return { valid: true, email: 'development@test.local' };
     }
     return { valid: false, error: 'Missing or invalid Authorization header' };

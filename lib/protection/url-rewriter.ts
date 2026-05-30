@@ -117,13 +117,17 @@ export type ClickVerdict = 'safe' | 'suspicious' | 'malicious' | 'blocked' | 'un
 // Default Configuration
 // ============================================================================
 
+if (!process.env.URL_SIGNATURE_SECRET) {
+  throw new Error('URL_SIGNATURE_SECRET is required - signed URLs would be forgeable without it');
+}
+
 const DEFAULT_CONFIG: RewriterConfig = {
   baseUrl: process.env.SWORDFISH_PROTECT_URL || 'https://protect.swordfish.app',
   whitelistedDomains: [],
   rewriteInternalLinks: false,
   preserveDisplayUrl: true,
   trackClicks: true,
-  signatureSecret: process.env.URL_SIGNATURE_SECRET || '',
+  signatureSecret: process.env.URL_SIGNATURE_SECRET,
   urlExpiryDays: 30,
 };
 

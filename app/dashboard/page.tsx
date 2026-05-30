@@ -17,34 +17,6 @@ const mockIntegrations = [
   },
 ];
 
-// Demo threats to show when no real data exists yet
-const demoThreats = [
-  {
-    id: 'demo-1',
-    subject: 'Urgent: Verify your account immediately',
-    from: 'security@paypa1-verify.com',
-    verdict: 'block' as const,
-    signals: ['Homoglyph domain', 'SPF fail', 'Urgency language'],
-    timestamp: new Date(Date.now() - 1000 * 60 * 30),
-  },
-  {
-    id: 'demo-2',
-    subject: 'Invoice #INV-2024-001 attached',
-    from: 'accounting@supplier-invoice.net',
-    verdict: 'quarantine' as const,
-    signals: ['New domain', 'Suspicious attachment'],
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-  },
-  {
-    id: 'demo-3',
-    subject: 'Request for wire transfer',
-    from: '"CEO John Smith" <ceo.john@gmail.com>',
-    verdict: 'block' as const,
-    signals: ['Display name spoof', 'BEC pattern', 'Free email provider'],
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5),
-  },
-];
-
 export default function DashboardPage() {
   const { currentTenant } = useTenant();
   const { stats, threats, isLoading } = useDashboardData();
@@ -57,20 +29,17 @@ export default function DashboardPage() {
     detectionRate: stats?.detectionRate || 0,
   };
 
-  // Demo mode is only when no emails have been scanned at all
+  // Empty state when no scans have run yet
   const isDemo = (stats?.emailsScanned || 0) === 0 && threats.length === 0;
 
-  // Show demo threats only in demo mode, otherwise show real threats (or empty if no threats)
-  const displayThreats = threats.length > 0
-    ? threats.map(t => ({
-        id: t.id,
-        subject: t.subject || 'Unknown Subject',
-        from: t.sender || 'Unknown Sender',
-        verdict: t.verdict as 'block' | 'quarantine' | 'suspicious',
-        signals: [t.detail],
-        timestamp: new Date(t.timestamp),
-      }))
-    : isDemo ? demoThreats : [];
+  const displayThreats = threats.map(t => ({
+    id: t.id,
+    subject: t.subject || 'Unknown Subject',
+    from: t.sender || 'Unknown Sender',
+    verdict: t.verdict as 'block' | 'quarantine' | 'suspicious',
+    signals: [t.detail],
+    timestamp: new Date(t.timestamp),
+  }));
 
   return (
     <div className="relative space-y-6">

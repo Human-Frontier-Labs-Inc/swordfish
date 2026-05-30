@@ -16,13 +16,13 @@ const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 // Required scopes for email access
-// Note: gmail.readonly is a restricted scope requiring Google verification
-// For initial setup, we use basic scopes. Full Gmail access requires app verification.
+// gmail.readonly is a restricted scope requiring Google verification.
+// Status: app verification submitted. Without this scope, scanning cannot read mail bodies.
 const SCOPES = [
   'openid',
   'email',
   'profile',
-  // 'https://www.googleapis.com/auth/gmail.readonly', // Requires Google verification
+  'https://www.googleapis.com/auth/gmail.readonly',
 ].join(' ');
 
 /**
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   if (error) {
     console.error('Google OAuth error:', error);
     return NextResponse.redirect(
-      new URL(`/dashboard/settings?error=google_auth_failed&message=${encodeURIComponent(error)}`, request.url)
+      new URL(`/onboarding?provider=google&error=google_auth_failed&message=${encodeURIComponent(error)}`, request.url)
     );
   }
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       const expectedState = await getStoredState(tenantId);
       if (state !== expectedState) {
         return NextResponse.redirect(
-          new URL('/dashboard/settings?error=invalid_state', request.url)
+          new URL('/onboarding?provider=google&error=invalid_state', request.url)
         );
       }
 
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
         const errorData = await tokenResponse.json();
         console.error('Token exchange failed:', errorData);
         return NextResponse.redirect(
-          new URL('/dashboard/settings?error=token_exchange_failed', request.url)
+          new URL('/onboarding?provider=google&error=token_exchange_failed', request.url)
         );
       }
 
@@ -152,12 +152,12 @@ export async function GET(request: NextRequest) {
       await clearStoredState(tenantId);
 
       return NextResponse.redirect(
-        new URL('/dashboard/settings?success=google_connected', request.url)
+        new URL('/onboarding?provider=google&success=google_connected', request.url)
       );
     } catch (error) {
       console.error('Google OAuth callback error:', error);
       return NextResponse.redirect(
-        new URL('/dashboard/settings?error=connection_failed', request.url)
+        new URL('/onboarding?provider=google&error=connection_failed', request.url)
       );
     }
   }
