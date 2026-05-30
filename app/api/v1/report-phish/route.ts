@@ -6,7 +6,6 @@
  */
 
 import { NextRequest } from 'next/server';
-import { sql } from '@/lib/db';
 import { validateApiKey, hasScope, API_SCOPES } from '@/lib/api/auth';
 import { rateLimitMiddleware, getRateLimitHeaders, checkRateLimit } from '@/lib/api/rate-limit';
 import { apiSuccess, apiCreated, errors, parsePagination, withErrorHandling } from '@/lib/api/response';
@@ -160,7 +159,7 @@ export async function GET(request: NextRequest) {
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams;
-    const { page, pageSize, offset } = parsePagination(searchParams);
+    const { page, pageSize } = parsePagination(searchParams);
 
     // Build filters
     const filters: ReportFilters = {};

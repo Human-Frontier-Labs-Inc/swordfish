@@ -177,7 +177,7 @@ export class SPFValidator {
   private async checkDomain(
     senderIP: string,
     domain: string,
-    isInclude: boolean = false
+    _isInclude: boolean = false
   ): Promise<SPFValidationResult> {
     // Get TXT records - this counts as a lookup for includes
     // Note: The initial domain lookup is free, but includes count

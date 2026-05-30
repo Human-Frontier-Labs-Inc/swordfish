@@ -106,7 +106,6 @@ export class GmailSyncWorker {
     const emails: GmailEmailContent[] = [];
     let newHistoryId = this.historyId || '';
     const fullSyncRequired = false;
-    let page = 1;
 
     // If no history ID, do full sync
     if (!this.historyId) {
@@ -153,7 +152,6 @@ export class GmailSyncWorker {
       }
 
       pageToken = data.nextPageToken;
-      page++;
     } while (pageToken);
 
     // Fetch full content for each new message

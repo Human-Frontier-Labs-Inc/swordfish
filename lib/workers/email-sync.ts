@@ -21,7 +21,6 @@ import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
 
 // Sync configuration - optimized for Vercel's 60s timeout
-const BATCH_SIZE = 5;
 const MAX_EMAILS_PER_SYNC = 20; // Increased with 60s timeout
 const SYNC_TIMEOUT_MS = 50000; // Exit before Vercel's 60s limit
 

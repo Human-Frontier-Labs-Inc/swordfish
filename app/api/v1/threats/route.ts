@@ -9,7 +9,7 @@ import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
 import { validateApiKey, hasScope, API_SCOPES } from '@/lib/api/auth';
 import { rateLimitMiddleware, getRateLimitHeaders } from '@/lib/api/rate-limit';
-import { apiSuccess, apiError, errors, parsePagination, withErrorHandling } from '@/lib/api/response';
+import { apiSuccess, errors, parsePagination, withErrorHandling } from '@/lib/api/response';
 
 // GET /api/v1/threats
 export async function GET(request: NextRequest) {

@@ -255,7 +255,8 @@ export class ProductionDNSResolver implements DNSResolver {
     try {
       // Dynamic import for Node.js
       if (typeof process !== 'undefined' && process.versions?.node) {
-        // This will be resolved at build time or runtime
+        // Dynamic require needed: sync constructor cannot use await import(); safe in Node.js only
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         this.dnsModule = require('dns');
       }
     } catch {

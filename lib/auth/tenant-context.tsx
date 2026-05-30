@@ -63,7 +63,7 @@ interface TenantProviderProps {
 export function TenantProvider({ children }: TenantProviderProps) {
   const { user } = useUser();
   const { organization, membership } = useOrganization();
-  const { userMemberships, isLoaded } = useOrganizationList({
+  const { isLoaded } = useOrganizationList({
     userMemberships: { infinite: true },
   });
 

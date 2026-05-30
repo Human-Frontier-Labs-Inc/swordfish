@@ -142,7 +142,7 @@ export class SecretsManager {
       let encryptedValue: string;
       try {
         encryptedValue = await this.config.encryption.encrypt(value);
-      } catch (error) {
+      } catch {
         throw new Error('Failed to encrypt secret');
       }
 
@@ -191,7 +191,7 @@ export class SecretsManager {
           rotation,
           history,
         });
-      } catch (error) {
+      } catch {
         throw new Error('Failed to store secret');
       }
 
@@ -247,7 +247,7 @@ export class SecretsManager {
       this.logAccess(name, 'read', options.accessor, options.reason, options.ip, stored.version);
 
       return decrypted;
-    } catch (error) {
+    } catch {
       throw new Error('Failed to decrypt secret');
     }
   }

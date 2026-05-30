@@ -4,19 +4,6 @@ import { redirect } from 'next/navigation';
 import { sql } from '@/lib/db';
 import { TenantsTable } from './tenants-table';
 
-interface TenantRow {
-  id: string;
-  clerk_org_id: string;
-  name: string;
-  domain: string | null;
-  plan: 'starter' | 'pro' | 'enterprise';
-  status: 'active' | 'suspended' | 'pending';
-  user_count: number;
-  emails_processed: number;
-  threats_blocked: number;
-  created_at: Date;
-  last_activity_at: Date | null;
-}
 
 async function getInitialTenants() {
   const tenants = await sql`

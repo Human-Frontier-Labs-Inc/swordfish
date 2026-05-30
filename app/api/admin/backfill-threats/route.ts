@@ -16,7 +16,7 @@ const truncate = (str: string | null | undefined, maxLen: number): string | null
   return str.length > maxLen ? str.substring(0, maxLen - 3) + '...' : str;
 };
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     const { userId, orgId } = await auth();
 

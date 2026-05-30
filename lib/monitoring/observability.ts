@@ -6,7 +6,7 @@
  */
 
 import { MetricsCollector, Counter, Histogram, Gauge } from './metrics';
-import { ErrorTracker, WebhookReporter, ConsoleReporter, ErrorEvent } from './error-tracking';
+import { ErrorTracker, WebhookReporter, ConsoleReporter } from './error-tracking';
 import { Tracer, SpanExporter, SpanData, SpanStatus } from './tracing';
 import { AlertManager, Alert, AlertSeverity } from './alerts';
 import { AlertNotificationBridge, type AlertBridgeConfig } from './alert-notification-bridge';

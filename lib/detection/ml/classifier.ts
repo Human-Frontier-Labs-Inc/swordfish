@@ -345,7 +345,6 @@ function checkDisplayNameMismatch(from: string | { address?: string; displayName
   if (/@/.test(name) && name !== email) return true;
 
   // Check if display name contains a different domain
-  const emailDomain = email.split('@')[1];
   const domainPattern = /\b[\w-]+\.(com|org|net|io|co)\b/i;
   const nameMatch = name.match(domainPattern);
   if (nameMatch && !email.includes(nameMatch[0])) return true;
@@ -364,7 +363,6 @@ function calculateAttachmentRisk(attachments: ParsedEmail['attachments']): numbe
   const mediumRiskExtensions = ['.docm', '.xlsm', '.pptm', '.zip', '.rar', '.7z', '.iso', '.img'];
 
   for (const att of attachments) {
-    const ext = att.filename.toLowerCase().split('.').pop() || '';
 
     if (highRiskExtensions.some(e => att.filename.toLowerCase().endsWith(e))) {
       riskScore += 50;

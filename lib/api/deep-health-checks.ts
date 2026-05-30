@@ -123,7 +123,7 @@ export class HealthChecker {
 
     if (this.config.parallel) {
       const results = await Promise.all(
-        checks.map(async ([name, check]) => {
+        checks.map(async ([name, _check]) => {
           const result = await this.check(name, options);
           return { name, result };
         })

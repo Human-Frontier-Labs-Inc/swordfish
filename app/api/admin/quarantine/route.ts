@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
         });
 
         results.success++;
-      } catch (err) {
+      } catch {
         results.failed++;
         results.errors.push(`Failed to ${action} threat ${threatId}`);
       }

@@ -14,9 +14,8 @@ import {
   detectImpersonation,
   calculateImpersonationRisk,
   type ImpersonationResult,
-  type ImpersonationSignal,
 } from './impersonation';
-import { getVIPList, type VIPEntry } from './vip-list';
+import { getVIPList } from './vip-list';
 
 export interface BECDetectionResult {
   isBEC: boolean;

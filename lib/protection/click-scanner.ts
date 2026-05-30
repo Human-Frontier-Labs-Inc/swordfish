@@ -12,8 +12,8 @@
  */
 
 import { sql } from '@/lib/db';
-import { VirusTotalClient, type AnalysisStats, AnalysisStatus } from '@/lib/threat-intel/virustotal';
-import { UrlScanClient, type ScanResult as UrlScanScanResult, ScanStatus } from '@/lib/threat-intel/urlscan';
+import { VirusTotalClient } from '@/lib/threat-intel/virustotal';
+import { UrlScanClient, type ScanResult as UrlScanScanResult } from '@/lib/threat-intel/urlscan';
 import { checkDomainAge, type DomainAgeResult } from '@/lib/threat-intel/domain/age';
 
 // =============================================================================
@@ -1226,8 +1226,6 @@ export class ClickScanner {
    * Main entry point - process a click event and decide action
    */
   async processClick(click: ClickEvent): Promise<ClickDecision> {
-    const startTime = performance.now();
-
     // Get the original URL from click mapping
     const mapping = await this.getClickMappingById(click.urlId);
     if (!mapping) {
@@ -1427,8 +1425,7 @@ export class ClickScanner {
   /**
    * Follow redirects and get final URL with analysis
    */
-  async resolveRedirects(url: string, maxRedirects?: number): Promise<RedirectResult> {
-    const max = maxRedirects ?? this.config.maxRedirects;
+  async resolveRedirects(url: string, _maxRedirects?: number): Promise<RedirectResult> {
     const chain = await this.getRedirectChainWithTimeout(url);
     const finalUrl = chain[chain.length - 1];
 

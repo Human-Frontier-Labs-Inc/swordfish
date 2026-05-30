@@ -486,7 +486,7 @@ export interface SystemMetrics {
 /**
  * Collect system and application metrics
  */
-export async function collectMetrics(tenantId?: string): Promise<SystemMetrics> {
+export async function collectMetrics(_tenantId?: string): Promise<SystemMetrics> {
   const memUsage = process.memoryUsage();
   const cpuUsage = process.cpuUsage();
 

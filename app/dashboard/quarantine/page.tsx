@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 
 interface Threat {
   id: string;
@@ -34,7 +33,6 @@ export default function QuarantinePage() {
   const [threats, setThreats] = useState<Threat[]>([]);
   const [stats, setStats] = useState<ThreatStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'quarantined' | 'released' | 'deleted' | 'all'>('quarantined');
   const [selectedThreats, setSelectedThreats] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -134,18 +132,6 @@ export default function QuarantinePage() {
     setSelectedThreats(newSelected);
   }
 
-  function getVerdictBadge(verdict: Threat['verdict'], score: number) {
-    if (verdict === 'block' || score >= 80) {
-      return <Badge className="bg-red-100 text-red-800">Block</Badge>;
-    }
-    if (verdict === 'quarantine' || score >= 50) {
-      return <Badge className="bg-orange-100 text-orange-800">Quarantine</Badge>;
-    }
-    if (verdict === 'suspicious') {
-      return <Badge className="bg-yellow-100 text-yellow-800">Suspicious</Badge>;
-    }
-    return <Badge className="bg-green-100 text-green-800">Pass</Badge>;
-  }
 
   function getStatusBadge(status: Threat['status']) {
     switch (status) {

@@ -8,7 +8,6 @@ import type {
   DNSResolver,
   DMARCRecord,
   DMARCPolicy,
-  DMARCResult,
   DMARCAlignment,
   DMARCEvaluationResult,
   SPFResult,

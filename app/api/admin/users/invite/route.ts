@@ -6,7 +6,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql, withTransaction } from '@/lib/db';
-import { logAuditEvent } from '@/lib/db/audit';
 
 export async function POST(request: NextRequest) {
   try {

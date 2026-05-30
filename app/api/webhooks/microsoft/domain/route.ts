@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     for (const notification of notifications) {
       try {
-        const { subscriptionId, clientState, resource, changeType } = notification;
+        const { clientState, resource, changeType } = notification;
 
         // clientState contains the configId
         const configId = clientState;
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
         if (!config || config.status !== 'active') continue;
 
         // Extract user email from resource path: /users/{email}/messages/{messageId}
-        const resourceMatch = resource.match(/\/users\/([^\/]+)\/messages\/([^\/]+)/);
+        const resourceMatch = resource.match(/[/]users[/]([^/]+)[/]messages[/]([^/]+)/);
         if (!resourceMatch) continue;
 
         const [, userEmail, messageId] = resourceMatch;

@@ -170,14 +170,14 @@ export function analyzeVBAPatterns(vbaCode: string): VBAAnalysisResult {
   let riskScore = 0;
 
   // Check for obfuscation techniques
-  for (const [key, config] of Object.entries(OBFUSCATION_PATTERNS)) {
+  for (const [, config] of Object.entries(OBFUSCATION_PATTERNS)) {
     if (config.pattern.test(vbaCode)) {
       obfuscationTechniques.push(config.name);
     }
   }
 
   // Check for suspicious patterns
-  for (const [key, config] of Object.entries(SUSPICIOUS_PATTERNS)) {
+  for (const [, config] of Object.entries(SUSPICIOUS_PATTERNS)) {
     if (config.pattern.test(vbaCode)) {
       suspiciousPatterns.push(config.name);
       riskScore += config.weight;

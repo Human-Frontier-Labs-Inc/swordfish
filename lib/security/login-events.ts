@@ -385,7 +385,7 @@ export class GeoIPService {
       const result = await this.performLookup(ip);
       this.cache.set(ip, { data: result, timestamp: Date.now() });
       return result;
-    } catch (error) {
+    } catch {
       // Cache the failure to prevent repeated failed lookups
       this.cache.set(ip, { data: null, timestamp: Date.now() });
       return null;
@@ -396,7 +396,7 @@ export class GeoIPService {
    * Perform actual GeoIP lookup
    * In production, this would call an external GeoIP service
    */
-  private async performLookup(ip: string): Promise<GeoLocation | null> {
+  private async performLookup(_ip: string): Promise<GeoLocation | null> {
     // This is a placeholder for actual GeoIP service integration
     // In production, integrate with services like:
     // - MaxMind GeoIP

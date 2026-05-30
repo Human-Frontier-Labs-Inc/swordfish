@@ -59,7 +59,7 @@ export async function generateHIPAAPDF(
 async function generatePDFFromHTML(
   html: string,
   filename: string,
-  options?: PDFOptions
+  _options?: PDFOptions
 ): Promise<GeneratedPDF> {
   // For serverless, we return HTML that can be rendered to PDF client-side
   // or use a PDF service API

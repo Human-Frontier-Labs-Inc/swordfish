@@ -237,16 +237,6 @@ function checkDomainLookalike(
     };
   }
 
-  // Check for common typosquatting patterns
-  const patterns = [
-    // Missing letter
-    { regex: new RegExp(`^${orgBase.slice(0, -1)}[^${orgBase.slice(-1)}]`), desc: 'missing letter' },
-    // Double letter
-    { regex: new RegExp(`${orgBase.replace(/(.)/g, '$1?$1?')}`), desc: 'double letter' },
-    // Hyphen insertion
-    { regex: new RegExp(`^${orgBase.replace(/(.)/g, '$1-?')}`), desc: 'hyphen insertion' },
-  ];
-
   // Check Levenshtein distance
   const distance = levenshteinDistance(senderBase, orgBase);
   if (distance > 0 && distance <= 2 && senderBase.length >= 4) {

@@ -103,19 +103,7 @@ export async function withTenantScope<T>(
 /**
  * Tables that have tenant_id column for access checks
  */
-const TENANT_SCOPED_TABLES = [
-  'threats',
-  'email_verdicts',
-  'integrations',
-  'policies',
-  'quarantine',
-  'notifications',
-  'webhooks',
-  'feedback',
-  'audit_log',
-] as const;
-
-type TenantScopedTable = (typeof TENANT_SCOPED_TABLES)[number];
+type TenantScopedTable = 'threats' | 'email_verdicts' | 'integrations' | 'policies' | 'quarantine' | 'notifications' | 'webhooks' | 'feedback' | 'audit_log';
 
 /**
  * Verify if the current user has access to a specific resource

@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getActiveDomainConfigs, getUsersWithExpiringWebhooks, updateDomainUserSyncState } from '@/lib/integrations/domain-wide/storage';
-import { syncGoogleWorkspaceUsers, setupGmailWatchForAllUsers, getGmailTokenForUser } from '@/lib/integrations/domain-wide/google-workspace';
+import { syncGoogleWorkspaceUsers, getGmailTokenForUser } from '@/lib/integrations/domain-wide/google-workspace';
 import { syncMicrosoft365Users, renewMailSubscription } from '@/lib/integrations/domain-wide/microsoft-365';
 
 // Vercel cron config

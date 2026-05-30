@@ -76,8 +76,6 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
     // Get users with tenant info
     const users = await sql`
       SELECT

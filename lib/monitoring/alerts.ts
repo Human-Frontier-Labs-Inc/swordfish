@@ -329,7 +329,7 @@ export async function getActiveAlerts(tenantId: string): Promise<Alert[]> {
 export async function acknowledgeAlert(
   alertId: string,
   tenantId: string,
-  acknowledgedBy: string
+  _acknowledgedBy: string
 ): Promise<boolean> {
   const tenantAlerts = activeAlertsStore.get(tenantId) || [];
   const alertIndex = tenantAlerts.findIndex(a => a.ruleId === alertId);

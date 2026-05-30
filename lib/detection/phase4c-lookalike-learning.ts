@@ -13,7 +13,6 @@
 import {
   PROTECTED_BRANDS,
   HOMOGLYPHS,
-  type BrandMatch,
 } from './brand-protection';
 
 // ============================================================================
@@ -418,7 +417,6 @@ export class LookalikeLearningService {
     for (const pattern of this.learnedPatterns) {
       if (pattern.feedbackScore > 0 && pattern.occurrences >= 2) {
         // Check for patterns in the domain (like paypa1 in paypa1-new)
-        const patternBase = pattern.pattern.replace(/-/g, '').toLowerCase();
         const targetBase = pattern.targetDomain?.split('.')[0].toLowerCase() || '';
 
         // Check if domain contains a homoglyph/typosquat variant of a learned brand
@@ -666,7 +664,7 @@ export class LookalikeLearningService {
 
   private checkGeneralizedPatterns(
     fullDomain: string,
-    domainBase: string
+    _domainBase: string
   ): LookalikeDetectionResult {
     for (const pattern of this.learnedPatterns) {
       if (pattern.isGeneralized && pattern.feedbackScore > 0) {

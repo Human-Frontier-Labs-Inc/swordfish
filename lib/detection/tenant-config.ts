@@ -661,14 +661,9 @@ export function isModuleEnabled(
 export function applyTenantScoring(
   tenantId: string,
   baseScore: number,
-  category?: keyof ThresholdConfig['categories']
+  _category?: keyof ThresholdConfig['categories']
 ): { adjustedScore: number; action: 'allow' | 'quarantine' | 'block' } {
   const config = getTenantConfig(tenantId);
-
-  // Get the applicable threshold
-  const threshold = category
-    ? (config.thresholds.categories[category] ?? config.thresholds.minDetectionScore)
-    : config.thresholds.minDetectionScore;
 
   // Adjust score based on strict mode
   let adjustedScore = baseScore;

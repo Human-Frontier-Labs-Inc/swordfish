@@ -16,8 +16,7 @@ import { runDeterministicAnalysis } from './deterministic';
 import { runLLMAnalysis, shouldInvokeLLM, type LLMAnalysisContext } from './llm';
 import { evaluatePolicies } from '@/lib/policies/engine';
 import { classifyEmail } from './ml/classifier';
-import { checkReputation } from './reputation/service';
-import { detectBEC, quickBECCheck, type BECSignal } from './bec';
+import { detectBEC } from './bec';
 import {
   classifyEmailType,
   isLegitimateReplyTo,
@@ -37,16 +36,12 @@ import {
 import {
   detectQRCodes,
   analyzeQRUrls,
-  type QRCodeDetection,
 } from './qr-detector';
 import {
-  getTenantConfig,
-  getCategoryThreshold,
   isModuleEnabled,
 } from './tenant-config';
 import {
   runEnhancedSandboxAnalysis,
-  type EnhancedSandboxResult,
 } from './sandbox-layer';
 import {
   runLookalikeAnalysis,
@@ -153,7 +148,7 @@ export async function analyzeEmail(
   ]);
 
   // Process classification result
-  let emailClassification: EmailClassification | null = classificationResult;
+  const emailClassification: EmailClassification | null = classificationResult;
   if (emailClassification) {
     if (emailClassification.isKnownSender) {
       allSignals.push({
@@ -415,7 +410,9 @@ export async function analyzeEmail(
   // ============================================================================
 
   // Calculate final score and verdict
-  let { overallScore, confidence } = calculateFinalScore(layerResults, config);
+  const finalScore = calculateFinalScore(layerResults, config);
+  let { overallScore } = finalScore;
+  const { confidence } = finalScore;
 
   // Phase 5: Apply learned rules from user feedback
   let appliedRules: LearnedRule[] = [];
@@ -672,122 +669,6 @@ function recalculateLayerScore(signals: Signal[]): number {
 }
 
 /**
- * Reputation lookup using threat intelligence
- */
-async function runReputationLookup(email: ParsedEmail): Promise<LayerResult> {
-  const startTime = performance.now();
-  const signals: Signal[] = [];
-
-  try {
-    // Extract entities to check
-    const senderDomain = email.from.domain || email.from.address.split('@')[1]?.toLowerCase();
-    const urls = extractURLs((email.body.text || '') + (email.body.html || ''));
-    const domains = urls.map(url => {
-      try {
-        return new URL(url.startsWith('http') ? url : `https://${url}`).hostname;
-      } catch {
-        return null;
-      }
-    }).filter(Boolean) as string[];
-
-    // Add sender domain
-    if (senderDomain) {
-      domains.unshift(senderDomain);
-    }
-
-    // Deduplicate
-    const uniqueDomains = [...new Set(domains)];
-    const uniqueUrls = [...new Set(urls)];
-
-    // Check reputation
-    const reputationResult = await checkReputation({
-      domains: uniqueDomains.slice(0, 10), // Limit to 10
-      urls: uniqueUrls.slice(0, 10),
-      emails: [email.from.address],
-    });
-
-    // Convert reputation results to signals
-    for (const domainRep of reputationResult.domains) {
-      if (domainRep.category === 'malicious') {
-        signals.push({
-          type: 'malicious_domain',
-          severity: 'critical',
-          score: 40,
-          detail: `Malicious domain detected: ${domainRep.entity}`,
-        });
-      } else if (domainRep.category === 'suspicious') {
-        signals.push({
-          type: 'suspicious_domain',
-          severity: 'warning',
-          score: 20,
-          detail: `Suspicious domain: ${domainRep.entity}`,
-        });
-      }
-    }
-
-    for (const urlRep of reputationResult.urls) {
-      if (urlRep.category === 'malicious') {
-        signals.push({
-          type: 'malicious_url',
-          severity: 'critical',
-          score: 35,
-          detail: `Malicious URL detected: ${urlRep.entity.substring(0, 50)}...`,
-        });
-      } else if (urlRep.category === 'suspicious') {
-        signals.push({
-          type: 'suspicious_url',
-          severity: 'warning',
-          score: 15,
-          detail: `Suspicious URL: ${urlRep.entity.substring(0, 50)}...`,
-        });
-      }
-    }
-
-    for (const emailRep of reputationResult.emails) {
-      if (emailRep.category === 'malicious') {
-        signals.push({
-          type: 'malicious_sender',
-          severity: 'critical',
-          score: 50,
-          detail: `Known malicious sender: ${emailRep.entity}`,
-        });
-      } else if (emailRep.category === 'suspicious') {
-        signals.push({
-          type: 'suspicious_sender',
-          severity: 'warning',
-          score: 25,
-          detail: `Suspicious sender: ${emailRep.entity}`,
-        });
-      }
-    }
-
-    const score = Math.min(100, signals.reduce((sum, s) => sum + s.score, 0));
-    const confidence = reputationResult.domains.length > 0 || reputationResult.urls.length > 0
-      ? 0.8
-      : 0.5;
-
-    return {
-      layer: 'reputation',
-      score,
-      confidence,
-      signals,
-      processingTimeMs: performance.now() - startTime,
-    };
-  } catch (error) {
-    loggers.detection.error('Reputation lookup failed', error instanceof Error ? error : new Error(String(error)));
-    return {
-      layer: 'reputation',
-      score: 0,
-      confidence: 0.3,
-      signals,
-      processingTimeMs: performance.now() - startTime,
-      skipped: true,
-      skipReason: 'Reputation service error',
-    };
-  }
-}
-
-/**
  * ML Analysis using trained classifier
  */
 async function runMLAnalysis(email: ParsedEmail, _priorSignals: Signal[]): Promise<LayerResult> {
@@ -936,8 +817,6 @@ async function runSandboxAnalysis(email: ParsedEmail, tenantId: string): Promise
   }
 
   // Phase 3: Enhanced Sandbox Analysis (+4 points)
-  // Run deep attachment analysis when attachments have content
-  const hasAttachmentContent = email.attachments.some(a => a.content && a.content.length > 0);
   const sandboxEnabled = isModuleEnabled(tenantId, 'enableAttachmentSandbox');
 
   if (sandboxEnabled && email.attachments.length > 0) {
@@ -1176,7 +1055,7 @@ async function runBECAnalysis(email: ParsedEmail, tenantId: string): Promise<Lay
  */
 function calculateFinalScore(
   results: LayerResult[],
-  config: DetectionConfig
+  _config: DetectionConfig
 ): { overallScore: number; confidence: number } {
   // Layer weights (sum to 1.0) - Phase 3: Balanced rebalancing
   const weights: Record<string, number> = {

@@ -145,7 +145,7 @@ export async function DELETE(request: NextRequest) {
         if (result.length > 0) {
           deletedCount++;
         }
-      } catch (error) {
+      } catch {
         // Continue on individual errors
       }
     }

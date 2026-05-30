@@ -11,7 +11,7 @@ import { logAuditEvent } from '@/lib/db/audit';
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId, orgId } = await auth();
+    const { userId } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -47,8 +47,6 @@ export async function GET(request: NextRequest) {
       params.push(`%${search}%`);
       paramIndex++;
     }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     // Get tenants with stats
     const tenants = await sql`
@@ -115,7 +113,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, orgId, orgRole } = await auth();
+    const { userId, orgRole } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -126,7 +126,7 @@ export async function checkUrlAtClickTime(
             }
           }
         }
-      } catch (error) {
+      } catch {
         // Timeout or error - continue with heuristic score
         signals.push({
           type: 'check_timeout',
@@ -153,7 +153,7 @@ export async function checkUrlAtClickTime(
     clickCache.set(cacheKey, { result, timestamp: Date.now() });
 
     return result;
-  } catch (error) {
+  } catch {
     // Parsing error or other issue
     return {
       url,

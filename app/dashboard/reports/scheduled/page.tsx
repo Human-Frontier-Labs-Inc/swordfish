@@ -237,7 +237,7 @@ function CreateReportModal({
         const data = await response.json();
         setError(data.error || 'Failed to create report');
       }
-    } catch (error) {
+    } catch {
       setError('Failed to create report');
     } finally {
       setLoading(false);

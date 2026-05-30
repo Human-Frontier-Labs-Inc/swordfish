@@ -9,7 +9,7 @@ import { sql } from '@/lib/db';
 import { getGmailAccessToken } from '@/lib/integrations/gmail';
 import { createGmailSubscription } from '@/lib/webhooks/subscriptions';
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     const { userId, orgId } = await auth();
 

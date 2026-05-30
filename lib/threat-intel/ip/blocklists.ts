@@ -100,11 +100,6 @@ function ipToNumber(ip: string): number {
 }
 
 /**
- * Reverse IP for DNSBL lookup
- */
-function reverseIP(ip: string): string {
-  return ip.split('.').reverse().join('.');
-}
 
 /**
  * Check IP against DNSBL (DNS-based Blackhole List)
@@ -115,15 +110,11 @@ async function checkDNSBL(
   dnsbl: string,
   categories: Record<string, string>
 ): Promise<{ listed: boolean; category?: string }> {
-  const reversedIP = reverseIP(ip);
-  const query = `${reversedIP}.${dnsbl}`;
-
   try {
-    // In production, perform actual DNS lookup
+    // In production, perform actual DNS lookup with reversed IP octets
     // For now, simulate based on known patterns
 
     // Simulate DNS lookup result
-    // In production: const result = await dns.resolve4(query);
     const simulatedResult = simulateDNSBLCheck(ip, dnsbl);
 
     if (simulatedResult) {

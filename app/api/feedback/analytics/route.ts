@@ -10,7 +10,7 @@ import { getFeedbackAnalytics } from '@/lib/feedback/feedback-learning';
 /**
  * GET - Get feedback analytics for the tenant
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const { userId, orgId } = await auth();
 

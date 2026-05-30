@@ -233,7 +233,7 @@ export class LookalikeDetector {
     const hasHomoglyphs = this.hasHomoglyphs(lowerEmail);
 
     // Extract domain
-    const [localPart, domain] = lowerEmail.split('@');
+    const [, domain] = lowerEmail.split('@');
     const normalizedDomain = this.normalizeHomoglyphs(domain);
 
     let bestMatch: LookalikeMatch | undefined;
@@ -242,7 +242,7 @@ export class LookalikeDetector {
 
     for (const contact of knownContacts) {
       const contactEmail = contact.email.toLowerCase();
-      const [contactLocal, contactDomain] = contactEmail.split('@');
+      const [, contactDomain] = contactEmail.split('@');
 
       // Check email similarity
       const normalizedContactEmail = this.normalizeHomoglyphs(contactEmail);

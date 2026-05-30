@@ -70,10 +70,6 @@ export async function GET(request: NextRequest) {
       whereConditions.push(`t.created_at <= '${dateTo}'`);
     }
 
-    const whereClause = whereConditions.length > 0
-      ? `WHERE ${whereConditions.join(' AND ')}`
-      : '';
-
     // Get threats with tenant info
     const threats = await sql`
       SELECT

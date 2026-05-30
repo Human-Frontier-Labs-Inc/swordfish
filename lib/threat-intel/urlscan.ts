@@ -305,11 +305,6 @@ export class UrlScanClient {
     const domain = (page.domain as string) || '';
     const title = (page.title as string) || '';
 
-    const phishingKeywords = [
-      'login', 'signin', 'verify', 'secure', 'account', 'bank',
-      'paypal', 'amazon', 'apple', 'microsoft', 'google', 'facebook',
-    ];
-
     const brandMismatches = this.detectBrandMismatch(domain, title);
     if (brandMismatches.length > 0) {
       indicators.phishingPatterns.push(...brandMismatches);

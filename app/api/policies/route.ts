@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
-import type { Policy, PolicyRule, PolicyPriority } from '@/lib/policies/types';
+import type { Policy, PolicyPriority } from '@/lib/policies/types';
 
 // Priority mapping: string <-> integer for database storage
 const PRIORITY_TO_INT: Record<PolicyPriority, number> = {

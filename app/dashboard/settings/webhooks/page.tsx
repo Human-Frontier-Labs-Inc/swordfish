@@ -85,7 +85,7 @@ export default function WebhooksPage() {
         alert(`Test failed: ${data.error}`);
       }
       loadWebhooks();
-    } catch (error) {
+    } catch {
       alert('Test failed: Network error');
     } finally {
       setTestingId(null);
@@ -254,7 +254,7 @@ function CreateWebhookModal({
         const data = await response.json();
         setError(data.error || 'Failed to create webhook');
       }
-    } catch (error) {
+    } catch {
       setError('Failed to create webhook');
     } finally {
       setLoading(false);

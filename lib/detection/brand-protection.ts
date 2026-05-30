@@ -224,15 +224,6 @@ const COUSIN_PATTERNS = [
   '.net', '.org', '.co', '.io', '.info', '.biz', '.online', '.site',
 ];
 
-/**
- * Normalize a string for comparison (removes accents, converts to lowercase)
- */
-function normalizeString(str: string): string {
-  return str
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, ''); // Remove diacritical marks
-}
 
 /**
  * Check if a character is a homoglyph of another
@@ -333,7 +324,6 @@ function isCousinDomain(testDomain: string, brandBase: string): { match: boolean
     // Check if brand appears at word boundary (start, after hyphen, or end)
     const brandIndex = testBase.indexOf(brandLower);
     const charBefore = brandIndex > 0 ? testBase[brandIndex - 1] : '-';
-    const charAfter = brandIndex + brandLower.length < testBase.length ? testBase[brandIndex + brandLower.length] : '-';
 
     // Brand should be at a word boundary (start of domain or after hyphen)
     if (charBefore === '-' || brandIndex === 0) {

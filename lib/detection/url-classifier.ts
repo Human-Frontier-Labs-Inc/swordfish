@@ -150,7 +150,7 @@ const SUSPICIOUS_PATTERNS = [
   { pattern: /xn--/i, reason: 'Punycode (potential homograph)', score: 8 },
 
   // Excessive subdomains
-  { pattern: /^https?:\/\/([^\/]+\.){4,}/i, reason: 'Excessive subdomains', score: 7 },
+  { pattern: /^https?:[/][/]([^/]+\.){4,}/i, reason: 'Excessive subdomains', score: 7 },
 
   // IP addresses (unless localhost)
   { pattern: /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/i, reason: 'IP-based URL', score: 6 },

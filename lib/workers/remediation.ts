@@ -17,7 +17,6 @@ import {
   getOrCreateQuarantineLabel,
   getGmailAccessToken,
 } from '@/lib/integrations/gmail';
-import { logAuditEvent } from '@/lib/db/audit';
 import { sendNotification } from '@/lib/notifications/service';
 import { retryWithBackoff, isRetryable } from '@/lib/performance/retry';
 import { loggers } from '@/lib/logging/logger';
@@ -170,12 +169,6 @@ interface ThreatRecord {
   status: string;
 }
 
-interface IntegrationRecord {
-  id: string;
-  tenant_id: string;
-  type: string;
-  config: Record<string, unknown>;
-}
 
 /**
  * Quarantine an email - move to quarantine folder/label

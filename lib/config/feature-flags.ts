@@ -250,7 +250,7 @@ export class FeatureFlags {
   }
 
   getAuditLogs(flagKey?: string): FlagAuditLog[] {
-    let logs = flagKey
+    const logs = flagKey
       ? this.auditLogs.filter(l => l.flagKey === flagKey)
       : [...this.auditLogs];
     // Return newest first

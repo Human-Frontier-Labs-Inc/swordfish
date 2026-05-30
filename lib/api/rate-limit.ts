@@ -92,7 +92,7 @@ export function rateLimitMiddleware(
              'anonymous';
   const key = tenantId || ip;
 
-  const { allowed, remaining, resetAt } = checkRateLimit(key, {
+  const { allowed, resetAt } = checkRateLimit(key, {
     ...config,
     keyPrefix: 'api',
   });

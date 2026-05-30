@@ -117,7 +117,6 @@ export async function classifyEmailType(email: ParsedEmail): Promise<EmailClassi
     : email.from?.address || '';
   const senderDomain = senderEmail.split('@')[1]?.toLowerCase() || '';
   const subject = email.subject || '';
-  const body = (email.body.text || '') + (email.body.html || '');
 
   // Step 1: Look up sender in registry
   const senderInfo = await lookupSender(senderEmail, senderDomain);

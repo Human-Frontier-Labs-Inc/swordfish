@@ -248,7 +248,7 @@ export function generateDeviceAlert(
   const isKnownTrusted = existingDevice?.status === 'approved';
 
   let severity: Alert['severity'] = 'medium';
-  let type: Alert['type'] = 'new_device';
+  const type: Alert['type'] = 'new_device';
 
   if (isKnownTrusted) {
     severity = 'info' as Alert['severity']; // Safe return
@@ -571,7 +571,7 @@ export class DeviceRegistry {
     const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
     let expiredCount = 0;
 
-    for (const [deviceId, device] of this.devices) {
+    for (const [, device] of this.devices) {
       // Skip if tenant filter doesn't match
       if (tenantId && device.tenantId !== tenantId) {
         continue;

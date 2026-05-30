@@ -13,7 +13,7 @@
  * - BehavioralFeatures: Communication frequency, time anomaly, BEC patterns
  */
 
-import type { Attachment, AuthenticationResults } from '@/lib/detection/types';
+import type { Attachment } from '@/lib/detection/types';
 import { parseAuthenticationResults } from '@/lib/detection/parser';
 import { LookalikeDetector } from '@/lib/behavioral/lookalike-detector';
 
@@ -652,7 +652,7 @@ export class FeatureExtractor {
   /**
    * Synchronous sender feature extraction (without async lookups)
    */
-  private extractSenderFeaturesSync(fromAddress: string, displayName?: string): SenderFeatures {
+  private extractSenderFeaturesSync(fromAddress: string, _displayName?: string): SenderFeatures {
     const senderDomain = fromAddress.split('@')[1]?.toLowerCase() || '';
     const isFreeEmailProvider = FREE_EMAIL_PROVIDERS.has(senderDomain);
     const isDisposableEmail = DISPOSABLE_EMAIL_DOMAINS.has(senderDomain);
@@ -1024,18 +1024,9 @@ export class FeatureExtractor {
     const vipResult = await this.checkVIPImpersonation(fromAddress, displayName, tenantId);
 
     // Check contact history (would integrate with FirstContactDetector)
-    let isFirstContact = true;
-    let priorContactCount = 0;
-    let communicationFrequency = 0;
-
-    try {
-      const { FirstContactDetector } = await import('@/lib/behavioral/first-contact');
-      const detector = new FirstContactDetector();
-      // Would need actual tenant data to check contact history
-      // For now, return conservative defaults
-    } catch {
-      // First contact detection unavailable
-    }
+    const isFirstContact = true;
+    const priorContactCount = 0;
+    const communicationFrequency = 0;
 
     return {
       isFirstContact,
@@ -1197,7 +1188,7 @@ export class FeatureExtractor {
     const mismatchedFiles: string[] = [];
 
     let totalSize = 0;
-    let maxArchiveDepth = 0;
+    const maxArchiveDepth = 0;
     let hasDoubleExtension = false;
 
     for (const attachment of attachments) {
@@ -1303,7 +1294,7 @@ export class FeatureExtractor {
   /**
    * Extract behavioral features based on communication patterns
    */
-  async extractBehavioralFeatures(email: RawEmail, tenantId: string): Promise<BehavioralFeatures> {
+  async extractBehavioralFeatures(email: RawEmail, _tenantId: string): Promise<BehavioralFeatures> {
     const sendTime = email.date;
     const sendHour = sendTime.getHours();
     const dayOfWeek = sendTime.getDay();
@@ -1312,23 +1303,12 @@ export class FeatureExtractor {
     // Default values when behavioral data unavailable
     let sendTimeAnomalyScore = 0;
     let hourProbability = 0.0416; // 1/24 uniform distribution
-    let recipientAnomalyScore = 0;
-    let newRecipientCount = 0;
-    let newDomainCount = 0;
-    let volumeAnomalyScore = 0;
-    let volumeZScore = 0;
-    let subjectDeviationScore = 0;
-
-    try {
-      // Try to get behavioral analysis from AnomalyDetector
-      const { AnomalyDetector } = await import('@/lib/behavioral/anomaly-engine');
-      const detector = new AnomalyDetector({ tenantId });
-
-      // Would need actual baseline data - for now return estimates
-      // In production, this would query stored baselines
-    } catch {
-      // Behavioral analysis unavailable
-    }
+    const recipientAnomalyScore = 0;
+    const newRecipientCount = 0;
+    const newDomainCount = 0;
+    const volumeAnomalyScore = 0;
+    const volumeZScore = 0;
+    const subjectDeviationScore = 0;
 
     // Estimate time anomaly based on typical business hours
     const businessHours = [9, 10, 11, 12, 13, 14, 15, 16, 17];
@@ -1434,7 +1414,7 @@ export class FeatureExtractor {
 
   private cleanIPAddress(ip: string): string {
     // Remove brackets and whitespace
-    return ip.replace(/[\[\]\s]/g, '');
+    return ip.replace(/[[\]\s]/g, '');
   }
 
   private isSuspiciousMailer(mailer: string | string[] | undefined): boolean {
@@ -1544,7 +1524,7 @@ export class FeatureExtractor {
     return { hasHidden, hiddenLength, hasZeroSizeFont, hasInvisible };
   }
 
-  private analyzeObfuscation(html: string, text: string): {
+  private analyzeObfuscation(html: string, _text: string): {
     hasObfuscatedLinks: boolean;
     hasEncoded: boolean;
     hasBase64Images: boolean;
@@ -1616,7 +1596,7 @@ export class FeatureExtractor {
     return { hasUrgency, isAllCaps, hasExcessivePunctuation };
   }
 
-  private async checkLookalikeDomain(domain: string, displayName?: string): Promise<{
+  private async checkLookalikeDomain(domain: string, _displayName?: string): Promise<{
     isLookalike: boolean;
     distance?: number;
     similarity?: number;
@@ -1656,7 +1636,7 @@ export class FeatureExtractor {
   private async checkVIPImpersonation(
     email: string,
     displayName: string | undefined,
-    tenantId: string
+    _tenantId: string
   ): Promise<{
     isImpersonation: boolean;
     impersonatedVIP?: string;
@@ -1699,7 +1679,7 @@ export class FeatureExtractor {
     const parts = filename.split('.');
     if (parts.length < 3) return false;
 
-    const lastExt = `.${parts.pop()?.toLowerCase()}`;
+    parts.pop();
     const secondLastExt = `.${parts.pop()?.toLowerCase()}`;
 
     return DANGEROUS_EXTENSIONS.has(secondLastExt) || SCRIPT_EXTENSIONS.has(secondLastExt);

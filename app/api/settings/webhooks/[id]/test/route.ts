@@ -97,7 +97,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         responseTime,
         status: responseStatus,
       });
-    } catch (fetchError) {
+    } catch {
       responseTime = Date.now() - startTime;
 
       // Update webhook failure

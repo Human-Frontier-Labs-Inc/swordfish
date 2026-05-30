@@ -232,7 +232,7 @@ export async function syncGoogleWorkspaceUsers(configId: string): Promise<Domain
  */
 async function listAllUsers(
   accessToken: string,
-  excludeGroups?: string[]
+  _excludeGroups?: string[]
 ): Promise<DirectoryUser[]> {
   const users: DirectoryUser[] = [];
   let pageToken: string | undefined;

@@ -272,7 +272,7 @@ function CreateTemplateModal({
         const data = await response.json();
         setError(data.error || 'Failed to create template');
       }
-    } catch (error) {
+    } catch {
       setError('Failed to create template');
     } finally {
       setLoading(false);

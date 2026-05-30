@@ -13,7 +13,6 @@ import { parseGmailEmail } from '@/lib/detection/parser';
 import { analyzeEmail } from '@/lib/detection/pipeline';
 import { storeVerdict } from '@/lib/detection/storage';
 import { sendThreatNotification } from '@/lib/notifications/service';
-import { logAuditEvent } from '@/lib/db/audit';
 import { autoRemediate } from '@/lib/workers/remediation';
 import { validateGooglePubSub, checkRateLimit } from '@/lib/webhooks/validation';
 import { processGmailHistoryForUser, getGmailTokenForUser } from '@/lib/integrations/domain-wide/google-workspace';
@@ -340,7 +339,7 @@ async function processDomainWideGmail(
 ) {
   try {
     // Get new messages from history
-    const { messageIds, newHistoryId } = await processGmailHistoryForUser(configId, userEmail, historyId);
+    const { messageIds } = await processGmailHistoryForUser(configId, userEmail, historyId);
 
     log.info('Domain-wide: Found new messages', { count: messageIds.length, userEmail });
 

@@ -3,9 +3,12 @@ import type { Appearance } from "@clerk/types";
 import "./globals.css";
 import Script from "next/script";
 import localFont from "next/font/local";
-import { templateMetadata } from "./_template/content/metadata";
+import type { Metadata } from "next";
 
-export const metadata = templateMetadata;
+export const metadata: Metadata = {
+  title: "Swordfish",
+  description: "Email security threat detection, monitoring, and security operations.",
+};
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",

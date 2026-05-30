@@ -3,7 +3,6 @@
  * Phase 4.2: Communication behavior baselines and deviation detection
  */
 
-import { sql } from '@/lib/db';
 import {
   calculateMean,
   calculateStdDev,
@@ -411,7 +410,6 @@ export class BaselineService {
     consistency: number;
   } {
     const volumes = this.dailyVolumes.get(userEmail) || [];
-    const times = this.sendTimes.get(userEmail) || [];
     const lastRecord = this.lastRecordDates.get(userEmail);
 
     // Data points factor

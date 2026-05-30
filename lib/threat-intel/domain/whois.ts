@@ -21,32 +21,6 @@ export interface WhoisResult {
   cached?: boolean;
 }
 
-// WHOIS servers by TLD
-const WHOIS_SERVERS: Record<string, string> = {
-  'com': 'whois.verisign-grs.com',
-  'net': 'whois.verisign-grs.com',
-  'org': 'whois.pir.org',
-  'info': 'whois.afilias.net',
-  'io': 'whois.nic.io',
-  'co': 'whois.nic.co',
-  'xyz': 'whois.nic.xyz',
-  'online': 'whois.nic.online',
-  'site': 'whois.nic.site',
-  'top': 'whois.nic.top',
-  'app': 'whois.nic.google',
-  'dev': 'whois.nic.google',
-  'uk': 'whois.nic.uk',
-  'de': 'whois.denic.de',
-  'ru': 'whois.tcinet.ru',
-  'cn': 'whois.cnnic.cn',
-  'jp': 'whois.jprs.jp',
-  'au': 'whois.auda.org.au',
-  'ca': 'whois.cira.ca',
-  'fr': 'whois.nic.fr',
-  'nl': 'whois.sidn.nl',
-  'br': 'whois.registro.br',
-  'in': 'whois.registry.in',
-};
 
 // Cache for WHOIS results
 const whoisCache = new Map<string, { result: WhoisResult; expiresAt: number }>();
@@ -68,112 +42,8 @@ function getTld(domain: string): string {
 }
 
 /**
- * Parse date from WHOIS response
- */
-function parseWhoisDate(dateStr: string | undefined): Date | undefined {
-  if (!dateStr) return undefined;
 
-  // Try various date formats
-  const formats = [
-    // ISO 8601
-    /(\d{4})-(\d{2})-(\d{2})T?(\d{2})?:?(\d{2})?:?(\d{2})?/,
-    // US format
-    /(\d{2})\/(\d{2})\/(\d{4})/,
-    // Verbose format
-    /(\d{1,2})-([A-Za-z]{3})-(\d{4})/,
-  ];
 
-  for (const format of formats) {
-    const match = dateStr.match(format);
-    if (match) {
-      const parsed = new Date(dateStr);
-      if (!isNaN(parsed.getTime())) {
-        return parsed;
-      }
-    }
-  }
-
-  // Fallback: try direct parsing
-  const date = new Date(dateStr);
-  return isNaN(date.getTime()) ? undefined : date;
-}
-
-/**
- * Parse WHOIS response text
- */
-function parseWhoisResponse(raw: string, domain: string): Partial<WhoisResult> {
-  const result: Partial<WhoisResult> = { raw };
-  const lines = raw.split('\n');
-
-  for (const line of lines) {
-    const [key, ...valueParts] = line.split(':');
-    const value = valueParts.join(':').trim();
-
-    if (!key || !value) continue;
-
-    const keyLower = key.toLowerCase().trim();
-
-    // Creation date
-    if (keyLower.includes('creation date') ||
-        keyLower.includes('created date') ||
-        keyLower.includes('registration date') ||
-        keyLower.includes('created')) {
-      result.createdDate = parseWhoisDate(value);
-    }
-
-    // Updated date
-    if (keyLower.includes('updated date') ||
-        keyLower.includes('last updated') ||
-        keyLower.includes('modified')) {
-      result.updatedDate = parseWhoisDate(value);
-    }
-
-    // Expiration date
-    if (keyLower.includes('expir') ||
-        keyLower.includes('registry expiry')) {
-      result.expiresDate = parseWhoisDate(value);
-    }
-
-    // Registrar
-    if (keyLower.includes('registrar') && !keyLower.includes('abuse')) {
-      if (!result.registrar) {
-        result.registrar = value;
-      }
-    }
-
-    // Name servers
-    if (keyLower.includes('name server') || keyLower.includes('nserver')) {
-      if (!result.nameServers) {
-        result.nameServers = [];
-      }
-      result.nameServers.push(value.toLowerCase());
-    }
-
-    // Status
-    if (keyLower.includes('status') && !keyLower.includes('query')) {
-      if (!result.status) {
-        result.status = [];
-      }
-      result.status.push(value);
-    }
-
-    // Registrant info
-    if (keyLower.includes('registrant')) {
-      if (!result.registrant) {
-        result.registrant = {};
-      }
-      if (keyLower.includes('name')) {
-        result.registrant.name = value;
-      } else if (keyLower.includes('org')) {
-        result.registrant.organization = value;
-      } else if (keyLower.includes('country')) {
-        result.registrant.country = value;
-      }
-    }
-  }
-
-  return result;
-}
 
 /**
  * Perform WHOIS lookup for a domain
@@ -189,8 +59,6 @@ export async function lookupWhois(domain: string): Promise<WhoisResult> {
     return { ...cached.result, cached: true };
   }
 
-  const tld = getTld(normalizedDomain);
-  const whoisServer = WHOIS_SERVERS[tld];
 
   // If we have a configured WHOIS API endpoint, use it
   const whoisApiUrl = process.env.WHOIS_API_URL;

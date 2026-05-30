@@ -6,7 +6,7 @@
  */
 
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'crypto';
-import { gzipSync, gunzipSync } from 'zlib';
+import { gzipSync } from 'zlib';
 
 export enum BackupStatus {
   PENDING = 'pending',

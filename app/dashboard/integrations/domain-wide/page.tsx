@@ -93,7 +93,7 @@ export default function DomainWidePage() {
         setGoogleForm({ serviceAccountKey: '', adminEmail: '' });
         fetchConfigs();
       }
-    } catch (err) {
+    } catch {
       setError('Failed to configure Google Workspace');
     } finally {
       setSaving(false);
@@ -127,7 +127,7 @@ export default function DomainWidePage() {
         setMicrosoftForm({ azureTenantId: '', clientId: '', clientSecret: '' });
         fetchConfigs();
       }
-    } catch (err) {
+    } catch {
       setError('Failed to configure Microsoft 365');
     } finally {
       setSaving(false);
@@ -153,7 +153,7 @@ export default function DomainWidePage() {
         setSuccess(`Synced ${data.sync?.usersDiscovered || 0} users`);
         fetchConfigs();
       }
-    } catch (err) {
+    } catch {
       setError('Failed to sync users');
     } finally {
       setSyncing(null);

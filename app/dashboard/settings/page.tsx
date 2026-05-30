@@ -57,7 +57,7 @@ export default function SettingsPage() {
       if (data.settings) {
         setSettings(data.settings);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load settings');
     } finally {
       setLoading(false);

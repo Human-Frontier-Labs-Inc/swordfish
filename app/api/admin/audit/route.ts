@@ -83,8 +83,6 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
     // Get audit logs with tenant names
     const logs = await sql`
       SELECT

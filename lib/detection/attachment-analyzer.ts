@@ -4,12 +4,9 @@
  */
 
 import {
-  FILE_SIGNATURES,
-  DANGEROUS_EXTENSIONS,
   VBA_INDICATORS,
   SUSPICIOUS_VBA_KEYWORDS,
   ARCHIVE_EXTENSIONS,
-  matchMagicBytes,
   detectFileTypeFromBuffer,
   isDangerousExtension,
   isScriptExtension,
@@ -17,11 +14,9 @@ import {
   isArchiveExtension,
   isOfficeExtension,
   getExtension,
-  getAllExtensions,
   hasDoubleExtension,
   hasRtlOverride,
   getRealExtension,
-  type FileSignature,
 } from './file-signatures';
 
 /**
@@ -131,22 +126,6 @@ export interface AttachmentAnalysis {
   analysisTimestamp: Date;
 }
 
-/**
- * ZIP local file header structure
- */
-interface ZipLocalHeader {
-  signature: number;
-  version: number;
-  flags: number;
-  compression: number;
-  modTime: number;
-  modDate: number;
-  crc32: number;
-  compressedSize: number;
-  uncompressedSize: number;
-  filenameLength: number;
-  extraLength: number;
-}
 
 /**
  * ZIP central directory entry
@@ -727,7 +706,6 @@ export class AttachmentAnalyzer {
 
     // Read EOCD
     const centralDirOffset = buffer.readUInt32LE(eocdOffset + 16);
-    const centralDirSize = buffer.readUInt32LE(eocdOffset + 12);
     const entryCount = buffer.readUInt16LE(eocdOffset + 10);
 
     // Parse central directory entries

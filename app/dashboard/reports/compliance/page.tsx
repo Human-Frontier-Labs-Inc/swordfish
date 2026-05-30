@@ -272,7 +272,7 @@ export default function ComplianceReportsPage() {
 
 // Helper Components
 function ReportTypeCard({
-  type,
+  type: _type,
   title,
   description,
   icon,

@@ -523,7 +523,7 @@ export class ResponseLearner {
   /**
    * Get false positive rate by category
    */
-  async getFalsePositiveRate(tenantId: string, category?: string): Promise<FPMetrics> {
+  async getFalsePositiveRate(tenantId: string, _category?: string): Promise<FPMetrics> {
     try {
       const decisions = await this.getDecisionHistory(tenantId, {
         startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
@@ -575,7 +575,7 @@ export class ResponseLearner {
   /**
    * Get false negative rate by threat type
    */
-  async getFalseNegativeRate(tenantId: string, threatType?: string): Promise<FNMetrics> {
+  async getFalseNegativeRate(tenantId: string, _threatType?: string): Promise<FNMetrics> {
     try {
       // Get emails that passed but were later reported/blocked
       const fnDecisions = await this.getDecisionHistory(tenantId, {
@@ -769,8 +769,8 @@ export class ResponseLearner {
 
       const actionBreakdown: Record<string, number> = {};
       const hourCounts: Record<number, number> = {};
-      let totalTimeToAction = 0;
-      let timeToActionCount = 0;
+      const totalTimeToAction = 0;
+      const timeToActionCount = 0;
 
       for (const action of actions) {
         const actionType = action.admin_action as string;
@@ -2123,7 +2123,7 @@ export class ResponseLearner {
   private wilsonConfidenceInterval(
     successes: number,
     total: number,
-    confidence: number = 0.95
+    _confidence: number = 0.95
   ): { lower: number; upper: number } {
     if (total === 0) return { lower: 0, upper: 0 };
 

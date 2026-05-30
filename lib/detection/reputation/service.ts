@@ -134,8 +134,6 @@ const FREEMAIL_DOMAINS = new Set([
   'live.com',
 ]);
 
-// Cache TTL in milliseconds
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Check reputation for domains, IPs, URLs, and emails

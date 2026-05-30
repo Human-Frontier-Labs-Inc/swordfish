@@ -3,7 +3,7 @@
  * Phase 4.1: Track communication relationships between contacts
  */
 
-import { GraphStorage, StoredContact, StoredRelationship, ContactStats } from './graph-storage';
+import { GraphStorage } from './graph-storage';
 
 export interface EmailAddress {
   address: string;

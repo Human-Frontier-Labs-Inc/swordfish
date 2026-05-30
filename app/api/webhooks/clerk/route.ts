@@ -13,7 +13,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { Webhook } from 'svix';
 import { sql, withTransaction } from '@/lib/db';
-import { logAuditEvent } from '@/lib/db/audit';
 
 // Clerk webhook event types
 interface ClerkUserEvent {
@@ -290,7 +289,6 @@ async function handleMembershipCreated(event: ClerkMembershipEvent) {
   const { data } = event;
   const clerkUserId = data.public_user_data.user_id;
   const clerkOrgId = data.organization.id;
-  const clerkRole = data.role;
 
   // Find user in our database
   const userResult = await sql`

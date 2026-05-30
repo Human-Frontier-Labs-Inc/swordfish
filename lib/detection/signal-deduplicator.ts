@@ -61,7 +61,7 @@ export function deduplicateSignals(
   // Process each group
   const deduplicated: Signal[] = [];
 
-  for (const [key, groupSignals] of groups) {
+  for (const [, groupSignals] of groups) {
     if (groupSignals.length === 1) {
       // No deduplication needed
       deduplicated.push(groupSignals[0]);
@@ -127,7 +127,7 @@ export function deduplicateURLSignals(signals: Signal[]): Signal[] {
   const deduplicatedURLs: Signal[] = [];
 
   // Process each URL group
-  for (const [type, groupSignals] of urlGroups) {
+  for (const [, groupSignals] of urlGroups) {
     if (groupSignals.length === 1) {
       deduplicatedURLs.push(groupSignals[0]);
       continue;

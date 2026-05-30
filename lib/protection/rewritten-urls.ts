@@ -826,8 +826,6 @@ export async function searchRewrittenUrls(params: {
     query,
     verdict,
     emailId,
-    startDate,
-    endDate,
     limit = 50,
     offset = 0,
   } = params;

@@ -16,7 +16,6 @@ export interface URLhausEntry {
 }
 
 // URLhaus provides free feeds
-const URLHAUS_CSV_URL = 'https://urlhaus.abuse.ch/downloads/csv_online/';
 const URLHAUS_JSON_URL = 'https://urlhaus.abuse.ch/downloads/json_online/';
 
 // Sample malware URLs for development

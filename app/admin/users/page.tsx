@@ -368,7 +368,7 @@ function InviteUserModal({
         const data = await response.json();
         setError(data.error || 'Failed to send invitation');
       }
-    } catch (error) {
+    } catch {
       setError('Failed to send invitation');
     } finally {
       setLoading(false);

@@ -87,7 +87,7 @@ const threatIntelCache = new Map<string, CacheEntry>();
 /**
  * Get cached result for URL
  */
-function getCachedResult(url: string, ttlMs: number): ThreatIntelResult | null {
+function getCachedResult(url: string, _ttlMs: number): ThreatIntelResult | null {
   const entry = threatIntelCache.get(url);
   if (!entry) return null;
 

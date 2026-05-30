@@ -71,13 +71,6 @@ const HIGH_RISK_TLDS = new Set([
   '.ru', '.cn', '.su', // Country TLDs with high abuse
 ]);
 
-/**
- * Trusted TLDs
- */
-const TRUSTED_TLDS = new Set([
-  '.com', '.org', '.net', '.gov', '.edu', '.io',
-  '.co.uk', '.de', '.fr', '.jp', '.au', '.ca',
-]);
 
 /**
  * Well-known brand domains for trust detection

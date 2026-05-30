@@ -37,23 +37,6 @@ export interface QRSignal {
   score: number;
 }
 
-/**
- * Common QR code image signatures
- * These are the magic bytes/patterns that identify QR code image formats
- */
-const QR_IMAGE_SIGNATURES = {
-  // PNG signature
-  PNG: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
-  // JPEG signature
-  JPEG: [0xFF, 0xD8, 0xFF],
-  // GIF signature
-  GIF87a: [0x47, 0x49, 0x46, 0x38, 0x37, 0x61],
-  GIF89a: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61],
-  // BMP signature
-  BMP: [0x42, 0x4D],
-  // WebP signature
-  WEBP: [0x52, 0x49, 0x46, 0x46],
-};
 
 /**
  * Patterns that suggest QR code content in filenames
@@ -96,7 +79,7 @@ export function detectQRCodes(
     content?: Buffer | string;
   }>,
   htmlContent?: string,
-  textContent?: string
+  _textContent?: string
 ): QRCodeDetection {
   const sources: QRCodeSource[] = [];
   const signals: QRSignal[] = [];

@@ -27,10 +27,8 @@ jobs:
         run: npm ci
 
       - name: Run ESLint
-        # Note: Some pre-existing lint errors need to be fixed
-        # TODO: Fix remaining lint errors in lib/* files
-        run: npm run lint || echo "::warning::ESLint has errors (see logs). Fix these for cleaner CI."
-        continue-on-error: true
+        run: npm run lint
+        continue-on-error: false
 
   typecheck:
     name: Type Check
@@ -49,10 +47,8 @@ jobs:
         run: npm ci
 
       - name: Run TypeScript type check
-        # Note: Some test files have pre-existing type errors that don't affect runtime
-        # TODO: Fix remaining type errors in test files (tests/* only)
-        run: npm run typecheck || echo "::warning::TypeScript check has errors (see logs). Tests still pass at runtime."
-        continue-on-error: true
+        run: npm run typecheck
+        continue-on-error: false
 
   test:
     name: Unit Tests

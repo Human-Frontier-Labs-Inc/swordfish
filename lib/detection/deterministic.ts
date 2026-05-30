@@ -5,13 +5,10 @@
 
 import type { ParsedEmail, Signal, SignalType, LayerResult, AuthenticationResults } from './types';
 import { parseAuthenticationResults } from './parser';
-import { classifyURL, getURLScoreMultiplier, type URLClassification } from './url-classifier';
+import { classifyURL, getURLScoreMultiplier } from './url-classifier';
 import { deduplicateURLSignals } from './signal-deduplicator';
 import {
   getURLIntelligence,
-  detectLookalikeDomain,
-  detectURLObfuscation,
-  type URLIntelligenceResult,
 } from './url-intelligence';
 
 // Known free email providers

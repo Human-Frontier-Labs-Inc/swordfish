@@ -13,7 +13,7 @@ export * from './dmarc';
 import { SPFValidator } from './spf';
 import { DKIMValidator } from './dkim';
 import { DMARCEvaluator } from './dmarc';
-import { CachingDNSResolver, MemoryDNSCache, MockDNSResolver } from './dns-resolver';
+import { MockDNSResolver } from './dns-resolver';
 import type {
   DNSResolver,
   EmailAuthContext,

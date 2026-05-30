@@ -618,8 +618,8 @@ export class ImpossibleTravelDetector {
    * Detect impossible travel for a new login event
    */
   async detectImpossibleTravel(
-    userId: string,
-    newLogin: LoginLocation
+    _userId: string,
+    _newLogin: LoginLocation
   ): Promise<ImpossibleTravelAlert | null> {
     // In a real implementation, this would fetch the previous login from the database
     // For now, this is a placeholder that would integrate with LoginEventService

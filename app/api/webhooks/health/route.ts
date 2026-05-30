@@ -45,8 +45,8 @@ interface WebhookMetrics {
 /**
  * GET - Get webhook health and metrics
  */
-export async function GET(request: NextRequest) {
-  const { userId, orgId } = await auth();
+export async function GET(_request: NextRequest) {
+  const { userId } = await auth();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
  * POST - Trigger subscription renewal or retry dead letters
  */
 export async function POST(request: NextRequest) {
-  const { userId, orgId } = await auth();
+  const { userId } = await auth();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

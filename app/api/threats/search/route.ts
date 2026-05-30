@@ -269,12 +269,10 @@ async function executeSearch(tenantId: string, filters: SearchFilters) {
 
 async function getSearchAggregations(
   tenantId: string,
-  additionalConditions: string[],
-  additionalParams: unknown[]
+  _additionalConditions: string[],
+  _additionalParams: unknown[]
 ) {
   // Get aggregations for faceted search
-  const baseCondition = `tenant_id = $1`;
-  const params = [tenantId, ...additionalParams];
 
   try {
     // Status distribution

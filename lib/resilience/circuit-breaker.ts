@@ -215,7 +215,7 @@ export class CircuitBreaker {
     }
   }
 
-  private recordFailure(error: Error): void {
+  private recordFailure(_error: Error): void {
     this.stats.failureCount++;
     this.stats.consecutiveFailures++;
     this.stats.consecutiveSuccesses = 0;

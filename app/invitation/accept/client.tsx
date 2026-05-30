@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useAuth, useUser, SignIn, SignUp } from '@clerk/nextjs';
+import { useAuth, SignIn, SignUp } from '@clerk/nextjs';
 import Link from 'next/link';
 
 interface InvitationDetails {
@@ -21,7 +21,6 @@ export default function AcceptInvitationClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { isSignedIn, isLoaded: authLoaded } = useAuth();
-  const { user } = useUser();
 
   const token = searchParams.get('token');
 
@@ -67,7 +66,7 @@ export default function AcceptInvitationClient() {
       } else {
         setViewState('sign-up');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load invitation details');
       setViewState('error');
     }
@@ -99,7 +98,7 @@ export default function AcceptInvitationClient() {
       setTimeout(() => {
         router.push('/dashboard');
       }, 2000);
-    } catch (err) {
+    } catch {
       setError('Failed to accept invitation');
       setViewState('error');
     }

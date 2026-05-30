@@ -275,14 +275,14 @@ export function detectLookalikeDomain(domain: string): LookalikeResult {
   }
 
   // Check for internationalized domain name
-  if (/[^\x00-\x7F]/.test(domain) || domain.includes('xn--')) {
+  if (/\P{ASCII}/u.test(domain) || domain.includes('xn--')) {
     signals.push('internationalized_domain');
 
     // Check for homoglyph attack
     const asciiEquivalent = convertHomoglyphsToAscii(domain);
     if (asciiEquivalent !== domain.toLowerCase()) {
       // Check if ASCII equivalent matches a brand
-      for (const [brand, variations] of Object.entries(PROTECTED_BRANDS)) {
+      for (const [brand] of Object.entries(PROTECTED_BRANDS)) {
         const brandName = brand.replace('.com', '');
         if (asciiEquivalent.includes(brandName)) {
           isLookalike = true;
@@ -614,7 +614,7 @@ export function detectURLObfuscation(url: string): ObfuscationResult {
   }
 
   // Check for credential prefix attack (user@host)
-  const credentialMatch = url.match(/https?:\/\/([^@]+)@([^\/]+)/);
+  const credentialMatch = url.match(/https?:[/][/]([^@]+)@([^/]+)/);
   if (credentialMatch) {
     isObfuscated = true;
     technique = 'credential_prefix';

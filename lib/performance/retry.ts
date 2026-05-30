@@ -272,13 +272,10 @@ export class RetryPolicy {
    */
   async execute<T>(fn: () => Promise<T>): Promise<T> {
     this.stats.totalExecutions++;
-    let retries = 0;
-
     try {
       const result = await retryWithBackoff(fn, {
         ...this.config,
         onRetry: () => {
-          retries++;
           this.stats.totalRetries++;
         },
       });

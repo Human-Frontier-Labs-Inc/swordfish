@@ -3,9 +3,9 @@
  * Combines multiple threat intelligence feeds for comprehensive URL/domain checking
  */
 
-import { fetchPhishTankFeed, checkPhishTankUrl, type PhishTankEntry } from './phishtank';
-import { fetchURLhausFeed, checkURLhausUrl, type URLhausEntry } from './urlhaus';
-import { fetchOpenPhishFeed, checkOpenPhishUrl } from './openphish';
+import { fetchPhishTankFeed, type PhishTankEntry } from './phishtank';
+import { fetchURLhausFeed, type URLhausEntry } from './urlhaus';
+import { fetchOpenPhishFeed } from './openphish';
 import { ThreatFeedCache } from '../cache';
 
 export interface ThreatCheckResult {

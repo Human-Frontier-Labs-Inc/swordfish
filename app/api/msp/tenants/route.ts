@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { sql, withTenant } from '@/lib/db';
+import { sql } from '@/lib/db';
 import { nanoid } from 'nanoid';
 
 // GET /api/msp/tenants - List all tenants for MSP user

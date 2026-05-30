@@ -18,7 +18,7 @@ const VALID_EVENT_TYPES = ['threat', 'policy', 'quarantine', 'integration'];
 // GET /api/settings/splunk
 export async function GET() {
   try {
-    const { userId, orgId } = await auth();
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -89,7 +89,7 @@ export async function GET() {
 // POST /api/settings/splunk
 export async function POST(request: NextRequest) {
   try {
-    const { userId, orgId } = await auth();
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
 // DELETE /api/settings/splunk
 export async function DELETE() {
   try {
-    const { userId, orgId } = await auth();
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

@@ -375,7 +375,7 @@ export class ModelTrainer extends EventEmitter {
   /**
    * Calculate model metrics
    */
-  private calculateMetrics(dataset: TrainingDataset): ModelMetrics {
+  private calculateMetrics(_dataset: TrainingDataset): ModelMetrics {
     // Simulated metrics for now
     const accuracy = 0.85 + Math.random() * 0.1;
     const precision = 0.82 + Math.random() * 0.1;
@@ -437,8 +437,8 @@ export class ModelTrainer extends EventEmitter {
    * Check if model needs retraining
    */
   async checkRetrainingNeeded(
-    modelId: string,
-    thresholds: {
+    _modelId: string,
+    _thresholds: {
       accuracyThreshold: number;
       driftThreshold: number;
       minExamplesForRetrain: number;
@@ -522,7 +522,6 @@ export class ModelEvaluator {
 
     let auc = 0;
     let truePositives = 0;
-    let falsePositives = 0;
     const totalPositives = sorted.filter(p => p.actual === 'phishing').length;
     const totalNegatives = sorted.length - totalPositives;
 
@@ -530,7 +529,6 @@ export class ModelEvaluator {
       if (pred.actual === 'phishing') {
         truePositives++;
       } else {
-        falsePositives++;
         auc += truePositives;
       }
     }
@@ -542,7 +540,7 @@ export class ModelEvaluator {
   /**
    * Calculate feature importance scores
    */
-  async calculateFeatureImportance(modelId: string): Promise<FeatureImportance[]> {
+  async calculateFeatureImportance(_modelId: string): Promise<FeatureImportance[]> {
     // Simulated feature importance
     return [
       { feature: 'threatLanguageScore', importance: 0.25 },
@@ -601,8 +599,8 @@ export class ModelEvaluator {
    * Measure model drift over time
    */
   async measureDrift(
-    modelId: string,
-    params: { windowDays: number }
+    _modelId: string,
+    _params: { windowDays: number }
   ): Promise<DriftMetrics> {
     // Would calculate actual drift from recent predictions
     return {

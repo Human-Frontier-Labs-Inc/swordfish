@@ -21,12 +21,6 @@ import { sql } from '@/lib/db';
 import type { Signal, LayerResult } from '@/lib/detection/types';
 import type {
   EmailFeatures,
-  HeaderFeatures,
-  ContentFeatures,
-  SenderFeatures,
-  UrlFeatures,
-  AttachmentFeatures,
-  BehavioralFeatures,
 } from './feature-extractor';
 import type { PredictionResult, FeatureImportance } from './predictor';
 
@@ -1502,7 +1496,7 @@ export class ThreatExplainer {
   private async generateTechnicalDetails(
     verdictId: string,
     prediction: PredictionResult,
-    features: EmailFeatures | undefined
+    _features: EmailFeatures | undefined
   ): Promise<TechnicalDetails> {
     // Feature importance with details
     const featureImportance: FeatureImportanceDetail[] = prediction.featureImportance.map(fi => ({
