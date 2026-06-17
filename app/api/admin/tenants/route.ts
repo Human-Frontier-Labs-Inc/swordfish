@@ -48,9 +48,21 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    // Get tenants with stats
-    const tenants = await sql`
-      SELECT
+    // Build WHERE from filter conditions — all values are $N-bound via `params`
+    // (injection-safe). Previously built but never interpolated, so every admin
+    // filter was silently ignored.
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Total count — respects filters (filter params only, before limit/offset appended)
+    const countResult = await sql.query(
+      `SELECT COUNT(*)::int as total FROM tenants t ${whereClause}`,
+      params
+    ) as unknown as Array<{ total: number }>;
+
+    // Append pagination params, then fetch the page
+    params.push(limit, offset);
+    const tenants = await sql.query(
+      `SELECT
         t.id,
         t.clerk_org_id,
         t.name,
@@ -72,14 +84,11 @@ export async function GET(request: NextRequest) {
         WHERE tenant_id = t.clerk_org_id OR tenant_id = t.id::text
         AND created_at >= NOW() - INTERVAL '30 days'
       ) stats ON true
+      ${whereClause}
       ORDER BY t.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-
-    // Get total count
-    const countResult = await sql`
-      SELECT COUNT(*)::int as total FROM tenants
-    `;
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+      params
+    ) as unknown as Record<string, unknown>[];
 
     return NextResponse.json({
       tenants: tenants.map((t: Record<string, unknown>) => ({
