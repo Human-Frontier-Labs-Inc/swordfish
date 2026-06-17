@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
 
         // Find the integration by subscription ID
         const integrations = await sql`
-          SELECT id, tenant_id, nango_connection_id, config
+          SELECT id, tenant_id, config
           FROM integrations
           WHERE type = 'o365'
           AND status = 'connected'
@@ -85,15 +85,10 @@ export async function POST(request: NextRequest) {
 
         const integration = integrations[0];
         const tenantId = integration.tenant_id as string;
-        const nangoConnectionId = integration.nango_connection_id as string | null;
 
-        // Get fresh access token from Nango
-        if (!nangoConnectionId) {
-          console.warn(`No Nango connection for integration ${integration.id}`);
-          continue;
-        }
-
-        const accessToken = await getO365AccessToken(nangoConnectionId);
+        // Get a fresh access token via the direct OAuth token manager
+        // (reads encrypted tokens from `integrations`, refreshes if needed).
+        const accessToken = await getO365AccessToken(tenantId);
 
         // Only process 'created' changes for new emails
         if (notification.changeType !== 'created') {

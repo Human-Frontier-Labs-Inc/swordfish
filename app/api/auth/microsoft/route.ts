@@ -1,12 +1,18 @@
 /**
  * Microsoft OAuth Flow
- * Handles Microsoft Graph API authentication for email integration
+ * Handles Microsoft Graph API authentication for email integration.
+ *
+ * SECURITY: Tokens are stored ENCRYPTED in the `integrations` table via the
+ * direct OAuth token manager (`lib/oauth/token-manager.ts`) under provider
+ * type `o365` — the SAME storage the webhook + sync worker read from. The
+ * legacy plaintext `provider_connections` path has been removed.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
+import { storeTokens, revokeTokens } from '@/lib/oauth/token-manager';
 
 const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || '';
 const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || '';
@@ -14,6 +20,9 @@ const MICROSOFT_REDIRECT_URI = process.env.MICROSOFT_REDIRECT_URI || '';
 
 const MICROSOFT_AUTH_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
 const MICROSOFT_TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+
+// Provider type used in the `integrations` table (matches token-manager + webhook).
+const PROVIDER = 'o365' as const;
 
 // Required scopes for email access
 const SCOPES = [
@@ -85,46 +94,57 @@ export async function GET(request: NextRequest) {
 
       const tokens = await tokenResponse.json();
 
+      if (!tokens.access_token || !tokens.refresh_token) {
+        // offline_access scope is required to receive a refresh token.
+        console.error('Microsoft token response missing access or refresh token');
+        return NextResponse.redirect(
+          new URL('/dashboard/settings?error=missing_tokens', request.url)
+        );
+      }
+
       // Get user email from Microsoft Graph
       const userResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
 
       const userData = userResponse.ok ? await userResponse.json() : {};
-      const email = userData.mail || userData.userPrincipalName || 'unknown';
+      const email = (userData.mail || userData.userPrincipalName || 'unknown').toLowerCase();
+      const providerUserId: string | undefined = userData.id || undefined;
 
-      // Store connection in database
+      const expiresAt = new Date(
+        Date.now() + (tokens.expires_in ? tokens.expires_in * 1000 : 3600 * 1000)
+      );
+
+      // Ensure the integration row exists (storeTokens does an UPDATE).
       await sql`
-        INSERT INTO provider_connections (
-          tenant_id,
-          provider,
-          access_token,
-          refresh_token,
-          token_expires_at,
-          scopes,
-          email,
-          status,
-          metadata
-        ) VALUES (
-          ${tenantId},
-          'microsoft',
-          ${tokens.access_token},
-          ${tokens.refresh_token || null},
-          ${tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null},
-          ${SCOPES.split(' ')},
-          ${email},
-          'active',
-          ${JSON.stringify({ displayName: userData.displayName })}
-        )
-        ON CONFLICT (tenant_id, provider)
-        DO UPDATE SET
-          access_token = ${tokens.access_token},
-          refresh_token = COALESCE(${tokens.refresh_token}, provider_connections.refresh_token),
-          token_expires_at = ${tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null},
-          email = ${email},
-          status = 'active',
-          metadata = ${JSON.stringify({ displayName: userData.displayName })},
+        INSERT INTO integrations (tenant_id, type, status, config)
+        VALUES (${tenantId}, ${PROVIDER}, 'pending', '{}'::jsonb)
+        ON CONFLICT (tenant_id, type) DO UPDATE SET
+          status = CASE
+            WHEN integrations.status = 'connected' THEN integrations.status
+            ELSE 'pending'
+          END,
           updated_at = NOW()
+      `;
+
+      // Store tokens ENCRYPTED in `integrations` (single canonical token store).
+      await storeTokens({
+        tenantId,
+        provider: PROVIDER,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt,
+        scopes: tokens.scope || SCOPES,
+        connectedEmail: email,
+        providerUserId,
+      });
+
+      // Store non-token config (display name).
+      await sql`
+        UPDATE integrations
+        SET config = config || ${JSON.stringify({ displayName: userData.displayName })}::jsonb,
+            updated_at = NOW()
+        WHERE tenant_id = ${tenantId} AND type = ${PROVIDER}
       `;
 
       // Update tenant settings
@@ -200,12 +220,8 @@ export async function DELETE() {
   const tenantId = orgId || `personal_${userId}`;
 
   try {
-    // Remove connection
-    await sql`
-      UPDATE provider_connections
-      SET status = 'revoked', updated_at = NOW()
-      WHERE tenant_id = ${tenantId} AND provider = 'microsoft'
-    `;
+    // Revoke tokens and disconnect (clears encrypted tokens in `integrations`).
+    await revokeTokens(tenantId, PROVIDER);
 
     // Update tenant settings
     await sql`
