@@ -34,8 +34,8 @@ describe('OAuth Token Encryption', () => {
       // Encrypted should not equal plaintext
       expect(encrypted).not.toBe(token);
 
-      // Should be in format: iv:tag:ciphertext (all hex)
-      expect(encrypted).toMatch(/^[a-f0-9]+:[a-f0-9]+:[a-f0-9]+$/);
+      // Should be in versioned format: v1:iv:tag:ciphertext (all hex)
+      expect(encrypted).toMatch(/^v1:[a-f0-9]+:[a-f0-9]+:[a-f0-9]+$/);
     });
 
     it('should decrypt token correctly', async () => {
@@ -100,9 +100,10 @@ describe('OAuth Token Encryption', () => {
       const token = 'valid_token';
       const encrypted = encrypt(token);
 
-      // Corrupt the ciphertext part
+      // Corrupt the ciphertext part (last segment of v1:iv:tag:ciphertext)
       const parts = encrypted.split(':');
-      parts[2] = 'corrupted' + parts[2].substring(9);
+      const last = parts.length - 1;
+      parts[last] = 'corrupted' + parts[last].substring(9);
       const corrupted = parts.join(':');
 
       expect(() => decrypt(corrupted)).toThrow();
@@ -114,9 +115,9 @@ describe('OAuth Token Encryption', () => {
       const token = 'valid_token';
       const encrypted = encrypt(token);
 
-      // Corrupt the auth tag
+      // Corrupt the auth tag (third segment of v1:iv:tag:ciphertext)
       const parts = encrypted.split(':');
-      parts[1] = 'deadbeef'.repeat(4); // 32 hex chars
+      parts[2] = 'deadbeef'.repeat(4); // 32 hex chars
       const corrupted = parts.join(':');
 
       expect(() => decrypt(corrupted)).toThrow();
@@ -142,13 +143,59 @@ describe('OAuth Token Encryption', () => {
       expect(() => getEncryptionKey()).toThrow('ENCRYPTION_KEY environment variable is required');
     });
 
-    it('should throw if ENCRYPTION_KEY is wrong length', async () => {
+    it('should throw if ENCRYPTION_KEY does not decode to 32 bytes', async () => {
       process.env.ENCRYPTION_KEY = 'too-short';
 
       vi.resetModules();
       const { getEncryptionKey } = await import(ENCRYPTION_MODULE_PATH);
 
-      expect(() => getEncryptionKey()).toThrow('ENCRYPTION_KEY must be exactly 32 characters');
+      expect(() => getEncryptionKey()).toThrow('ENCRYPTION_KEY must decode to exactly 32 bytes');
+    });
+
+    it('should REJECT a 16-byte hex string padded to look 32-ish', async () => {
+      // SECURITY: a 32-char hex string is 16 bytes when hex-decoded. We only
+      // treat 64-char strings as hex, so a 32-char hex value is interpreted as
+      // a 32-byte utf8 key (which IS 256-bit strong). The genuine failure mode
+      // is a short key: anything that does not decode to exactly 32 bytes.
+      process.env.ENCRYPTION_KEY = 'deadbeef'; // 8 bytes utf8, 4 bytes hex — far too short
+
+      vi.resetModules();
+      const { getEncryptionKey } = await import(ENCRYPTION_MODULE_PATH);
+
+      expect(() => getEncryptionKey()).toThrow('ENCRYPTION_KEY must decode to exactly 32 bytes');
+    });
+
+    it('should accept a 32-character raw (utf8) key for backward compatibility', async () => {
+      // The legacy/dev convention is a 32-character ASCII key = 32 bytes.
+      process.env.ENCRYPTION_KEY = 'test-encryption-key-32-bytes-ok!';
+
+      vi.resetModules();
+      const { getEncryptionKey } = await import(ENCRYPTION_MODULE_PATH);
+
+      expect(getEncryptionKey().length).toBe(32);
+    });
+
+    it('should accept a 64-char hex key (32 bytes)', async () => {
+      process.env.ENCRYPTION_KEY = 'a'.repeat(64); // 64 hex chars = 32 bytes
+
+      vi.resetModules();
+      const { getEncryptionKey, encrypt, decrypt } = await import(ENCRYPTION_MODULE_PATH);
+
+      expect(getEncryptionKey().length).toBe(32);
+      // Round-trip works with a hex key
+      expect(decrypt(encrypt('hex-key-token'))).toBe('hex-key-token');
+    });
+
+    it('should accept a 32-byte base64 key', async () => {
+      // 32 zero bytes base64-encoded
+      const base64Key = Buffer.alloc(32, 7).toString('base64');
+      process.env.ENCRYPTION_KEY = base64Key;
+
+      vi.resetModules();
+      const { getEncryptionKey, encrypt, decrypt } = await import(ENCRYPTION_MODULE_PATH);
+
+      expect(getEncryptionKey().length).toBe(32);
+      expect(decrypt(encrypt('base64-key-token'))).toBe('base64-key-token');
     });
 
     it('should derive consistent key from environment', async () => {
@@ -158,6 +205,35 @@ describe('OAuth Token Encryption', () => {
       const key2 = getEncryptionKey();
 
       expect(key1).toEqual(key2);
+    });
+  });
+
+  describe('ciphertext versioning + legacy compatibility', () => {
+    it('should produce v1-prefixed ciphertext for new encryptions', async () => {
+      const { encrypt } = await import(ENCRYPTION_MODULE_PATH);
+      const encrypted = encrypt('versioned-token');
+      expect(encrypted.startsWith('v1:')).toBe(true);
+      expect(encrypted.split(':')).toHaveLength(4);
+    });
+
+    it('should still decrypt LEGACY unprefixed ciphertext (iv:tag:ct)', async () => {
+      const { encrypt, decrypt } = await import(ENCRYPTION_MODULE_PATH);
+
+      // Simulate a legacy row: take a fresh v1 ciphertext and strip the prefix.
+      const v1 = encrypt('legacy-format-token');
+      const legacy = v1.replace(/^v1:/, '');
+      expect(legacy.split(':')).toHaveLength(3);
+
+      // Legacy ciphertext must still decrypt with the same key.
+      expect(decrypt(legacy)).toBe('legacy-format-token');
+    });
+
+    it('isEncrypted should recognize both v1 and legacy formats', async () => {
+      const { encrypt, isEncrypted } = await import(ENCRYPTION_MODULE_PATH);
+      const v1 = encrypt('x');
+      const legacy = v1.replace(/^v1:/, '');
+      expect(isEncrypted(v1)).toBe(true);
+      expect(isEncrypted(legacy)).toBe(true);
     });
   });
 

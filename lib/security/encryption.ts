@@ -10,10 +10,45 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // 96 bits recommended for GCM
 const AUTH_TAG_LENGTH = 16; // 128 bits
+const KEY_BYTES = 32; // AES-256 requires a 256-bit (32-byte) key
+
+// Version prefix for ciphertext produced by the current scheme.
+// Legacy ciphertext has NO prefix and is `iv:authTag:ciphertext` (all hex).
+// New ciphertext is `v1:iv:authTag:ciphertext` (all hex).
+const CIPHERTEXT_VERSION = 'v1';
+
+/**
+ * Decode the ENCRYPTION_KEY env var into a raw 32-byte buffer.
+ *
+ * Accepts (in order of preference):
+ *   1. 64-char hex string  -> 32 bytes
+ *   2. base64 string that decodes cleanly to exactly 32 bytes
+ *   3. raw utf8 string that is exactly 32 bytes long
+ *
+ * SECURITY: validates the DECODED key is exactly 32 bytes, not the character
+ * count. A 32-character hex string is only 16 bytes and would silently produce
+ * a weak key under the old (character-count) check.
+ */
+function decodeEncryptionKey(key: string): Buffer {
+  // 1. Hex (most common for generated keys: `openssl rand -hex 32`)
+  if (/^[0-9a-fA-F]{64}$/.test(key)) {
+    return Buffer.from(key, 'hex');
+  }
+
+  // 2. Base64 that round-trips to exactly 32 bytes
+  //    (guards against arbitrary strings that happen to base64-decode)
+  const base64Decoded = Buffer.from(key, 'base64');
+  if (base64Decoded.length === KEY_BYTES && base64Decoded.toString('base64').replace(/=+$/, '') === key.replace(/=+$/, '')) {
+    return base64Decoded;
+  }
+
+  // 3. Raw utf8 key (legacy / dev keys), must be exactly 32 bytes
+  return Buffer.from(key, 'utf8');
+}
 
 /**
  * Get the encryption key from environment
- * @throws Error if key is not set or invalid length
+ * @throws Error if key is not set or does not decode to exactly 32 bytes
  */
 export function getEncryptionKey(): Buffer {
   const key = process.env.ENCRYPTION_KEY;
@@ -22,17 +57,22 @@ export function getEncryptionKey(): Buffer {
     throw new Error('ENCRYPTION_KEY environment variable is required');
   }
 
-  if (key.length !== 32) {
-    throw new Error('ENCRYPTION_KEY must be exactly 32 characters');
+  const decoded = decodeEncryptionKey(key);
+
+  if (decoded.length !== KEY_BYTES) {
+    throw new Error(
+      `ENCRYPTION_KEY must decode to exactly 32 bytes (got ${decoded.length}). ` +
+        'Provide a 64-char hex string, a 32-byte base64 string, or a 32-character raw key.'
+    );
   }
 
-  return Buffer.from(key, 'utf8');
+  return decoded;
 }
 
 /**
  * Encrypt a plaintext string using AES-256-GCM
  * @param plaintext The string to encrypt
- * @returns Encrypted string in format: iv:authTag:ciphertext (all hex)
+ * @returns Versioned encrypted string in format: v1:iv:authTag:ciphertext (all hex)
  */
 export function encrypt(plaintext: string): string {
   const key = getEncryptionKey();
@@ -45,12 +85,18 @@ export function encrypt(plaintext: string): string {
 
   const authTag = cipher.getAuthTag();
 
-  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+  // New ciphertext carries a version prefix so the scheme can evolve.
+  return `${CIPHERTEXT_VERSION}:${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
 }
 
 /**
- * Decrypt an encrypted string
- * @param encryptedString String in format: iv:authTag:ciphertext (all hex)
+ * Decrypt an encrypted string.
+ *
+ * Supports two on-disk formats:
+ *   - Versioned (current):  v1:iv:authTag:ciphertext  (4 parts)
+ *   - Legacy (unprefixed):  iv:authTag:ciphertext     (3 parts)
+ *
+ * @param encryptedString The encrypted string
  * @returns Decrypted plaintext
  * @throws Error if decryption fails (wrong key, corrupted data, etc.)
  */
@@ -61,11 +107,19 @@ export function decrypt(encryptedString: string): string {
 
   const parts = encryptedString.split(':');
 
-  if (parts.length !== 3) {
+  let ivHex: string;
+  let authTagHex: string;
+  let ciphertextHex: string;
+
+  if (parts.length === 4 && parts[0] === CIPHERTEXT_VERSION) {
+    // Versioned: v1:iv:authTag:ciphertext
+    [, ivHex, authTagHex, ciphertextHex] = parts;
+  } else if (parts.length === 3) {
+    // Legacy unprefixed: iv:authTag:ciphertext
+    [ivHex, authTagHex, ciphertextHex] = parts;
+  } else {
     throw new Error('Invalid encrypted string format');
   }
-
-  const [ivHex, authTagHex, ciphertextHex] = parts;
 
   const key = getEncryptionKey();
   const iv = Buffer.from(ivHex, 'hex');
@@ -88,9 +142,17 @@ export function isEncrypted(value: string): boolean {
     return false;
   }
 
-  // Check for our format: iv:authTag:ciphertext (all hex)
-  const parts = value.split(':');
-  if (parts.length !== 3) {
+  // Supported formats:
+  //   - versioned: v1:iv:authTag:ciphertext (4 parts)
+  //   - legacy:    iv:authTag:ciphertext     (3 parts)
+  const rawParts = value.split(':');
+
+  let parts: string[];
+  if (rawParts.length === 4 && rawParts[0] === CIPHERTEXT_VERSION) {
+    parts = rawParts.slice(1);
+  } else if (rawParts.length === 3) {
+    parts = rawParts;
+  } else {
     return false;
   }
 
