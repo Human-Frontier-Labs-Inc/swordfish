@@ -9,10 +9,10 @@ import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
 import { nanoid } from 'nanoid';
 
-// GET /api/msp/tenants - List all tenants for MSP user
+// GET /api/msp/tenants - List tenants the caller is authorized to see
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    const { userId, orgId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -37,22 +37,60 @@ export async function GET(request: NextRequest) {
     }
 
     let tenantsQuery;
+    let countQuery;
+    let role: 'msp_admin' | 'tenant_admin';
+
     if (user.is_msp_user) {
-      // MSP users can see all tenants
+      // SECURITY (P0-8): An MSP user is NOT god-mode. They may only see tenants
+      // explicitly granted to their MSP organization via `msp_tenant_access`.
+      // Resolve the MSP org from the caller's active Clerk org.
+      if (!orgId) {
+        // is_msp_user but not acting within an MSP org context -> nothing granted.
+        return NextResponse.json({ tenants: [], total: 0, defaultTenantId: null });
+      }
+
+      const mspOrgResult = await sql`
+        SELECT id FROM msp_organizations WHERE clerk_org_id = ${orgId} LIMIT 1
+      `;
+      const mspOrg = mspOrgResult[0];
+
+      if (!mspOrg) {
+        // The user's active org is not a registered MSP org -> no managed tenants.
+        return NextResponse.json({ tenants: [], total: 0, defaultTenantId: null });
+      }
+
+      const mspOrgId = mspOrg.id;
+      role = 'msp_admin';
+
+      // Only tenants joined through msp_tenant_access for THIS msp org.
       tenantsQuery = sql`
         SELECT
           t.id, t.name, t.domain, t.plan, t.status, t.created_at,
           (SELECT COUNT(*)::int FROM users WHERE tenant_id = t.id) as user_count
         FROM tenants t
-        WHERE t.status != 'deleted'
-        ${search ? sql`AND (t.name ILIKE ${'%' + search + '%'} OR t.domain ILIKE ${'%' + search + '%'})` : sql``}
-        ${plan ? sql`AND t.plan = ${plan}` : sql``}
-        ${status ? sql`AND t.status = ${status}` : sql``}
+        INNER JOIN msp_tenant_access mta ON mta.tenant_id = t.id
+        WHERE mta.msp_org_id = ${mspOrgId}
+          AND t.status != 'deleted'
+          ${search ? sql`AND (t.name ILIKE ${'%' + search + '%'} OR t.domain ILIKE ${'%' + search + '%'})` : sql``}
+          ${plan ? sql`AND t.plan = ${plan}` : sql``}
+          ${status ? sql`AND t.status = ${status}` : sql``}
         ORDER BY t.created_at DESC
         LIMIT ${limit} OFFSET ${offset}
       `;
+
+      countQuery = sql`
+        SELECT COUNT(*)::int as count
+        FROM tenants t
+        INNER JOIN msp_tenant_access mta ON mta.tenant_id = t.id
+        WHERE mta.msp_org_id = ${mspOrgId}
+          AND t.status != 'deleted'
+          ${search ? sql`AND (t.name ILIKE ${'%' + search + '%'} OR t.domain ILIKE ${'%' + search + '%'})` : sql``}
+          ${plan ? sql`AND t.plan = ${plan}` : sql``}
+          ${status ? sql`AND t.status = ${status}` : sql``}
+      `;
     } else if (user.tenant_id) {
-      // Regular users can only see their tenant
+      // Regular users can only see their own tenant
+      role = 'tenant_admin';
       tenantsQuery = sql`
         SELECT
           t.id, t.name, t.domain, t.plan, t.status, t.created_at,
@@ -60,6 +98,7 @@ export async function GET(request: NextRequest) {
         FROM tenants t
         WHERE t.id = ${user.tenant_id}
       `;
+      countQuery = null;
     } else {
       return NextResponse.json({
         tenants: [],
@@ -69,18 +108,7 @@ export async function GET(request: NextRequest) {
     }
 
     const tenants = await tenantsQuery;
-
-    // Get total count
-    const countResult = user.is_msp_user
-      ? await sql`
-          SELECT COUNT(*)::int as count
-          FROM tenants
-          WHERE status != 'deleted'
-          ${search ? sql`AND (name ILIKE ${'%' + search + '%'} OR domain ILIKE ${'%' + search + '%'})` : sql``}
-          ${plan ? sql`AND plan = ${plan}` : sql``}
-          ${status ? sql`AND status = ${status}` : sql``}
-        `
-      : [{ count: tenants.length }];
+    const countResult = countQuery ? await countQuery : [{ count: tenants.length }];
 
     const formattedTenants = tenants.map((t: Record<string, unknown>) => ({
       id: t.id,
@@ -90,13 +118,13 @@ export async function GET(request: NextRequest) {
       status: t.status,
       createdAt: t.created_at,
       userCount: t.user_count || 0,
-      role: user.is_msp_user ? 'msp_admin' : 'tenant_admin',
+      role,
     }));
 
     return NextResponse.json({
       tenants: formattedTenants,
       total: countResult[0]?.count || 0,
-      defaultTenantId: user.tenant_id || formattedTenants[0]?.id,
+      defaultTenantId: user.tenant_id || formattedTenants[0]?.id || null,
     });
   } catch (error) {
     console.error('Error fetching tenants:', error);
@@ -201,7 +229,7 @@ export async function POST(request: NextRequest) {
         await sql`
           INSERT INTO policies (tenant_id, type, target, value, action, priority, is_active, created_at, updated_at)
           VALUES (
-            ${clerkOrgId},
+            ${tenantId},
             ${policy.type},
             ${policy.target},
             ${policy.value},
@@ -219,7 +247,7 @@ export async function POST(request: NextRequest) {
     await sql`
       INSERT INTO audit_log (tenant_id, actor_id, action, resource_type, resource_id, after_state, ip_address, user_agent, created_at)
       VALUES (
-        ${clerkOrgId},
+        ${tenantId},
         ${userUuid},
         'tenant.created',
         'tenant',
