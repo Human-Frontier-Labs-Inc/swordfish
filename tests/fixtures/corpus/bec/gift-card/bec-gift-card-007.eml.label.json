@@ -1,0 +1,12 @@
+{
+  "label": "bec",
+  "source": "gift-card",
+  "notes": [
+    "reply_to_mismatch",
+    "display_name_spoof",
+    "urgency",
+    "gift_card",
+    "vip_spoof",
+    "secrecy"
+  ]
+}

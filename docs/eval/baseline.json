@@ -1,0 +1,7 @@
+{
+  "_note": "PLACEHOLDER. Replace with real numbers from the first tagged eval run: `npx tsx scripts/eval/run.ts --no-llm --corpus tests/fixtures/corpus --out docs/eval/runs`, then copy the binary + ham-FPR fields from that run's summary.json into here. Until this holds real numbers the accuracy gate is not meaningful and PR-gating in .github/workflows/detection-eval.yml stays disabled (workflow_dispatch only).",
+  "binaryF1": 0,
+  "binaryPrecision": 0,
+  "binaryRecall": 0,
+  "hamFalsePositiveRate": 0
+}

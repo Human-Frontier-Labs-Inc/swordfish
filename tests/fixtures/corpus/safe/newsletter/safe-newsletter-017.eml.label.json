@@ -1,0 +1,9 @@
+{
+  "label": "safe",
+  "source": "newsletter",
+  "notes": [
+    "legitimate_newsletter",
+    "unsubscribe_present",
+    "known_sender"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "label": "safe",
+  "source": "receipt",
+  "notes": [
+    "legitimate_transactional",
+    "known_sender"
+  ]
+}

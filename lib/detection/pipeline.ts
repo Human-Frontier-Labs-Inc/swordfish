@@ -14,6 +14,7 @@ import { loggers } from '@/lib/logging/logger';
 import { DEFAULT_DETECTION_CONFIG } from './types';
 import { runDeterministicAnalysis } from './deterministic';
 import { runLLMAnalysis, shouldInvokeLLM, type LLMAnalysisContext } from './llm';
+import { checkLlmBudget, getLlmBudgetCounter, type BudgetDecision } from './llm-budget';
 import { evaluatePolicies } from '@/lib/policies/engine';
 import { classifyEmail } from './ml/classifier';
 import { detectBEC } from './bec';
@@ -377,7 +378,16 @@ export async function analyzeEmail(
     (reputationContext?.isKnownSender || emailClassification?.isKnownSender) &&
     filteredDeterministicResult.score >= 50;
 
-  if (shouldUseLLM || becSuspected || trustedSenderHighScore) {
+  const wantsLlm = shouldUseLLM || becSuspected || trustedSenderHighScore;
+  // Daily LLM budget gate (fail-closed): spend a call only while the tenant is
+  // under its per-day cap AND the counter is reachable. Denied => the LLM layer
+  // is skipped; the 8 deterministic layers already ran, so detection degrades
+  // gracefully instead of running unbounded LLM cost (open self-serve).
+  const llmBudget: BudgetDecision = wantsLlm
+    ? await checkLlmBudget(tenantId, config.llmMailboxCount ?? 1, getLlmBudgetCounter())
+    : { allow: false, cap: 0, count: 0, reason: 'not_requested' };
+
+  if (wantsLlm && llmBudget.allow) {
     // Phase 4: Build context from Phase 1-3 for LLM analysis
     const llmContext = buildLLMContext(
       reputationContext,
@@ -401,7 +411,9 @@ export async function analyzeEmail(
       skipped: true,
       skipReason: config.skipLLM
         ? 'Skipped for background sync (timeout optimization)'
-        : 'Not needed - sufficient confidence from prior layers',
+        : wantsLlm
+          ? `Skipped - daily LLM budget cap reached (${llmBudget.reason})`
+          : 'Not needed - sufficient confidence from prior layers',
     });
   }
 

@@ -1,0 +1,9 @@
+{
+  "label": "spam",
+  "source": "marketing-spam",
+  "notes": [
+    "too_good_to_be_true",
+    "excessive_punctuation",
+    "urgency"
+  ]
+}

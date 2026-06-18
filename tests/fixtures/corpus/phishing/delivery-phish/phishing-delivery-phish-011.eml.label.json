@@ -1,0 +1,9 @@
+{
+  "label": "phishing",
+  "source": "delivery-phish",
+  "notes": [
+    "lookalike_domain",
+    "suspicious_url",
+    "urgency"
+  ]
+}

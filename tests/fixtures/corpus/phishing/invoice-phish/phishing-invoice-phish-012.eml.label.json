@@ -1,0 +1,8 @@
+{
+  "label": "phishing",
+  "source": "invoice-phish",
+  "notes": [
+    "lookalike_domain",
+    "suspicious_url"
+  ]
+}

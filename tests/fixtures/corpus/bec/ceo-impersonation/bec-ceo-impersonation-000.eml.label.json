@@ -1,0 +1,12 @@
+{
+  "label": "bec",
+  "source": "ceo-impersonation",
+  "notes": [
+    "display_name_spoof",
+    "reply_to_mismatch",
+    "urgency",
+    "financial_request",
+    "vip_spoof",
+    "secrecy"
+  ]
+}
