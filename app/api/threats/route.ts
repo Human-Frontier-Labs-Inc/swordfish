@@ -5,7 +5,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { getQuarantinedThreats, getThreatStats } from '@/lib/quarantine/service';
+import { getThreatsForManagement } from '@/lib/detection/storage';
+import { getVerdictStats } from '@/lib/detection/storage';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,12 +18,14 @@ export async function GET(request: NextRequest) {
 
     const tenantId = orgId || `personal_${userId}`;
     const searchParams = request.nextUrl.searchParams;
-    const status = searchParams.get('status') as 'quarantined' | 'released' | 'deleted' | 'all' || 'quarantined';
+    const status = (searchParams.get('status') as 'quarantined' | 'released' | 'deleted' | 'all') || 'all';
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
     const includeStats = searchParams.get('stats') === 'true';
 
-    const threats = await getQuarantinedThreats(tenantId, {
+    // Read from email_verdicts (the source the live detection pipeline writes to),
+    // so the Threats page mirrors the dashboard + Emails pages.
+    const threats = await getThreatsForManagement(tenantId, {
       status,
       limit,
       offset,
@@ -30,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     let stats = null;
     if (includeStats) {
-      stats = await getThreatStats(tenantId);
+      stats = await getVerdictStats(tenantId);
     }
 
     return NextResponse.json({
@@ -44,9 +47,11 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('List threats error:', error);
-    return NextResponse.json(
-      { error: 'Failed to list threats' },
-      { status: 500 }
-    );
+    // Degrade gracefully so the page renders an empty state instead of an error.
+    return NextResponse.json({
+      threats: [],
+      stats: null,
+      pagination: { limit: 50, offset: 0, hasMore: false },
+    });
   }
 }

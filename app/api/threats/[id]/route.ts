@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
-import { deleteQuarantinedEmail } from '@/lib/quarantine/service';
+import { getThreatByMessageId } from '@/lib/detection/storage';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -24,38 +24,34 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const tenantId = orgId || `personal_${userId}`;
     const { id } = await params;
 
-    const threats = await sql`
-      SELECT t.*, v.signals, v.explanation, v.recommendation
-      FROM threats t
-      LEFT JOIN email_verdicts v ON t.message_id = v.message_id AND t.tenant_id = v.tenant_id
-      WHERE t.id = ${id}
-      AND t.tenant_id = ${tenantId}
-    `;
+    // `id` is the URL-encoded message_id (message ids contain <, >, @).
+    // getThreatByMessageId decodes it and reads from email_verdicts, the table
+    // the live detection pipeline actually populates.
+    const threat = await getThreatByMessageId(tenantId, id);
 
-    if (threats.length === 0) {
+    if (!threat) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const t = threats[0];
     return NextResponse.json({
       threat: {
-        id: t.id,
-        tenantId: t.tenant_id,
-        messageId: t.message_id,
-        subject: t.subject,
-        senderEmail: t.sender_email,
-        recipientEmail: t.recipient_email,
-        verdict: t.verdict,
-        score: t.score,
-        status: t.status,
-        provider: t.provider,
-        providerMessageId: t.provider_message_id,
-        quarantinedAt: t.quarantined_at,
-        releasedAt: t.released_at,
-        releasedBy: t.released_by,
-        signals: t.signals,
-        explanation: t.explanation,
-        recommendation: t.recommendation,
+        id: threat.id,
+        tenantId,
+        messageId: threat.message_id,
+        subject: threat.subject,
+        senderEmail: threat.sender_email,
+        recipientEmail: threat.recipient_email,
+        verdict: threat.verdict,
+        score: threat.score,
+        status: threat.status,
+        provider: '',
+        providerMessageId: '',
+        quarantinedAt: threat.quarantined_at,
+        releasedAt: null,
+        releasedBy: null,
+        signals: threat.signals,
+        explanation: threat.explanation,
+        recommendation: threat.recommendation,
       },
     });
   } catch (error) {
@@ -78,13 +74,26 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const tenantId = orgId || `personal_${userId}`;
     const { id } = await params;
 
-    const result = await deleteQuarantinedEmail(tenantId, id, userId);
+    // `id` is the URL-encoded message_id. Mark the verdict as deleted in
+    // email_verdicts (the populated source). Provider-side deletion is handled
+    // separately by the remediation worker.
+    let messageId = id;
+    try {
+      messageId = decodeURIComponent(id);
+    } catch {
+      messageId = id;
+    }
 
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.error },
-        { status: 400 }
-      );
+    const result = await sql`
+      UPDATE email_verdicts
+      SET action_taken = 'deleted', action_taken_at = NOW()
+      WHERE tenant_id = ${tenantId}
+      AND message_id = ${messageId}
+      RETURNING id
+    `;
+
+    if (result.length === 0) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true });

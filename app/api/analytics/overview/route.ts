@@ -23,6 +23,20 @@ export async function GET(request: NextRequest) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    // Resolve the tenant's UUID once (if the org has a tenants row) instead of
+    // relying on the safe_uuid() SQL function, which may not be applied in every
+    // environment and caused this route to 500. email_verdicts.tenant_id stores
+    // the Clerk tenant string in the live path; we match that directly and also
+    // accept the resolved UUID for any legacy rows.
+    let tenantUuid: string | null = null;
+    if (orgId) {
+      const tenantRows = (await sql`
+        SELECT id FROM tenants WHERE clerk_org_id = ${orgId} LIMIT 1
+      `) as Array<{ id: string }>;
+      tenantUuid = tenantRows[0]?.id ?? null;
+    }
+    const startIso = startDate.toISOString();
+
     // Overview stats
     const overview = await sql`
       SELECT
@@ -31,8 +45,8 @@ export async function GET(request: NextRequest) {
         COUNT(*) FILTER (WHERE verdict = 'quarantine')::int as quarantined,
         COUNT(*) FILTER (WHERE user_feedback = 'false_positive')::int as false_positives
       FROM email_verdicts
-      WHERE (tenant_id::text = ${tenantId} OR safe_uuid(tenant_id) = (SELECT id FROM tenants WHERE clerk_org_id = ${tenantId} LIMIT 1))
-      AND created_at >= ${startDate.toISOString()}::timestamp
+      WHERE (tenant_id::text = ${tenantId} OR tenant_id::text = ${tenantUuid})
+      AND created_at >= ${startIso}::timestamp
     `;
 
     const totalEmails = overview[0]?.total_emails || 0;
@@ -51,8 +65,8 @@ export async function GET(request: NextRequest) {
         COUNT(*) FILTER (WHERE verdict IN ('block', 'quarantine'))::int as threats,
         COUNT(*) FILTER (WHERE verdict = 'quarantine')::int as quarantined
       FROM email_verdicts
-      WHERE (tenant_id::text = ${tenantId} OR safe_uuid(tenant_id) = (SELECT id FROM tenants WHERE clerk_org_id = ${tenantId} LIMIT 1))
-      AND created_at >= ${startDate.toISOString()}::timestamp
+      WHERE (tenant_id::text = ${tenantId} OR tenant_id::text = ${tenantUuid})
+      AND created_at >= ${startIso}::timestamp
       GROUP BY DATE(created_at)
       ORDER BY date
     `;
@@ -63,9 +77,9 @@ export async function GET(request: NextRequest) {
         COALESCE(ml_classification, 'unknown') as type,
         COUNT(*)::int as count
       FROM email_verdicts
-      WHERE (tenant_id::text = ${tenantId} OR safe_uuid(tenant_id) = (SELECT id FROM tenants WHERE clerk_org_id = ${tenantId} LIMIT 1))
+      WHERE (tenant_id::text = ${tenantId} OR tenant_id::text = ${tenantUuid})
       AND verdict IN ('block', 'quarantine')
-      AND created_at >= ${startDate.toISOString()}::timestamp
+      AND created_at >= ${startIso}::timestamp
       GROUP BY ml_classification
       ORDER BY count DESC
       LIMIT 10
@@ -80,9 +94,9 @@ export async function GET(request: NextRequest) {
         SPLIT_PART(from_address, '@', 2) as domain,
         COUNT(*)::int as threat_count
       FROM email_verdicts
-      WHERE (tenant_id::text = ${tenantId} OR safe_uuid(tenant_id) = (SELECT id FROM tenants WHERE clerk_org_id = ${tenantId} LIMIT 1))
+      WHERE (tenant_id::text = ${tenantId} OR tenant_id::text = ${tenantUuid})
       AND verdict IN ('block', 'quarantine')
-      AND created_at >= ${startDate.toISOString()}::timestamp
+      AND created_at >= ${startIso}::timestamp
       GROUP BY from_address
       ORDER BY threat_count DESC
       LIMIT 10
@@ -94,8 +108,8 @@ export async function GET(request: NextRequest) {
         verdict,
         COUNT(*)::int as count
       FROM email_verdicts
-      WHERE (tenant_id::text = ${tenantId} OR safe_uuid(tenant_id) = (SELECT id FROM tenants WHERE clerk_org_id = ${tenantId} LIMIT 1))
-      AND created_at >= ${startDate.toISOString()}::timestamp
+      WHERE (tenant_id::text = ${tenantId} OR tenant_id::text = ${tenantUuid})
+      AND created_at >= ${startIso}::timestamp
       GROUP BY verdict
       ORDER BY count DESC
     `;
@@ -107,8 +121,8 @@ export async function GET(request: NextRequest) {
       SELECT
         AVG(processing_time_ms)::int as avg_processing_time
       FROM email_verdicts
-      WHERE (tenant_id::text = ${tenantId} OR safe_uuid(tenant_id) = (SELECT id FROM tenants WHERE clerk_org_id = ${tenantId} LIMIT 1))
-      AND created_at >= ${startDate.toISOString()}::timestamp
+      WHERE (tenant_id::text = ${tenantId} OR tenant_id::text = ${tenantUuid})
+      AND created_at >= ${startIso}::timestamp
     `;
 
     const releaseMetrics = await sql`
@@ -117,7 +131,7 @@ export async function GET(request: NextRequest) {
       FROM quarantine
       WHERE tenant_id::text = ${tenantId}
       AND status = 'released'
-      AND created_at >= ${startDate.toISOString()}::timestamp
+      AND created_at >= ${startIso}::timestamp
     `;
 
     return NextResponse.json({

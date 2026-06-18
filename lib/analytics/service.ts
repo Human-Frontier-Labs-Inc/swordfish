@@ -299,17 +299,22 @@ export async function getTopThreatSenders(
   daysBack: number = 30,
   limit: number = 10
 ): Promise<SenderStats[]> {
+  // Source from email_verdicts (the table the live detection pipeline populates).
+  // The legacy `threats` table is not written to in the live path, which is why
+  // Reports previously showed "No threat data".
   const results = await sql`
     SELECT
-      t.sender_email as email,
-      SPLIT_PART(t.sender_email, '@', 2) as domain,
+      from_address as email,
+      SPLIT_PART(from_address, '@', 2) as domain,
       COUNT(*)::int as threat_count,
-      ROUND(AVG(t.score)::numeric, 0) as avg_score,
-      MAX(t.quarantined_at) as last_seen
-    FROM threats t
-    WHERE t.tenant_id = ${tenantId}
-    AND t.quarantined_at >= NOW() - INTERVAL '1 day' * ${daysBack}
-    GROUP BY t.sender_email
+      ROUND(AVG(score)::numeric, 0) as avg_score,
+      MAX(created_at) as last_seen
+    FROM email_verdicts
+    WHERE tenant_id = ${tenantId}
+    AND verdict IN ('suspicious', 'quarantine', 'block')
+    AND from_address IS NOT NULL
+    AND created_at >= NOW() - INTERVAL '1 day' * ${daysBack}
+    GROUP BY from_address
     ORDER BY threat_count DESC, avg_score DESC
     LIMIT ${limit}
   `;
@@ -319,7 +324,7 @@ export async function getTopThreatSenders(
     domain: String(r.domain),
     threatCount: Number(r.threat_count) || 0,
     avgScore: Number(r.avg_score) || 0,
-    lastSeen: new Date(r.last_seen as string),
+    lastSeen: r.last_seen ? new Date(r.last_seen as string) : new Date(),
   }));
 }
 
@@ -331,15 +336,19 @@ export async function getTopThreatDomains(
   daysBack: number = 30,
   limit: number = 10
 ): Promise<Array<{ domain: string; count: number; avgScore: number }>> {
+  // Source from email_verdicts (populated by the live pipeline), not the empty
+  // legacy `threats` table.
   const results = await sql`
     SELECT
-      SPLIT_PART(sender_email, '@', 2) as domain,
+      SPLIT_PART(from_address, '@', 2) as domain,
       COUNT(*)::int as count,
       ROUND(AVG(score)::numeric, 0) as avg_score
-    FROM threats
+    FROM email_verdicts
     WHERE tenant_id = ${tenantId}
-    AND quarantined_at >= NOW() - INTERVAL '1 day' * ${daysBack}
-    GROUP BY SPLIT_PART(sender_email, '@', 2)
+    AND verdict IN ('suspicious', 'quarantine', 'block')
+    AND from_address IS NOT NULL
+    AND created_at >= NOW() - INTERVAL '1 day' * ${daysBack}
+    GROUP BY SPLIT_PART(from_address, '@', 2)
     ORDER BY count DESC
     LIMIT ${limit}
   `;

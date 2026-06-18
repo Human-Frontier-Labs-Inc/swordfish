@@ -286,6 +286,182 @@ export async function getTopThreats(
 }
 
 /**
+ * Threat record as consumed by the threat-management UI.
+ *
+ * The live detection pipeline persists every analyzed email to `email_verdicts`
+ * (keyed by the Clerk tenant string + message_id). The legacy `threats` table is
+ * NOT populated by the live path, so the threat-management screens read from
+ * `email_verdicts` here to stay consistent with the dashboard and Emails pages.
+ *
+ * `id` is the URL-safe-encoded message_id so the detail route can round-trip it.
+ */
+export interface ManagedThreat {
+  id: string;
+  message_id: string;
+  subject: string;
+  sender_email: string;
+  sender_name: string;
+  recipient_email: string;
+  threat_type: string;
+  verdict: string;
+  score: number;
+  status: string;
+  quarantined_at: Date | null;
+  explanation: string;
+  signals: Signal[];
+}
+
+/**
+ * Map an email_verdicts verdict value to a UI "status".
+ * email_verdicts has no quarantine lifecycle of its own, so we derive a sensible
+ * status from the verdict + any recorded action_taken / user_feedback.
+ */
+function deriveThreatStatus(row: Record<string, unknown>): string {
+  const action = (row.action_taken as string | null) || null;
+  if (action === 'released' || action === 'delivered') return 'released';
+  if (action === 'deleted') return 'deleted';
+  if ((row.user_feedback as string | null) === 'false_positive') return 'released';
+  const verdict = row.verdict as string;
+  if (verdict === 'quarantine' || verdict === 'block') return 'quarantined';
+  return 'quarantined';
+}
+
+/**
+ * Derive a coarse threat_type from the verdict signals so the UI can show a badge.
+ */
+function deriveThreatType(signals: Signal[] | null | undefined): string {
+  const types = new Set<string>((signals || []).map((s) => String(s.type)));
+  if (types.has('credential_request')) return 'phishing';
+  if (types.has('financial_request') || types.has('bec_detected') || types.has('bec_impersonation')) {
+    return 'bec';
+  }
+  if (types.has('executable') || types.has('macro_enabled') || types.has('dangerous_attachment')) {
+    return 'malware';
+  }
+  if (
+    types.has('homoglyph') ||
+    types.has('display_name_spoof') ||
+    types.has('dangerous_url') ||
+    types.has('ip_url')
+  ) {
+    return 'phishing';
+  }
+  if (types.has('spam') || types.has('bulk_sender')) return 'spam';
+  return 'phishing';
+}
+
+function mapVerdictRowToThreat(row: Record<string, unknown>): ManagedThreat {
+  const signals = (row.signals as Signal[]) || [];
+  const messageId = row.message_id as string;
+  return {
+    id: encodeURIComponent(messageId),
+    message_id: messageId,
+    subject: (row.subject as string) || '(No subject)',
+    sender_email: (row.from_address as string) || 'unknown',
+    sender_name: (row.from_display_name as string) || '',
+    recipient_email: '',
+    threat_type: deriveThreatType(signals),
+    verdict: row.verdict as string,
+    score: (row.score as number) || 0,
+    status: deriveThreatStatus(row),
+    quarantined_at: row.created_at ? new Date(row.created_at as string) : null,
+    explanation: (row.explanation as string) || (row.llm_explanation as string) || '',
+    signals,
+  };
+}
+
+/**
+ * Get threats for the threat-management UI, sourced from email_verdicts.
+ *
+ * Only threatening verdicts (suspicious/quarantine/block) are returned so the
+ * page mirrors what the dashboard "top threats" widget shows.
+ */
+export async function getThreatsForManagement(
+  tenantId: string,
+  options: {
+    status?: 'all' | 'quarantined' | 'released' | 'deleted';
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<ManagedThreat[]> {
+  const { limit = 50, offset = 0 } = options;
+
+  const results = (await sql`
+    SELECT
+      message_id,
+      subject,
+      from_address,
+      from_display_name,
+      signals,
+      verdict,
+      score,
+      explanation,
+      llm_explanation,
+      action_taken,
+      user_feedback,
+      created_at
+    FROM email_verdicts
+    WHERE tenant_id = ${tenantId}
+    AND verdict IN ('suspicious', 'quarantine', 'block')
+    ORDER BY created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `) as Array<Record<string, unknown>>;
+
+  const threats = results.map(mapVerdictRowToThreat);
+
+  // Status filtering is applied in-memory because the status is derived.
+  const status = options.status || 'all';
+  if (status === 'all') return threats;
+  return threats.filter((t) => t.status === status);
+}
+
+/**
+ * Get a single managed threat by its (encoded or raw) message id.
+ */
+export async function getThreatByMessageId(
+  tenantId: string,
+  rawId: string
+): Promise<(ManagedThreat & { recommendation: string }) | null> {
+  // The id may arrive URL-encoded (message ids contain <, >, @).
+  let messageId = rawId;
+  try {
+    messageId = decodeURIComponent(rawId);
+  } catch {
+    // rawId was not valid percent-encoding; use as-is.
+    messageId = rawId;
+  }
+
+  const results = (await sql`
+    SELECT
+      message_id,
+      subject,
+      from_address,
+      from_display_name,
+      signals,
+      verdict,
+      score,
+      explanation,
+      llm_explanation,
+      llm_recommendation,
+      action_taken,
+      user_feedback,
+      created_at
+    FROM email_verdicts
+    WHERE tenant_id = ${tenantId}
+    AND message_id = ${messageId}
+    LIMIT 1
+  `) as Array<Record<string, unknown>>;
+
+  if (results.length === 0) return null;
+
+  const row = results[0];
+  return {
+    ...mapVerdictRowToThreat(row),
+    recommendation: (row.llm_recommendation as string) || '',
+  };
+}
+
+/**
  * Quarantine an email
  */
 export async function quarantineEmail(

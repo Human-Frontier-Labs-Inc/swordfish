@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { releaseEmail, deleteQuarantinedEmail } from '@/lib/quarantine/service';
+import { sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/db/audit';
 
 interface BulkActionRequest {
@@ -51,19 +51,31 @@ export async function POST(request: NextRequest) {
     let successCount = 0;
     const errors: string[] = [];
 
+    // Threat ids are URL-encoded message_ids; threats are sourced from
+    // email_verdicts (the populated table). Update action_taken there.
+    const newAction = action === 'release' ? 'released' : 'deleted';
+
     for (const threatId of threatIds) {
       try {
-        let result;
-        if (action === 'release') {
-          result = await releaseEmail(tenantId, threatId, userId, addToAllowlist);
-        } else {
-          result = await deleteQuarantinedEmail(tenantId, threatId, userId);
+        let messageId = threatId;
+        try {
+          messageId = decodeURIComponent(threatId);
+        } catch {
+          messageId = threatId;
         }
 
-        if (result.success) {
+        const result = await sql`
+          UPDATE email_verdicts
+          SET action_taken = ${newAction}, action_taken_at = NOW()
+          WHERE tenant_id = ${tenantId}
+          AND message_id = ${messageId}
+          RETURNING id
+        `;
+
+        if (result.length > 0) {
           successCount++;
         } else {
-          errors.push(`${threatId}: ${result.error}`);
+          errors.push(`${threatId}: not found`);
         }
       } catch (error) {
         errors.push(`${threatId}: ${error instanceof Error ? error.message : 'Failed'}`);
