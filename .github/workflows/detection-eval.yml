@@ -1,0 +1,52 @@
+# Detection accuracy gate.
+#
+# Runs the eval harness on the committed corpus and fails if binary F1 drops
+# >2pts or the ham false-positive rate rises >1pt vs docs/eval/baseline.json.
+#
+# PREREQUISITES before enabling on PRs (currently manual / workflow_dispatch
+# only so it can't block PRs while infra is missing):
+#   1. A test DATABASE_URL secret — analyzeEmail imports lib/db, which calls
+#      validateEnvironment() at module load. Either wire a Neon test instance
+#      as CI secret DATABASE_URL, OR add a no-DB mode to the eval runner
+#      (the pipeline's policy/tenant-config queries can be no-ops for an
+#      accuracy eval). Tracked as a Stream-B follow-up.
+#   2. A real docs/eval/baseline.json produced by the first tagged run — the
+#      committed file is a placeholder (all zeros) until then.
+# Once both are in place, uncomment the `pull_request:` trigger below.
+name: Detection Eval (accuracy gate)
+
+on:
+  workflow_dispatch: {}
+  # pull_request:
+  #   paths:
+  #     - 'lib/detection/**'
+  #     - 'lib/threat-intel/**'
+  #     - 'scripts/eval/**'
+  #     - 'tests/fixtures/corpus/**'
+  #     - 'docs/eval/baseline.json'
+
+jobs:
+  accuracy-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run detection eval (no LLM layer)
+        run: |
+          npx tsx scripts/eval/run.ts --no-llm \
+            --corpus tests/fixtures/corpus \
+            --out docs/eval/runs
+      - name: Locate latest run summary
+        id: run
+        run: |
+          summary=$(ls -t docs/eval/runs/*/summary.json | head -1)
+          echo "summary=$summary" >> "$GITHUB_OUTPUT"
+      - name: Compare to baseline (accuracy gate)
+        run: |
+          npx tsx scripts/eval/compare-to-baseline.ts \
+            --summary "${{ steps.run.outputs.summary }}" \
+            --baseline docs/eval/baseline.json
