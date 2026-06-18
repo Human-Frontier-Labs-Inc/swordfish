@@ -10,6 +10,21 @@ if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
 }
 
+// Dummy secrets so modules that lazily require them (Stripe client, URL signer,
+// token encryption) can initialize under test. These are NOT real credentials —
+// the Stripe client is mocked via vi.mock('stripe'); this only satisfies the
+// presence/format checks so the mock can take over instead of throwing at use.
+if (!process.env.STRIPE_SECRET_KEY) {
+  process.env.STRIPE_SECRET_KEY = 'sk_test_dummy_vitest';
+}
+if (!process.env.URL_SIGNATURE_SECRET) {
+  process.env.URL_SIGNATURE_SECRET = 'test-url-signature-secret';
+}
+if (!process.env.ENCRYPTION_KEY) {
+  // 32-byte (64 hex char) key so AES-256-GCM init passes the byte-length check.
+  process.env.ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+}
+
 // Check if we have a real database connection
 const hasRealDatabase = process.env.DATABASE_URL &&
   !process.env.DATABASE_URL.includes('localhost:5432/test');
