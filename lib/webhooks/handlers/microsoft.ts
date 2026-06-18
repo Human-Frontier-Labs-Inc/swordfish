@@ -125,7 +125,6 @@ async function processNotification(notification: GraphNotification): Promise<{
 
   const integration = integrations[0];
   const tenantId = integration.tenant_id as string;
-  const nangoConnectionId = integration.nango_connection_id as string | null;
 
   // Extract message ID from resource path
   const messageIdMatch = resource.match(/Messages\/(.+)$/);
@@ -149,16 +148,8 @@ async function processNotification(notification: GraphNotification): Promise<{
     return { processed: false, threatFound: false };
   }
 
-  // Get fresh token from Nango
-  if (!nangoConnectionId) {
-    return {
-      processed: false,
-      threatFound: false,
-      error: 'No Nango connection configured',
-    };
-  }
-
-  const accessToken = await getO365AccessToken(nangoConnectionId);
+  // Token resolved via the OAuth token manager by tenantId (not Nango).
+  const accessToken = await getO365AccessToken(tenantId);
 
   // Get full email
   const fullEmail = await getO365Email({
