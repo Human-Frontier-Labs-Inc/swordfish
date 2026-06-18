@@ -63,6 +63,16 @@ describe('renderReportMarkdown', () => {
     expect(md).toContain('disabled (--no-llm)');
   });
 
+  it('surfaces catch / precision / ham-FP as a top-line headline (load-bearing)', () => {
+    expect(md).toContain('## Headline');
+    expect(md).toContain('Threat catch rate (recall)');
+    expect(md).toContain('Safe-vs-threat precision');
+    expect(md).toContain('Ham false-positive rate');
+    expect(md).toContain("we don't quarantine your real mail");
+    // headline leads the report, before the counts table
+    expect(md.indexOf('## Headline')).toBeLessThan(md.indexOf('## Counts'));
+  });
+
   it('renders the key binary metrics as percentages', () => {
     expect(md).toContain('75.00%'); // precision + accuracy
     expect(md).toContain('100.00%'); // recall + FPR

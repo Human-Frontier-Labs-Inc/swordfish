@@ -76,6 +76,16 @@ export function renderReportMarkdown(
     lines.push(``, `_LLM layer: ${meta.skipLlm ? 'disabled (--no-llm)' : 'enabled'}_`);
   }
 
+  // Headline numbers first — for a Proofpoint/Mimecast-replacement pitch,
+  // "we don't quarantine your real mail" (ham FP rate) is as load-bearing as
+  // catch rate, so it leads the report instead of sitting inside the table.
+  lines.push('', '## Headline');
+  lines.push(`- **Threat catch rate (recall):** ${pct(b.recall)}`);
+  lines.push(`- **Safe-vs-threat precision:** ${pct(b.precision)}`);
+  lines.push(
+    `- **Ham false-positive rate:** ${pct(b.falsePositiveRate)} _(launch target <= 1% — "we don't quarantine your real mail")_`
+  );
+
   lines.push('', '## Counts');
   lines.push(
     `- Samples analyzed: **${result.analyzed}** / ${result.total} loaded (${result.skipped} skipped by loader)`
