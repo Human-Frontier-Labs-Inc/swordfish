@@ -61,12 +61,14 @@ describe('Threat Feed Aggregator', () => {
       expect(result.feeds.length).toBeGreaterThan(0);
     });
 
-    it('should use sample data when feeds fail', async () => {
+    it('should still report feed results when feeds fail', async () => {
       mockFetch.mockRejectedValue(new Error('Network error'));
 
       const result = await refreshAllFeeds();
 
-      // Should still return results with sample data
+      // Aggregation degrades gracefully. The no-stale-data guarantee for
+      // PhishTank specifically is covered by the direct fetchPhishTankFeed test
+      // (count assertions here are non-deterministic due to refresh-interval caching).
       expect(result.feeds).toBeDefined();
     });
   });
@@ -155,6 +157,13 @@ describe('Threat Feed Aggregator', () => {
 describe('PhishTank Integration', () => {
   beforeEach(() => {
     mockFetch.mockReset();
+  });
+
+  it('returns empty when not opted in (no stale sample-data fallback)', async () => {
+    const { fetchPhishTankFeed } = await import('@/lib/threat-intel/feeds/phishtank');
+    // PHISHTANK_API_KEY is unset in the test env -> feed is off, NOT stale samples.
+    const entries = await fetchPhishTankFeed();
+    expect(entries).toEqual([]);
   });
 
   it('should detect brand impersonation', async () => {
