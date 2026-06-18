@@ -6,12 +6,41 @@
 
 import Stripe from 'stripe';
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY is required');
+let _stripe: Stripe | null = null;
+
+/**
+ * Lazily construct the Stripe client. The "key required" throw fires only on
+ * first real use, NOT at module import — so `next build` (which imports every
+ * route module to collect page data) doesn't require the secret at build time.
+ * Keeps the security property (no insecure placeholder; loud failure if used
+ * without a key) while staying build-safe.
+ */
+export function getStripe(): Stripe {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) {
+      throw new Error('STRIPE_SECRET_KEY is required');
+    }
+    _stripe = new Stripe(key, {
+      apiVersion: '2025-12-15.clover',
+    });
+  }
+  return _stripe;
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-12-15.clover',
+/**
+ * Backward-compatible lazy proxy so existing `stripe.x.y()` call sites keep
+ * working, but the client (and the secret check) is only materialised on first
+ * property access — never at import/build time.
+ */
+export const stripe: Stripe = new Proxy({} as Stripe, {
+  get(_target, prop) {
+    const client = getStripe();
+    const value = (client as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof value === 'function'
+      ? (value as (...args: unknown[]) => unknown).bind(client)
+      : value;
+  },
 });
 
 export type SubscriptionTier = 'free' | 'pro' | 'enterprise';

@@ -117,17 +117,18 @@ export type ClickVerdict = 'safe' | 'suspicious' | 'malicious' | 'blocked' | 'un
 // Default Configuration
 // ============================================================================
 
-if (!process.env.URL_SIGNATURE_SECRET) {
-  throw new Error('URL_SIGNATURE_SECRET is required - signed URLs would be forgeable without it');
-}
-
+// NOTE: URL_SIGNATURE_SECRET is intentionally NOT validated at module load —
+// a top-level throw breaks `next build` page-data collection. Instead the
+// signing path only signs when a secret is present, and verifyUrlSignature
+// fails CLOSED (rejects) when no secret is configured, so an empty secret can
+// never produce a forgeable-but-accepted signature.
 const DEFAULT_CONFIG: RewriterConfig = {
   baseUrl: process.env.SWORDFISH_PROTECT_URL || 'https://protect.swordfish.app',
   whitelistedDomains: [],
   rewriteInternalLinks: false,
   preserveDisplayUrl: true,
   trackClicks: true,
-  signatureSecret: process.env.URL_SIGNATURE_SECRET,
+  signatureSecret: process.env.URL_SIGNATURE_SECRET ?? '',
   urlExpiryDays: 30,
 };
 
@@ -664,6 +665,11 @@ export class UrlRewriter {
    * Verify URL signature
    */
   verifyUrlSignature(trackingId: string, originalUrl: string, signature: string): boolean {
+    // Fail closed: without a configured secret we cannot trust any signature,
+    // so reject rather than comparing against an HMAC keyed on an empty secret.
+    if (!this.config.signatureSecret) {
+      return false;
+    }
     const expected = this.signUrl(trackingId, originalUrl);
     return signature === expected;
   }
