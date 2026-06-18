@@ -313,7 +313,13 @@ export interface DetectionConfig {
   llmProvider?: 'anthropic' | 'gemini';
   llmModel: string;
   llmMaxTokens: number;
+  /** @deprecated Not enforced — the live daily cap is computed + enforced in
+   * lib/detection/llm-budget.ts from llmMailboxCount. Kept for config compat. */
   llmDailyLimitPerTenant: number;
+  /** Connected mailbox count for the tenant — drives the daily LLM cap
+   * (min(3000, 30 × this)) enforced in llm-budget.ts. The caller threads this
+   * via configOverrides; the pipeline defaults to 1. */
+  llmMailboxCount?: number;
 
   // Timeouts
   urlAnalysisTimeoutMs: number;
