@@ -44,7 +44,6 @@ export async function POST(_request: NextRequest) {
     }
 
     const integration = integrations[0];
-    const nangoConnectionId = integration.nango_connection_id as string | null;
     const config = integration.config as {
       watchExpiration?: string;
     };
@@ -58,15 +57,8 @@ export async function POST(_request: NextRequest) {
       });
     }
 
-    // Get fresh token from Nango
-    if (!nangoConnectionId) {
-      return NextResponse.json(
-        { error: 'No Nango connection configured' },
-        { status: 500 }
-      );
-    }
-
-    const accessToken = await getGmailAccessToken(nangoConnectionId);
+    // Token resolved via the OAuth token manager by tenantId (not Nango).
+    const accessToken = await getGmailAccessToken(tenantId);
 
     // Register push notifications
     const subscription = await createGmailSubscription({

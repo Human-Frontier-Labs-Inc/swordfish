@@ -272,7 +272,6 @@ export async function renewExpiringSubscriptions(): Promise<{
     FROM integrations
     WHERE status = 'connected'
     AND (config->>'syncEnabled')::boolean = true
-    AND nango_connection_id IS NOT NULL
     AND (
       (type = 'o365' AND (config->>'subscriptionExpiresAt')::timestamp < NOW() + INTERVAL '24 hours')
       OR
@@ -286,13 +285,13 @@ export async function renewExpiringSubscriptions(): Promise<{
   for (const integration of integrations) {
     const config = integration.config as Record<string, unknown>;
     const type = integration.type as 'gmail' | 'o365';
-    const nangoConnectionId = integration.nango_connection_id as string;
+    const tenantId = integration.tenant_id as string;
 
     try {
-      // Get fresh access token from Nango (handles refresh automatically)
+      // Token resolved via the OAuth token manager by tenantId (not Nango).
       const accessToken = type === 'o365'
-        ? await getO365AccessToken(nangoConnectionId)
-        : await getGmailAccessToken(nangoConnectionId);
+        ? await getO365AccessToken(tenantId)
+        : await getGmailAccessToken(tenantId);
 
       // Renew subscription
       if (type === 'o365' && config.subscriptionId) {

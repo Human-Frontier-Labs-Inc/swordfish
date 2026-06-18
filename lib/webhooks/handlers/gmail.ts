@@ -68,23 +68,12 @@ export async function processGmailWebhook(
 
     const integration = integrations[0];
     const tenantId = integration.tenant_id as string;
-    const nangoConnectionId = integration.nango_connection_id as string | null;
     const config = integration.config as {
       historyId: string;
     };
 
-    // Get fresh token from Nango
-    if (!nangoConnectionId) {
-      return {
-        success: false,
-        messagesProcessed: 0,
-        threatsFound: 0,
-        errors: ['No Nango connection configured'],
-        processingTimeMs: Date.now() - startTime,
-      };
-    }
-
-    const accessToken = await getGmailAccessToken(nangoConnectionId);
+    // Token resolved via the OAuth token manager by tenantId (not Nango).
+    const accessToken = await getGmailAccessToken(tenantId);
 
     // Get history since last sync
     const startHistoryId = config.historyId || historyId;

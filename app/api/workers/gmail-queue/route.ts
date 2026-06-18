@@ -66,19 +66,10 @@ async function processJob(job: GmailQueueJob, timeBudgetMs: number): Promise<{
     };
   }
 
-  if (!integration.nango_connection_id) {
-    return {
-      processed,
-      threats,
-      complete: false,
-      errors: ['No Nango connection configured'],
-    };
-  }
-
   const tenantId = integration.tenant_id as string;
   const config = integration.config as { historyId?: string };
 
-  const accessToken = await getGmailAccessToken(integration.nango_connection_id as string);
+  const accessToken = await getGmailAccessToken(tenantId);
 
   const startHistoryId = config.historyId || job.historyId;
   const historyResult = await getGmailHistory({
