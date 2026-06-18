@@ -43,36 +43,55 @@ export async function GET(request: NextRequest) {
     const dateTo = searchParams.get('dateTo');
     const includeStats = searchParams.get('stats') === 'true';
 
-    // Build dynamic WHERE clause
-    const whereConditions = [];
+    // Build parameterized WHERE — all values are $N-bound via `params` (injection-safe).
+    // NOTE: the previous code built a `whereConditions` array that string-concatenated
+    // raw user input (`'${status}'`, `ILIKE '%${search}%'`, …) — a latent SQL-injection
+    // vector that was only inert because the array was never used. This removes that
+    // landmine and wires every filter (status/tenantId/verdict/search/dateFrom/dateTo).
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    let paramIndex = 1;
 
     if (status && status !== 'all') {
-      whereConditions.push(`t.status = '${status}'`);
+      conditions.push(`t.status = $${paramIndex++}`);
+      params.push(status);
     }
-
     if (tenantId) {
-      whereConditions.push(`t.tenant_id = '${tenantId}'`);
+      // One bound value, referenced by both arms — Postgres allows a placeholder to repeat.
+      conditions.push(`(t.tenant_id = $${paramIndex} OR ten.id::text = $${paramIndex})`);
+      params.push(tenantId);
+      paramIndex++;
     }
-
     if (verdict) {
-      whereConditions.push(`t.verdict = '${verdict}'`);
+      conditions.push(`t.verdict = $${paramIndex++}`);
+      params.push(verdict);
     }
-
     if (search) {
-      whereConditions.push(`(t.subject ILIKE '%${search}%' OR t.sender_email ILIKE '%${search}%' OR t.recipient_email ILIKE '%${search}%')`);
+      conditions.push(`(t.subject ILIKE $${paramIndex} OR t.sender_email ILIKE $${paramIndex} OR t.recipient_email ILIKE $${paramIndex})`);
+      params.push(`%${search}%`);
+      paramIndex++;
     }
-
     if (dateFrom) {
-      whereConditions.push(`t.created_at >= '${dateFrom}'`);
+      conditions.push(`t.created_at >= $${paramIndex++}`);
+      params.push(dateFrom);
     }
-
     if (dateTo) {
-      whereConditions.push(`t.created_at <= '${dateTo}'`);
+      conditions.push(`t.created_at <= $${paramIndex++}`);
+      params.push(dateTo);
     }
 
-    // Get threats with tenant info
-    const threats = await sql`
-      SELECT
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Total count — respects all filters (filter params only, before limit/offset appended)
+    const countResult = await sql.query(
+      `SELECT COUNT(*)::int as total FROM threats t LEFT JOIN tenants ten ON t.tenant_id = ten.clerk_org_id OR t.tenant_id = ten.id::text ${whereClause}`,
+      params
+    ) as unknown as Array<{ total: number }>;
+
+    // Append pagination params, then fetch the page
+    params.push(limit, offset);
+    const threats = await sql.query(
+      `SELECT
         t.id,
         t.tenant_id,
         ten.name as tenant_name,
@@ -94,18 +113,11 @@ export async function GET(request: NextRequest) {
         t.deleted_by
       FROM threats t
       LEFT JOIN tenants ten ON t.tenant_id = ten.clerk_org_id OR t.tenant_id = ten.id::text
-      ${status && status !== 'all' ? sql`WHERE t.status = ${status}` : sql``}
-      ${tenantId ? sql`${status && status !== 'all' ? sql`AND` : sql`WHERE`} (t.tenant_id = ${tenantId} OR ten.id::text = ${tenantId})` : sql``}
+      ${whereClause}
       ORDER BY t.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-
-    // Get total count
-    const countResult = await sql`
-      SELECT COUNT(*)::int as total FROM threats t
-      ${status && status !== 'all' ? sql`WHERE t.status = ${status}` : sql``}
-      ${tenantId ? sql`${status && status !== 'all' ? sql`AND` : sql`WHERE`} t.tenant_id = ${tenantId}` : sql``}
-    `;
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+      params
+    ) as unknown as Record<string, unknown>[];
 
     // Get stats if requested
     let stats = null;

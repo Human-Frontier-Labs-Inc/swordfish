@@ -83,9 +83,21 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    // Get audit logs with tenant names
-    const logs = await sql`
-      SELECT
+    // Build WHERE from filter conditions — all values are $N-bound via `params`
+    // (injection-safe). Previously this was built but never interpolated into the
+    // query, so every admin filter was silently ignored.
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Total count — respects filters (filter params only, before limit/offset appended)
+    const countResult = await sql.query(
+      `SELECT COUNT(*)::int as total FROM audit_log al ${whereClause}`,
+      params
+    ) as unknown as Array<{ total: number }>;
+
+    // Append pagination params, then fetch the page
+    params.push(limit, offset);
+    const logs = await sql.query(
+      `SELECT
         al.id,
         al.tenant_id,
         t.name as tenant_name,
@@ -102,14 +114,11 @@ export async function GET(request: NextRequest) {
         al.created_at
       FROM audit_log al
       LEFT JOIN tenants t ON al.tenant_id::text = t.clerk_org_id OR safe_uuid(al.tenant_id) = t.id
+      ${whereClause}
       ORDER BY al.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-
-    // Get total count
-    const countResult = await sql`
-      SELECT COUNT(*)::int as total FROM audit_log
-    `;
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+      params
+    ) as unknown as Record<string, unknown>[];
 
     return NextResponse.json({
       logs: logs.map((log: Record<string, unknown>) => ({
