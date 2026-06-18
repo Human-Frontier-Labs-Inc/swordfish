@@ -1,0 +1,9 @@
+{
+  "label": "spam",
+  "source": "marketing-spam",
+  "notes": [
+    "bulk_marketing",
+    "excessive_punctuation",
+    "unsubscribe_present"
+  ]
+}

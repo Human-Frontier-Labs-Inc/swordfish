@@ -1,0 +1,10 @@
+{
+  "label": "bec",
+  "source": "payroll-diversion",
+  "notes": [
+    "reply_to_mismatch",
+    "financial_request",
+    "payroll_diversion",
+    "display_name_spoof"
+  ]
+}

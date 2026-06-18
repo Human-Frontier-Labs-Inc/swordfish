@@ -1,0 +1,10 @@
+{
+  "label": "bec",
+  "source": "wire-fraud",
+  "notes": [
+    "lookalike_domain",
+    "urgency",
+    "financial_request",
+    "bank_detail_change"
+  ]
+}

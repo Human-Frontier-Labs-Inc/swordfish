@@ -1,0 +1,8 @@
+{
+  "label": "safe",
+  "source": "meeting",
+  "notes": [
+    "legitimate_internal",
+    "known_sender"
+  ]
+}

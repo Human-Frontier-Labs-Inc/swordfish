@@ -1,0 +1,8 @@
+{
+  "label": "safe",
+  "source": "colleague-reply",
+  "notes": [
+    "legitimate_internal",
+    "known_sender"
+  ]
+}
