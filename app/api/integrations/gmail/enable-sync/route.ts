@@ -34,9 +34,10 @@ export async function PATCH() {
       return NextResponse.json({ error: 'Integration not connected' }, { status: 400 });
     }
 
-    if (!integration.nango_connection_id) {
-      return NextResponse.json({ error: 'No Nango connection ID' }, { status: 400 });
-    }
+    // Note: tokens are resolved via the OAuth token manager by tenantId
+    // (getGmailAccessToken), so a nango_connection_id is NOT required here —
+    // requiring it 400'd the toggle for connected Gmail integrations that
+    // store tokens directly post the Nango->direct migration.
 
     const result: any = {
       timestamp: new Date().toISOString(),
@@ -65,7 +66,8 @@ export async function PATCH() {
     } else {
       result.steps.push('Registering Gmail push watch...');
       try {
-        const accessToken = await getGmailAccessToken(integration.nango_connection_id);
+        // Token manager resolves by tenantId + 'gmail' (NOT nango_connection_id).
+        const accessToken = await getGmailAccessToken(integration.tenant_id);
         const subscription = await createGmailSubscription({
           integrationId: integration.id,
           tenantId: integration.tenant_id,
