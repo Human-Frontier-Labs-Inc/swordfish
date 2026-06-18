@@ -7,11 +7,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { sql } from '@/lib/db';
 import { rateLimit } from '@/lib/api/rate-limit';
 import { parseEmail, parseGraphEmail, parseGmailEmail } from '@/lib/detection/parser';
 import { analyzeEmail, quickCheck } from '@/lib/detection/pipeline';
+import { storeVerdict } from '@/lib/detection/storage';
+import { autoRemediate } from '@/lib/workers/remediation';
 import { DEFAULT_DETECTION_CONFIG } from '@/lib/detection/types';
-import type { ParsedEmail } from '@/lib/detection/types';
+import type { ParsedEmail, EmailVerdict } from '@/lib/detection/types';
 
 interface AnalyzeRequest {
   // Raw email formats
@@ -106,13 +109,10 @@ export async function POST(request: NextRequest) {
     // Run full analysis
     const verdict = await analyzeEmail(email, tenantId, config);
 
-    // TODO: Store verdict in database
-    // await storeVerdict(verdict);
-
-    // TODO: If quarantine/block, take action
-    // if (verdict.verdict === 'quarantine' || verdict.verdict === 'block') {
-    //   await handleThreat(email, verdict);
-    // }
+    // Persist the verdict and, for actionable threats, enqueue remediation.
+    // These are best-effort: a storage/remediation failure must not prevent the
+    // caller from receiving the analysis result.
+    await persistAndRemediate(tenantId, email, verdict);
 
     // Return verdict
     return NextResponse.json({
@@ -142,6 +142,66 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Persist the verdict and, for quarantine/block verdicts, enqueue mailbox
+ * remediation through the same `autoRemediate` path the provider webhooks use.
+ *
+ * Best-effort: errors are logged but never thrown, so the API still returns the
+ * verdict to the caller even if persistence or remediation fails.
+ */
+async function persistAndRemediate(
+  tenantId: string,
+  email: ParsedEmail,
+  verdict: EmailVerdict
+): Promise<void> {
+  // 1. Persist the verdict.
+  try {
+    await storeVerdict(tenantId, verdict.messageId, verdict, email);
+  } catch (error) {
+    console.error('Failed to store verdict:', error instanceof Error ? error.message : error);
+    // If we couldn't store the verdict, the threats row autoRemediate relies on
+    // won't have email details; remediation can still run but skip on error.
+  }
+
+  // 2. Only quarantine/block verdicts trigger mailbox action.
+  if (verdict.verdict !== 'quarantine' && verdict.verdict !== 'block') {
+    return;
+  }
+
+  try {
+    // Find the tenant's connected mailbox integration to act on.
+    // /api/analyze can receive ad-hoc email payloads; without a connected
+    // mailbox there is nothing to remediate, so we no-op gracefully.
+    const integrations = await sql`
+      SELECT id, type
+      FROM integrations
+      WHERE tenant_id = ${tenantId}
+        AND status = 'connected'
+        AND type IN ('o365', 'gmail')
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `;
+
+    if (integrations.length === 0) {
+      return;
+    }
+
+    const integration = integrations[0] as { id: string; type: 'o365' | 'gmail' };
+
+    await autoRemediate({
+      tenantId,
+      messageId: verdict.messageId,
+      externalMessageId: verdict.messageId,
+      integrationId: integration.id,
+      integrationType: integration.type,
+      verdict: verdict.verdict,
+      score: verdict.overallScore,
+    });
+  } catch (error) {
+    console.error('Failed to enqueue remediation:', error instanceof Error ? error.message : error);
   }
 }
 
