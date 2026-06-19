@@ -2,6 +2,13 @@
  * Advanced Threat Search API
  * POST - Search threats with advanced filters
  * GET - Quick search with query params
+ *
+ * Reads from `email_verdicts` (the live detection pipeline's source of truth),
+ * consistent with the rest of the threat-management screens. `status` and
+ * `threat_type` are not native email_verdicts columns, so they are derived in
+ * SQL (mirroring lib/detection/storage.ts deriveThreatStatus / deriveThreatType)
+ * so the WHERE clause, the COUNT query, and the facets all agree. The legacy
+ * `integrationType` filter is dropped — email_verdicts has no provider column.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,23 +17,56 @@ import { sql } from '@/lib/db';
 
 interface SearchFilters {
   query?: string;              // Free text search
-  status?: string[];           // quarantined, released, deleted, dismissed
-  verdict?: string[];          // quarantine, block
-  threatTypes?: string[];      // phishing, malware, spam, bec
-  senders?: string[];          // Email addresses
-  senderDomains?: string[];    // Domain names
+  status?: string[];           // quarantined, released, deleted (derived)
+  verdict?: string[];          // suspicious, quarantine, block
+  threatTypes?: string[];      // phishing, malware, spam, bec (derived from signals)
+  senders?: string[];          // Sender email addresses
+  senderDomains?: string[];    // Sender domain names
   recipients?: string[];       // Recipient emails
   scoreMin?: number;           // Minimum threat score
   scoreMax?: number;           // Maximum threat score
   dateFrom?: string;           // ISO date string
   dateTo?: string;             // ISO date string
   hasSignal?: string;          // Signal type to filter by
-  integrationType?: string;    // o365, gmail
+  integrationType?: string;    // DEPRECATED — email_verdicts has no provider column; ignored
   sortBy?: 'date' | 'score' | 'sender' | 'subject';
   sortOrder?: 'asc' | 'desc';
   page?: number;
   limit?: number;
 }
+
+// Only threatening verdicts surface on the threat screens (mirrors
+// getThreatsForManagement), so the search is scoped the same way — otherwise
+// benign 'pass' rows in email_verdicts would pollute "threat" results.
+const THREATENING_VERDICTS = `ev.verdict IN ('suspicious', 'quarantine', 'block')`;
+
+// Mirrors lib/detection/storage.ts deriveThreatStatus. Kept in SQL (not JS) so
+// the status filter, COUNT, and status facet all agree.
+const STATUS_EXPR = `CASE
+  WHEN ev.action_taken IN ('released', 'delivered') THEN 'released'
+  WHEN ev.action_taken = 'deleted' THEN 'deleted'
+  WHEN ev.user_feedback = 'false_positive' THEN 'released'
+  WHEN ev.verdict IN ('quarantine', 'block') THEN 'quarantined'
+  ELSE 'quarantined'
+END`;
+
+// Mirrors lib/detection/storage.ts deriveThreatType (signal priority cascade).
+const THREAT_TYPE_EXPR = `CASE
+  WHEN ev.signals @> '[{"type":"credential_request"}]'::jsonb THEN 'phishing'
+  WHEN ev.signals @> '[{"type":"financial_request"}]'::jsonb
+    OR ev.signals @> '[{"type":"bec_detected"}]'::jsonb
+    OR ev.signals @> '[{"type":"bec_impersonation"}]'::jsonb THEN 'bec'
+  WHEN ev.signals @> '[{"type":"executable"}]'::jsonb
+    OR ev.signals @> '[{"type":"macro_enabled"}]'::jsonb
+    OR ev.signals @> '[{"type":"dangerous_attachment"}]'::jsonb THEN 'malware'
+  WHEN ev.signals @> '[{"type":"homoglyph"}]'::jsonb
+    OR ev.signals @> '[{"type":"display_name_spoof"}]'::jsonb
+    OR ev.signals @> '[{"type":"dangerous_url"}]'::jsonb
+    OR ev.signals @> '[{"type":"ip_url"}]'::jsonb THEN 'phishing'
+  WHEN ev.signals @> '[{"type":"spam"}]'::jsonb
+    OR ev.signals @> '[{"type":"bulk_sender"}]'::jsonb THEN 'spam'
+  ELSE 'phishing'
+END`;
 
 /**
  * POST - Advanced search with complex filters
@@ -78,7 +118,8 @@ export async function GET(request: NextRequest) {
       scoreMax: searchParams.get('scoreMax') ? parseInt(searchParams.get('scoreMax')!) : undefined,
       dateFrom: searchParams.get('from') || undefined,
       dateTo: searchParams.get('to') || undefined,
-      integrationType: searchParams.get('integration') || undefined,
+      // integrationType intentionally not mapped — email_verdicts has no provider
+      // column. See SearchFilters.integrationType.
       sortBy: (searchParams.get('sortBy') as SearchFilters['sortBy']) || 'date',
       sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc',
       page: parseInt(searchParams.get('page') || '1'),
@@ -102,118 +143,119 @@ async function executeSearch(tenantId: string, filters: SearchFilters) {
   const limit = Math.min(filters.limit || 25, 100);
   const offset = (page - 1) * limit;
 
-  // Build WHERE conditions
-  const conditions: string[] = ['t.tenant_id = $1'];
+  // Build WHERE conditions. Base scope: tenant + threatening verdicts only.
+  const conditions: string[] = [`ev.tenant_id = $1`, THREATENING_VERDICTS];
   const params: unknown[] = [tenantId];
   let paramIndex = 2;
 
   // Free text search (subject, sender, explanation)
   if (filters.query) {
     conditions.push(`(
-      t.subject ILIKE $${paramIndex}
-      OR t.sender_email ILIKE $${paramIndex}
-      OR t.sender_name ILIKE $${paramIndex}
-      OR t.explanation ILIKE $${paramIndex}
+      ev.subject ILIKE $${paramIndex}
+      OR ev.from_address ILIKE $${paramIndex}
+      OR ev.from_display_name ILIKE $${paramIndex}
+      OR COALESCE(ev.explanation, ev.llm_explanation) ILIKE $${paramIndex}
     )`);
     params.push(`%${filters.query}%`);
     paramIndex++;
   }
 
-  // Status filter
+  // Status filter (derived — mirrors deriveThreatStatus)
   if (filters.status && filters.status.length > 0) {
-    conditions.push(`t.status = ANY($${paramIndex})`);
+    conditions.push(`(${STATUS_EXPR}) = ANY($${paramIndex})`);
     params.push(filters.status);
     paramIndex++;
   }
 
   // Verdict filter
   if (filters.verdict && filters.verdict.length > 0) {
-    conditions.push(`t.verdict = ANY($${paramIndex})`);
+    conditions.push(`ev.verdict = ANY($${paramIndex})`);
     params.push(filters.verdict);
     paramIndex++;
   }
 
-  // Threat type filter
+  // Threat type filter (derived from signals — mirrors deriveThreatType)
   if (filters.threatTypes && filters.threatTypes.length > 0) {
-    conditions.push(`t.threat_type = ANY($${paramIndex})`);
+    conditions.push(`(${THREAT_TYPE_EXPR}) = ANY($${paramIndex})`);
     params.push(filters.threatTypes);
     paramIndex++;
   }
 
   // Sender email filter
   if (filters.senders && filters.senders.length > 0) {
-    conditions.push(`t.sender_email = ANY($${paramIndex})`);
+    conditions.push(`ev.from_address = ANY($${paramIndex})`);
     params.push(filters.senders);
     paramIndex++;
   }
 
   // Sender domain filter
   if (filters.senderDomains && filters.senderDomains.length > 0) {
-    conditions.push(`SPLIT_PART(t.sender_email, '@', 2) = ANY($${paramIndex})`);
+    conditions.push(`SPLIT_PART(ev.from_address, '@', 2) = ANY($${paramIndex})`);
     params.push(filters.senderDomains);
     paramIndex++;
   }
 
-  // Recipient filter
+  // Recipient filter (to_addresses is a jsonb array of {address, ...})
   if (filters.recipients && filters.recipients.length > 0) {
-    conditions.push(`t.recipient_email = ANY($${paramIndex})`);
+    conditions.push(`EXISTS (
+      SELECT 1 FROM jsonb_array_elements(COALESCE(ev.to_addresses, '[]'::jsonb)) AS r
+      WHERE r->>'address' = ANY($${paramIndex})
+    )`);
     params.push(filters.recipients);
     paramIndex++;
   }
 
   // Score range
   if (filters.scoreMin !== undefined) {
-    conditions.push(`t.score >= $${paramIndex}`);
+    conditions.push(`ev.score >= $${paramIndex}`);
     params.push(filters.scoreMin);
     paramIndex++;
   }
   if (filters.scoreMax !== undefined) {
-    conditions.push(`t.score <= $${paramIndex}`);
+    conditions.push(`ev.score <= $${paramIndex}`);
     params.push(filters.scoreMax);
     paramIndex++;
   }
 
-  // Date range
+  // Date range (email_verdicts uses created_at, not quarantined_at)
   if (filters.dateFrom) {
-    conditions.push(`t.quarantined_at >= $${paramIndex}`);
+    conditions.push(`ev.created_at >= $${paramIndex}`);
     params.push(filters.dateFrom);
     paramIndex++;
   }
   if (filters.dateTo) {
-    conditions.push(`t.quarantined_at <= $${paramIndex}`);
+    conditions.push(`ev.created_at <= $${paramIndex}`);
     params.push(filters.dateTo);
     paramIndex++;
   }
 
-  // Signal type filter (searches in JSONB)
+  // Signal type filter (searches the jsonb signals array)
   if (filters.hasSignal) {
-    conditions.push(`t.signals @> $${paramIndex}::jsonb`);
+    conditions.push(`ev.signals @> $${paramIndex}::jsonb`);
     params.push(JSON.stringify([{ type: filters.hasSignal }]));
     paramIndex++;
   }
 
-  // Integration type
-  if (filters.integrationType) {
-    conditions.push(`t.integration_type = $${paramIndex}`);
-    params.push(filters.integrationType);
-    paramIndex++;
-  }
+  // integration_type: unsupported on email_verdicts (no provider column) — was a
+  // threats-schema-only filter. Intentionally not applied; see SearchFilters.
 
-  // Build ORDER BY
+  // Build ORDER BY (date maps to created_at on email_verdicts)
   const orderMap: Record<string, string> = {
-    date: 't.quarantined_at',
-    score: 't.score',
-    sender: 't.sender_email',
-    subject: 't.subject',
+    date: 'ev.created_at',
+    score: 'ev.score',
+    sender: 'ev.from_address',
+    subject: 'ev.subject',
   };
-  const orderColumn = orderMap[filters.sortBy || 'date'] || 't.quarantined_at';
+  const orderColumn = orderMap[filters.sortBy || 'date'] || 'ev.created_at';
   const orderDirection = filters.sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+  const whereClause = conditions.join(' AND ');
 
   // Execute count query
   const countQuery = `
     SELECT COUNT(*)::int as total
-    FROM threats t
-    WHERE ${conditions.join(' AND ')}
+    FROM email_verdicts ev
+    WHERE ${whereClause}
   `;
   const countResult = await sql.transaction([
     sql([countQuery, ...params] as unknown as TemplateStringsArray),
@@ -223,36 +265,43 @@ async function executeSearch(tenantId: string, filters: SearchFilters) {
   // Execute search query
   const searchQuery = `
     SELECT
-      t.id,
-      t.message_id,
-      t.subject,
-      t.sender_email,
-      t.sender_name,
-      t.recipient_email,
-      t.threat_type,
-      t.verdict,
-      t.score,
-      t.status,
-      t.integration_type,
-      t.quarantined_at,
-      t.explanation,
-      COALESCE(jsonb_array_length(t.signals), 0) as signal_count
-    FROM threats t
-    WHERE ${conditions.join(' AND ')}
+      ev.message_id,
+      ev.subject,
+      ev.from_address AS sender_email,
+      ev.from_display_name AS sender_name,
+      COALESCE(ev.to_addresses->0->>'address', '') AS recipient_email,
+      ${THREAT_TYPE_EXPR} AS threat_type,
+      ev.verdict,
+      ev.score,
+      ${STATUS_EXPR} AS status,
+      CAST(NULL AS text) AS integration_type,
+      ev.created_at AS quarantined_at,
+      COALESCE(ev.explanation, ev.llm_explanation) AS explanation,
+      COALESCE(jsonb_array_length(ev.signals), 0) AS signal_count
+    FROM email_verdicts ev
+    WHERE ${whereClause}
     ORDER BY ${orderColumn} ${orderDirection}
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
   params.push(limit, offset);
 
-  const threats = await sql.transaction([
+  const result = await sql.transaction([
     sql([searchQuery, ...params] as unknown as TemplateStringsArray),
   ]);
+  const rows = (result[0] ?? []) as Array<Record<string, unknown>>;
 
-  // Get aggregations for faceted search
-  const aggregations = await getSearchAggregations(tenantId, conditions.slice(1), params.slice(1, -2));
+  // Shape ids to match getThreatsForManagement: the detail route keys on the
+  // URL-encoded message_id, so encode it here for clickable results.
+  const threats = rows.map((row) => ({
+    ...row,
+    id: encodeURIComponent(String(row.message_id ?? '')),
+  }));
+
+  // Tenant-wide facets (unfiltered by the active search, matching prior behavior)
+  const aggregations = await getSearchAggregations(tenantId);
 
   return {
-    threats: threats[0],
+    threats,
     pagination: {
       page,
       limit,
@@ -262,79 +311,65 @@ async function executeSearch(tenantId: string, filters: SearchFilters) {
     },
     aggregations,
     filters: {
-      applied: Object.keys(filters).filter(k => filters[k as keyof SearchFilters] !== undefined).length,
+      applied: Object.keys(filters).filter(
+        (k) => k !== 'integrationType' && filters[k as keyof SearchFilters] !== undefined
+      ).length,
     },
   };
 }
 
-async function getSearchAggregations(
-  tenantId: string,
-  _additionalConditions: string[],
-  _additionalParams: unknown[]
-) {
-  // Get aggregations for faceted search
+async function getSearchAggregations(tenantId: string) {
+  // Tenant-wide facet distributions over threatening email_verdicts. status and
+  // threat_type are derived in SQL (see STATUS_EXPR / THREAT_TYPE_EXPR above) so
+  // the facets match what the search results can actually surface.
 
   try {
-    // Status distribution
-    const statusAgg = await sql`
-      SELECT status, COUNT(*)::int as count
-      FROM threats
-      WHERE tenant_id = ${tenantId}
-      GROUP BY status
-    `;
+    const base = `FROM email_verdicts ev WHERE ev.tenant_id = $1 AND ${THREATENING_VERDICTS}`;
 
-    // Verdict distribution
-    const verdictAgg = await sql`
-      SELECT verdict, COUNT(*)::int as count
-      FROM threats
-      WHERE tenant_id = ${tenantId}
-      GROUP BY verdict
-    `;
+    const statusAgg = await sql.transaction([
+      sql(
+        [`SELECT (${STATUS_EXPR}) AS status, COUNT(*)::int AS count ${base} GROUP BY status`, tenantId] as unknown as TemplateStringsArray
+      ),
+    ]);
 
-    // Threat type distribution
-    const typeAgg = await sql`
-      SELECT threat_type, COUNT(*)::int as count
-      FROM threats
-      WHERE tenant_id = ${tenantId}
-      AND threat_type IS NOT NULL
-      GROUP BY threat_type
-      ORDER BY count DESC
-      LIMIT 10
-    `;
+    const verdictAgg = await sql.transaction([
+      sql(
+        [`SELECT verdict, COUNT(*)::int AS count ${base} GROUP BY verdict`, tenantId] as unknown as TemplateStringsArray
+      ),
+    ]);
 
-    // Top sender domains
-    const domainAgg = await sql`
-      SELECT
-        SPLIT_PART(sender_email, '@', 2) as domain,
-        COUNT(*)::int as count
-      FROM threats
-      WHERE tenant_id = ${tenantId}
-      GROUP BY SPLIT_PART(sender_email, '@', 2)
-      ORDER BY count DESC
-      LIMIT 10
-    `;
+    const typeAgg = await sql.transaction([
+      sql(
+        [`SELECT (${THREAT_TYPE_EXPR}) AS threat_type, COUNT(*)::int AS count ${base} GROUP BY threat_type ORDER BY count DESC LIMIT 10`, tenantId] as unknown as TemplateStringsArray
+      ),
+    ]);
 
-    // Score distribution
-    const scoreAgg = await sql`
-      SELECT
+    const domainAgg = await sql.transaction([
+      sql(
+        [`SELECT SPLIT_PART(ev.from_address, '@', 2) AS domain, COUNT(*)::int AS count ${base} GROUP BY domain ORDER BY count DESC LIMIT 10`, tenantId] as unknown as TemplateStringsArray
+      ),
+    ]);
+
+    const scoreAgg = await sql.transaction([
+      sql(
+        [`SELECT
         CASE
-          WHEN score < 40 THEN 'low'
-          WHEN score < 70 THEN 'medium'
-          WHEN score < 90 THEN 'high'
+          WHEN ev.score < 40 THEN 'low'
+          WHEN ev.score < 70 THEN 'medium'
+          WHEN ev.score < 90 THEN 'high'
           ELSE 'critical'
-        END as severity,
-        COUNT(*)::int as count
-      FROM threats
-      WHERE tenant_id = ${tenantId}
-      GROUP BY severity
-    `;
+        END AS severity,
+        COUNT(*)::int AS count
+        ${base} GROUP BY severity`, tenantId] as unknown as TemplateStringsArray
+      ),
+    ]);
 
     return {
-      statuses: statusAgg,
-      verdicts: verdictAgg,
-      threatTypes: typeAgg,
-      domains: domainAgg,
-      severities: scoreAgg,
+      statuses: statusAgg[0],
+      verdicts: verdictAgg[0],
+      threatTypes: typeAgg[0],
+      domains: domainAgg[0],
+      severities: scoreAgg[0],
     };
   } catch {
     return null;
