@@ -462,6 +462,101 @@ export async function getThreatByMessageId(
 }
 
 /**
+ * Recent threatening verdicts for the live feed / SSE, newest first.
+ *
+ * Sourced from email_verdicts (consistent with getThreatsForManagement). When
+ * `since` is given, only rows created after it are returned — used by the feed's
+ * SSE poller to stream only new events.
+ */
+export async function getRecentManagedThreats(
+  tenantId: string,
+  since: string | null,
+  limit: number
+): Promise<ManagedThreat[]> {
+  const rows = (since
+    ? await sql`
+        SELECT
+          message_id, subject, from_address, from_display_name, signals,
+          verdict, score, explanation, llm_explanation, action_taken,
+          user_feedback, created_at
+        FROM email_verdicts
+        WHERE tenant_id = ${tenantId}
+          AND verdict IN ('suspicious', 'quarantine', 'block')
+          AND created_at > ${since}
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `
+    : await sql`
+        SELECT
+          message_id, subject, from_address, from_display_name, signals,
+          verdict, score, explanation, llm_explanation, action_taken,
+          user_feedback, created_at
+        FROM email_verdicts
+        WHERE tenant_id = ${tenantId}
+          AND verdict IN ('suspicious', 'quarantine', 'block')
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `) as Array<Record<string, unknown>>;
+
+  return rows.map(mapVerdictRowToThreat);
+}
+
+/**
+ * Live threat-feed stats for a tenant, sourced from email_verdicts.
+ *
+ * Status counts (quarantined/released/deleted) are derived in SQL via the same
+ * logic as deriveThreatStatus, so the feed's heartbeat agrees with the
+ * threat-management pages. Scoped to threatening verdicts.
+ */
+export async function getThreatFeedStats(tenantId: string): Promise<{
+  quarantined: number;
+  released: number;
+  deleted: number;
+  last24h: number;
+  lastHour: number;
+  latestThreat: Date | null;
+  avgScore: number;
+}> {
+  // Mirrors deriveThreatStatus above. Built as a parameterized array query
+  // because the sql tagged template would escape a raw CASE interpolation.
+  const STATUS_CASE = `CASE
+      WHEN ev.action_taken IN ('released', 'delivered') THEN 'released'
+      WHEN ev.action_taken = 'deleted' THEN 'deleted'
+      WHEN ev.user_feedback = 'false_positive' THEN 'released'
+      WHEN ev.verdict IN ('quarantine', 'block') THEN 'quarantined'
+      ELSE 'quarantined'
+    END`;
+  const result = await sql.transaction([
+    sql(
+      [
+        `SELECT
+        COUNT(*) FILTER (WHERE (${STATUS_CASE}) = 'quarantined')::int AS quarantined,
+        COUNT(*) FILTER (WHERE (${STATUS_CASE}) = 'released')::int AS released,
+        COUNT(*) FILTER (WHERE (${STATUS_CASE}) = 'deleted')::int AS deleted,
+        COUNT(*) FILTER (WHERE ev.created_at >= NOW() - INTERVAL '24 hours')::int AS last_24h,
+        COUNT(*) FILTER (WHERE ev.created_at >= NOW() - INTERVAL '1 hour')::int AS last_hour,
+        MAX(ev.created_at) AS latest_threat,
+        ROUND(AVG(ev.score)::numeric, 0) AS avg_score
+        FROM email_verdicts ev
+        WHERE ev.tenant_id = $1
+          AND ev.verdict IN ('suspicious', 'quarantine', 'block')`,
+        tenantId,
+      ] as unknown as TemplateStringsArray
+    ),
+  ]);
+  const s = (result[0]?.[0] ?? {}) as Record<string, unknown>;
+  return {
+    quarantined: Number(s.quarantined ?? 0),
+    released: Number(s.released ?? 0),
+    deleted: Number(s.deleted ?? 0),
+    last24h: Number(s.last_24h ?? 0),
+    lastHour: Number(s.last_hour ?? 0),
+    latestThreat: (s.latest_threat as Date | null) ?? null,
+    avgScore: Number(s.avg_score ?? 0),
+  };
+}
+
+/**
  * Quarantine an email
  */
 export async function quarantineEmail(

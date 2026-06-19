@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sql } from '@/lib/db';
+import { getRecentManagedThreats, getThreatFeedStats } from '@/lib/detection/storage';
 
 /**
  * GET - Get recent threats for live feed or stream
@@ -48,97 +49,34 @@ export async function GET(request: NextRequest) {
 }
 
 async function getRecentThreats(tenantId: string, since: string | null, limit: number) {
-  let threats;
-
-  if (since) {
-    threats = await sql`
-      SELECT
-        t.id,
-        t.message_id,
-        t.subject,
-        t.sender_email,
-        t.sender_name,
-        t.recipient_email,
-        t.threat_type,
-        t.verdict,
-        t.score,
-        t.status,
-        t.integration_type,
-        t.quarantined_at,
-        t.explanation,
-        COALESCE(jsonb_array_length(t.signals), 0) as signal_count
-      FROM threats t
-      WHERE t.tenant_id = ${tenantId}
-      AND t.quarantined_at > ${since}
-      ORDER BY t.quarantined_at DESC
-      LIMIT ${limit}
-    `;
-  } else {
-    threats = await sql`
-      SELECT
-        t.id,
-        t.message_id,
-        t.subject,
-        t.sender_email,
-        t.sender_name,
-        t.recipient_email,
-        t.threat_type,
-        t.verdict,
-        t.score,
-        t.status,
-        t.integration_type,
-        t.quarantined_at,
-        t.explanation,
-        COALESCE(jsonb_array_length(t.signals), 0) as signal_count
-      FROM threats t
-      WHERE t.tenant_id = ${tenantId}
-      ORDER BY t.quarantined_at DESC
-      LIMIT ${limit}
-    `;
-  }
-
-  return threats;
+  // Sourced from email_verdicts via lib/detection/storage so the feed agrees
+  // with the threat-management pages (the legacy threats table is not populated
+  // by the live detection pipeline).
+  return getRecentManagedThreats(tenantId, since, limit);
 }
 
 async function getLiveStats(tenantId: string) {
-  const stats = await sql`
-    SELECT
-      COUNT(*) FILTER (WHERE status = 'quarantined')::int as quarantined,
-      COUNT(*) FILTER (WHERE status = 'released')::int as released,
-      COUNT(*) FILTER (WHERE status = 'deleted')::int as deleted,
-      COUNT(*) FILTER (WHERE quarantined_at >= NOW() - INTERVAL '24 hours')::int as last_24h,
-      COUNT(*) FILTER (WHERE quarantined_at >= NOW() - INTERVAL '1 hour')::int as last_hour,
-      MAX(quarantined_at) as latest_threat,
-      ROUND(AVG(score)::numeric, 0) as avg_score
-    FROM threats
-    WHERE tenant_id = ${tenantId}
-  `;
+  // Threat counts come from email_verdicts via getThreatFeedStats (status is
+  // derived there, not native), so the heartbeat agrees with the management
+  // pages. Processing stats already read email_verdicts.
+  const [threatStats, processing] = await Promise.all([
+    getThreatFeedStats(tenantId),
+    sql`
+      SELECT
+        COUNT(*)::int as total_processed,
+        COUNT(*) FILTER (WHERE verdict = 'pass')::int as passed,
+        COUNT(*) FILTER (WHERE verdict IN ('quarantine', 'block'))::int as blocked,
+        ROUND(AVG(processing_time_ms)::numeric, 0) as avg_latency
+      FROM email_verdicts
+      WHERE tenant_id = ${tenantId}
+      AND created_at >= NOW() - INTERVAL '1 hour'
+    `,
+  ]);
 
-  // Get verdict processing stats from last hour
-  const processing = await sql`
-    SELECT
-      COUNT(*)::int as total_processed,
-      COUNT(*) FILTER (WHERE verdict = 'pass')::int as passed,
-      COUNT(*) FILTER (WHERE verdict IN ('quarantine', 'block'))::int as blocked,
-      ROUND(AVG(processing_time_ms)::numeric, 0) as avg_latency
-    FROM email_verdicts
-    WHERE tenant_id = ${tenantId}
-    AND created_at >= NOW() - INTERVAL '1 hour'
-  `;
-
-  const s = stats[0] || {};
   const p = processing[0] || {};
 
   return {
-    threats: {
-      quarantined: s.quarantined || 0,
-      released: s.released || 0,
-      deleted: s.deleted || 0,
-      last24h: s.last_24h || 0,
-      lastHour: s.last_hour || 0,
-      latestThreat: s.latest_threat,
-      avgScore: s.avg_score || 0,
-    },
+    threats: threatStats,
     processing: {
       totalLastHour: p.total_processed || 0,
       passed: p.passed || 0,
