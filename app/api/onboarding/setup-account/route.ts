@@ -74,6 +74,12 @@ export async function POST(request: NextRequest) {
       `;
     }
 
+    // users.tenant_id holds the Clerk org string — the convention set by
+    // migration 009 (all tenant_id columns are the Clerk tenant id, VARCHAR(255),
+    // no FK), matching email_verdicts and the other tenant-scoped tables.
+    // setup-account previously left it NULL, forcing user/me onto its fallback.
+    const userTenantId = organizationId;
+
     // Update user record if exists
     const existingUser = await sql`
       SELECT id FROM users WHERE clerk_user_id = ${userId}
@@ -89,6 +95,7 @@ export async function POST(request: NextRequest) {
           email,
           name,
           role,
+          tenant_id,
           is_msp_user,
           created_at,
           updated_at
@@ -97,6 +104,7 @@ export async function POST(request: NextRequest) {
           ${clerkUser.emailAddresses[0]?.emailAddress || ''},
           ${clerkUser.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ''}`.trim() : null},
           ${isMsp ? 'msp_admin' : 'tenant_admin'},
+          ${userTenantId},
           ${isMsp},
           NOW(),
           NOW()
@@ -107,6 +115,7 @@ export async function POST(request: NextRequest) {
         UPDATE users
         SET
           role = ${isMsp ? 'msp_admin' : 'tenant_admin'},
+          tenant_id = COALESCE(tenant_id, ${userTenantId}),
           is_msp_user = ${isMsp},
           updated_at = NOW()
         WHERE clerk_user_id = ${userId}
